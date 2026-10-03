@@ -1,0 +1,270 @@
+{
+  "source": "vendor/gridfinity-rebuilt/gridfinity-rebuilt-bins.scad",
+  "groups": [
+    "General Settings",
+    "Height",
+    "Compartments",
+    "Cylindrical Compartments",
+    "Compartment Features",
+    "Base Hole Options"
+  ],
+  "parameters": [
+    {
+      "name": "gridx",
+      "group": "General Settings",
+      "type": "number",
+      "default": 3,
+      "description": "number of bases along x-axis",
+      "widget": "number"
+    },
+    {
+      "name": "gridy",
+      "group": "General Settings",
+      "type": "number",
+      "default": 2,
+      "description": "number of bases along y-axis",
+      "widget": "number"
+    },
+    {
+      "name": "gridz",
+      "group": "General Settings",
+      "type": "number",
+      "default": 6,
+      "description": "bin height. See bin height information and \"gridz_define\" below.",
+      "widget": "number"
+    },
+    {
+      "name": "half_grid",
+      "group": "General Settings",
+      "type": "boolean",
+      "default": false,
+      "description": "Half grid sized bins.  Implies \"only corners\".",
+      "widget": "checkbox"
+    },
+    {
+      "name": "gridz_define",
+      "group": "Height",
+      "type": "number",
+      "default": 0,
+      "description": "How \"gridz\" is used to calculate height.  Some exclude 7mm/1U base, others exclude ~3.5mm (4.4mm nominal) stacking lip.",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": 0,
+          "label": "7mm increments - Excludes Stacking Lip"
+        },
+        {
+          "value": 1,
+          "label": "Internal mm - Excludes Base & Stacking Lip"
+        },
+        {
+          "value": 2,
+          "label": "External mm - Excludes Stacking Lip"
+        },
+        {
+          "value": 3,
+          "label": "External mm"
+        }
+      ]
+    },
+    {
+      "name": "height_internal",
+      "group": "Height",
+      "type": "number",
+      "default": 0,
+      "description": "Overrides internal block height of bin (for solid containers). Leave zero for default height. Units: mm",
+      "widget": "number"
+    },
+    {
+      "name": "enable_zsnap",
+      "group": "Height",
+      "type": "boolean",
+      "default": false,
+      "description": "snap gridz height to nearest 7mm increment",
+      "widget": "checkbox"
+    },
+    {
+      "name": "divx",
+      "group": "Compartments",
+      "type": "number",
+      "default": 1,
+      "description": "number of X Divisions (set to zero to have solid bin)",
+      "widget": "number"
+    },
+    {
+      "name": "divy",
+      "group": "Compartments",
+      "type": "number",
+      "default": 1,
+      "description": "number of Y Divisions (set to zero to have solid bin)",
+      "widget": "number"
+    },
+    {
+      "name": "depth",
+      "group": "Compartments",
+      "type": "number",
+      "default": 0,
+      "description": "Leave zero for default. Units: mm",
+      "widget": "number"
+    },
+    {
+      "name": "cut_cylinders",
+      "group": "Cylindrical Compartments",
+      "type": "boolean",
+      "default": false,
+      "description": "Use this instead of bins",
+      "widget": "checkbox"
+    },
+    {
+      "name": "cd",
+      "group": "Cylindrical Compartments",
+      "type": "number",
+      "default": 10,
+      "description": "diameter of cylindrical cut outs",
+      "widget": "number"
+    },
+    {
+      "name": "c_chamfer",
+      "group": "Cylindrical Compartments",
+      "type": "number",
+      "default": 0.5,
+      "description": "chamfer around the top rim of the holes",
+      "widget": "number"
+    },
+    {
+      "name": "style_tab",
+      "group": "Compartment Features",
+      "type": "number",
+      "default": 1,
+      "description": "the type of tabs",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": 0,
+          "label": "Full"
+        },
+        {
+          "value": 1,
+          "label": "Auto"
+        },
+        {
+          "value": 2,
+          "label": "Left"
+        },
+        {
+          "value": 3,
+          "label": "Center"
+        },
+        {
+          "value": 4,
+          "label": "Right"
+        },
+        {
+          "value": 5,
+          "label": "None"
+        }
+      ]
+    },
+    {
+      "name": "place_tab",
+      "group": "Compartment Features",
+      "type": "number",
+      "default": 0,
+      "description": "which divisions have tabs",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": 0,
+          "label": "Everywhere-Normal"
+        },
+        {
+          "value": 1,
+          "label": "Top-Left Division"
+        }
+      ]
+    },
+    {
+      "name": "scoop",
+      "group": "Compartment Features",
+      "type": "number",
+      "default": 1,
+      "description": "scoop weight percentage. 0 disables scoop, 1 is regular scoop. Any real number will scale the scoop.",
+      "min": 0,
+      "step": 0.1,
+      "max": 1,
+      "widget": "slider"
+    },
+    {
+      "name": "only_corners",
+      "group": "Base Hole Options",
+      "type": "boolean",
+      "default": false,
+      "description": "only cut magnet/screw holes at the corners of the bin to save uneccesary print time",
+      "widget": "checkbox"
+    },
+    {
+      "name": "refined_holes",
+      "group": "Base Hole Options",
+      "type": "boolean",
+      "default": true,
+      "description": "Use gridfinity refined hole style. Not compatible with magnet_holes!",
+      "widget": "checkbox"
+    },
+    {
+      "name": "magnet_holes",
+      "group": "Base Hole Options",
+      "type": "boolean",
+      "default": false,
+      "description": "Base will have holes for 6mm Diameter x 2mm high magnets.",
+      "widget": "checkbox"
+    },
+    {
+      "name": "screw_holes",
+      "group": "Base Hole Options",
+      "type": "boolean",
+      "default": false,
+      "description": "Base will have holes for M3 screws.",
+      "widget": "checkbox"
+    },
+    {
+      "name": "crush_ribs",
+      "group": "Base Hole Options",
+      "type": "boolean",
+      "default": true,
+      "description": "Magnet holes will have crush ribs to hold the magnet.",
+      "widget": "checkbox"
+    },
+    {
+      "name": "chamfer_holes",
+      "group": "Base Hole Options",
+      "type": "boolean",
+      "default": true,
+      "description": "Magnet/Screw holes will have a chamfer to ease insertion.",
+      "widget": "checkbox"
+    },
+    {
+      "name": "printable_hole_top",
+      "group": "Base Hole Options",
+      "type": "boolean",
+      "default": true,
+      "description": "Magnet/Screw holes will be printed so supports are not needed.",
+      "widget": "checkbox"
+    },
+    {
+      "name": "enable_thumbscrew",
+      "group": "Base Hole Options",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable \"gridfinity-refined\" thumbscrew hole in the center of each base: https://www.printables.com/model/413761-gridfinity-refined",
+      "widget": "checkbox"
+    }
+  ],
+  "computed_skipped": [
+    {
+      "name": "hole_options",
+      "group": "Base Hole Options",
+      "expression": "bundle_hole_options(refined_holes, magnet_holes, screw_holes, crush_ribs, chamfer_holes, printable_hole_top)"
+    }
+  ],
+  "model": "gridfinity-rebuilt/bin"
+}

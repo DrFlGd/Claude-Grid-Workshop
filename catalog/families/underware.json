@@ -1,0 +1,106 @@
+{
+  "$schema": "../../schema/family.schema.json",
+  "id": "underware",
+  "name": "Underware for openGrid",
+  "category": "wall",
+  "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+  ],
+  "summary": "Customizable Underware cable channels (Monokini) for openGrid.",
+  "authors": [
+    {
+      "name": "Pedro Leite",
+      "url": "https://github.com/pleite"
+    },
+    {
+      "name": "Underware design by Hands on Katie"
+    }
+  ],
+  "source": {
+    "repository": "https://github.com/pleite/Monokini",
+    "commit": "fa601de311e34fcbd238a7b3be4f8ac5b6e59986",
+    "vendor_path": "vendor/monokini"
+  },
+  "license": {
+    "spdx": "NOASSERTION",
+    "public_use": "blocked",
+    "notes": "Root LICENSE says AGPL-3.0; README and SCAD headers say CC-BY-NC-SA-4.0. Keep disabled publicly until clarified."
+  },
+  "links": {},
+  "engine": {
+    "min_version": "2021.01",
+    "backend": "manifold",
+    "library_paths": [
+      "vendor/libraries"
+    ]
+  },
+  "status": "available",
+  "models": [
+    {
+      "id": "i-channel",
+      "name": "I Channel",
+      "entrypoint": "vendor/monokini/monokini_I_channel.scad",
+      "status": "available"
+    },
+    {
+      "id": "l-channel",
+      "name": "L Channel",
+      "entrypoint": "vendor/monokini/monokini_L_channel.scad",
+      "status": "available"
+    },
+    {
+      "id": "s-channel",
+      "name": "S Channel",
+      "entrypoint": "vendor/monokini/monokini_S_channel.scad",
+      "status": "available"
+    },
+    {
+      "id": "t-channel",
+      "name": "T Channel",
+      "entrypoint": "vendor/monokini/monokini_T_channel.scad",
+      "status": "available"
+    },
+    {
+      "id": "x-channel",
+      "name": "X Channel",
+      "entrypoint": "vendor/monokini/monokini_X_channel.scad",
+      "status": "available"
+    },
+    {
+      "id": "bridge-channel",
+      "name": "Bridge Channel",
+      "entrypoint": "vendor/monokini/monokini_bridge_channel.scad",
+      "status": "available"
+    },
+    {
+      "id": "i-bridge-channel",
+      "name": "I Bridge Channel",
+      "entrypoint": "vendor/monokini/monokini_I_bridge_channel.scad",
+      "status": "available"
+    },
+    {
+      "id": "diagonal-channel",
+      "name": "Diagonal Channel",
+      "entrypoint": "vendor/monokini/monokini_diagonal_channel.scad",
+      "status": "available"
+    },
+    {
+      "id": "text-label",
+      "name": "Label",
+      "entrypoint": "vendor/monokini/monokini_text_label.scad",
+      "status": "available"
+    }
+  ],
+  "additional_entrypoints_available": [
+    "monokini_I_channel_hok",
+    "monokini_I_channel_leaf",
+    "monokini_I_channel_tex",
+    "monokini_I_channel_wood",
+    "monokini_I_height_change_channel",
+    "monokini_I_width_change_channel",
+    "monokini_mitre_channel",
+    "monokini_cable_winder"
+  ]
+}

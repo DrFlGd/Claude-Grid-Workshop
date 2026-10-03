@@ -1,0 +1,690 @@
+{
+  "source": "vendor/cullenect-label/OpenSCAD/Cullenect.scad",
+  "groups": [
+    "General Settings",
+    "Label Text 1",
+    "Label Text 2",
+    "Fastener Icon",
+    "Hardware Icon",
+    "Advanced"
+  ],
+  "parameters": [
+    {
+      "name": "Select_Output",
+      "group": "General Settings",
+      "type": "number",
+      "default": 0,
+      "description": "I want to generate...",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": 0,
+          "label": "Label"
+        },
+        {
+          "value": 1,
+          "label": "Label Spacer"
+        },
+        {
+          "value": 10,
+          "label": "Socket Test Fit"
+        },
+        {
+          "value": 11,
+          "label": "Socket Negative Volume"
+        },
+        {
+          "value": 20,
+          "label": "Vertical Socket Test Fit"
+        },
+        {
+          "value": 21,
+          "label": "Vertical Socket Negative"
+        }
+      ]
+    },
+    {
+      "name": "label_width",
+      "group": "General Settings",
+      "type": "number",
+      "default": 1,
+      "description": "model = \"\" // [\"Cullenect label\",\"Socket test fit\",\"Socket Negative Volume\"] Width in gridfinity units",
+      "widget": "number"
+    },
+    {
+      "name": "backward_compatible",
+      "group": "General Settings",
+      "type": "boolean",
+      "default": true,
+      "description": "Generate V1 Latches for 1U bins?",
+      "widget": "checkbox"
+    },
+    {
+      "name": "label_surface",
+      "group": "General Settings",
+      "type": "number",
+      "default": 0,
+      "description": "Flush is 3MF only",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": 0,
+          "label": "Emboss"
+        },
+        {
+          "value": 1,
+          "label": "Deboss"
+        },
+        {
+          "value": 2,
+          "label": "Flush"
+        }
+      ]
+    },
+    {
+      "name": "Text_Color",
+      "group": "General Settings",
+      "type": "string",
+      "default": "#333333",
+      "description": "Text / Icon Color.",
+      "widget": "text"
+    },
+    {
+      "name": "Text1",
+      "group": "Label Text 1",
+      "type": "string",
+      "default": "Cullenect",
+      "description": "Label Text",
+      "widget": "text"
+    },
+    {
+      "name": "Text1_Align",
+      "group": "Label Text 1",
+      "type": "string",
+      "default": "left",
+      "description": "Text Alignment",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "left",
+          "label": "left"
+        },
+        {
+          "value": "center",
+          "label": "center"
+        },
+        {
+          "value": "right",
+          "label": "right"
+        }
+      ]
+    },
+    {
+      "name": "Text1_Font_Size",
+      "group": "Label Text 1",
+      "type": "number",
+      "default": 5,
+      "description": "Font Size",
+      "widget": "number"
+    },
+    {
+      "name": "Text1_Font",
+      "group": "Label Text 1",
+      "type": "string",
+      "default": "Open Sans",
+      "description": "Font Family",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "Open Sans",
+          "label": "Open Sans"
+        },
+        {
+          "value": "Open Sans Condensed",
+          "label": "Open Sans Condensed"
+        },
+        {
+          "value": "Ubuntu",
+          "label": "Ubuntu"
+        },
+        {
+          "value": "Montserrat",
+          "label": "Montserrat"
+        }
+      ]
+    },
+    {
+      "name": "Text1_Font_Style",
+      "group": "Label Text 1",
+      "type": "string",
+      "default": "Regular",
+      "description": "Font Style",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "Regular",
+          "label": "Regular"
+        },
+        {
+          "value": "Black",
+          "label": "Black"
+        },
+        {
+          "value": "Bold",
+          "label": "Bold"
+        },
+        {
+          "value": "ExtraBol",
+          "label": "ExtraBol"
+        },
+        {
+          "value": "ExtraLight",
+          "label": "ExtraLight"
+        },
+        {
+          "value": "Light",
+          "label": "Light"
+        },
+        {
+          "value": "Medium",
+          "label": "Medium"
+        },
+        {
+          "value": "SemiBold",
+          "label": "SemiBold"
+        },
+        {
+          "value": "Thin",
+          "label": "Thin"
+        },
+        {
+          "value": "Italic",
+          "label": "Italic"
+        },
+        {
+          "value": "Black Italic",
+          "label": "Black Italic"
+        },
+        {
+          "value": "Bold Italic",
+          "label": "Bold Italic"
+        },
+        {
+          "value": "ExtraBold Italic",
+          "label": "ExtraBold Italic"
+        },
+        {
+          "value": "ExtraLight Italic",
+          "label": "ExtraLight Italic"
+        },
+        {
+          "value": "Light Italic",
+          "label": "Light Italic"
+        },
+        {
+          "value": "Medium Italic",
+          "label": "Medium Italic"
+        },
+        {
+          "value": "SemiBold Italic",
+          "label": "SemiBold Italic"
+        },
+        {
+          "value": "Thin Italic",
+          "label": "Thin Italic"
+        }
+      ]
+    },
+    {
+      "name": "Text1_XY",
+      "group": "Label Text 1",
+      "type": "number[]",
+      "default": [
+        0,
+        0
+      ],
+      "description": "Adjust X and Y Position",
+      "widget": "vector"
+    },
+    {
+      "name": "Text2",
+      "group": "Label Text 2",
+      "type": "string",
+      "default": "",
+      "description": "Label Text",
+      "widget": "text"
+    },
+    {
+      "name": "Text2_Align",
+      "group": "Label Text 2",
+      "type": "string",
+      "default": "right",
+      "description": "Text Alignment",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "left",
+          "label": "left"
+        },
+        {
+          "value": "center",
+          "label": "center"
+        },
+        {
+          "value": "right",
+          "label": "right"
+        }
+      ]
+    },
+    {
+      "name": "Text2_Font_Size",
+      "group": "Label Text 2",
+      "type": "number",
+      "default": 6,
+      "description": "Font Size",
+      "widget": "number"
+    },
+    {
+      "name": "Text2_Font",
+      "group": "Label Text 2",
+      "type": "string",
+      "default": "Open Sans",
+      "description": "Font Family",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "Open Sans",
+          "label": "Open Sans"
+        },
+        {
+          "value": "Open Sans Condensed",
+          "label": "Open Sans Condensed"
+        },
+        {
+          "value": "Ubuntu",
+          "label": "Ubuntu"
+        },
+        {
+          "value": "Montserrat",
+          "label": "Montserrat"
+        }
+      ]
+    },
+    {
+      "name": "Text2_Font_Style",
+      "group": "Label Text 2",
+      "type": "string",
+      "default": "Regular",
+      "description": "Font Style",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "Regular",
+          "label": "Regular"
+        },
+        {
+          "value": "Black",
+          "label": "Black"
+        },
+        {
+          "value": "Bold",
+          "label": "Bold"
+        },
+        {
+          "value": "ExtraBol",
+          "label": "ExtraBol"
+        },
+        {
+          "value": "ExtraLight",
+          "label": "ExtraLight"
+        },
+        {
+          "value": "Light",
+          "label": "Light"
+        },
+        {
+          "value": "Medium",
+          "label": "Medium"
+        },
+        {
+          "value": "SemiBold",
+          "label": "SemiBold"
+        },
+        {
+          "value": "Thin",
+          "label": "Thin"
+        },
+        {
+          "value": "Italic",
+          "label": "Italic"
+        },
+        {
+          "value": "Black Italic",
+          "label": "Black Italic"
+        },
+        {
+          "value": "Bold Italic",
+          "label": "Bold Italic"
+        },
+        {
+          "value": "ExtraBold Italic",
+          "label": "ExtraBold Italic"
+        },
+        {
+          "value": "ExtraLight Italic",
+          "label": "ExtraLight Italic"
+        },
+        {
+          "value": "Light Italic",
+          "label": "Light Italic"
+        },
+        {
+          "value": "Medium Italic",
+          "label": "Medium Italic"
+        },
+        {
+          "value": "SemiBold Italic",
+          "label": "SemiBold Italic"
+        },
+        {
+          "value": "Thin Italic",
+          "label": "Thin Italic"
+        }
+      ]
+    },
+    {
+      "name": "Text2_XY",
+      "group": "Label Text 2",
+      "type": "number[]",
+      "default": [
+        0,
+        0
+      ],
+      "description": "Adjust X and Y Position",
+      "widget": "vector"
+    },
+    {
+      "name": "Show_Fastener",
+      "group": "Fastener Icon",
+      "type": "boolean",
+      "default": false,
+      "description": null,
+      "widget": "checkbox"
+    },
+    {
+      "name": "Fastener_Head",
+      "group": "Fastener Icon",
+      "type": "string",
+      "default": "socket",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "socket",
+          "label": "Socket"
+        },
+        {
+          "value": "countersunk",
+          "label": "Countersunk"
+        },
+        {
+          "value": "roundh",
+          "label": "Round"
+        },
+        {
+          "value": "pan",
+          "label": "Pan"
+        }
+      ]
+    },
+    {
+      "name": "Fastener_Shaft",
+      "group": "Fastener Icon",
+      "type": "string",
+      "default": "machine",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "machine",
+          "label": "Machine"
+        },
+        {
+          "value": "tapping",
+          "label": "Tapping"
+        }
+      ]
+    },
+    {
+      "name": "Fastener_Threads",
+      "group": "Fastener Icon",
+      "type": "string",
+      "default": "full",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "full",
+          "label": "Full"
+        },
+        {
+          "value": "partial",
+          "label": "Partial"
+        }
+      ]
+    },
+    {
+      "name": "Fastener_Driver",
+      "group": "Fastener Icon",
+      "type": "string",
+      "default": "phillips",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "slot",
+          "label": "Slot"
+        },
+        {
+          "value": "phillips",
+          "label": "Phillips"
+        },
+        {
+          "value": "phillips_slot",
+          "label": "Phillips Slot"
+        },
+        {
+          "value": "phillips_square",
+          "label": "Phillips Square"
+        },
+        {
+          "value": "torx",
+          "label": "Torx/Star"
+        },
+        {
+          "value": "hex",
+          "label": "Hex"
+        },
+        {
+          "value": "square",
+          "label": "Robertson/Square"
+        },
+        {
+          "value": "triangle",
+          "label": "Triangle"
+        }
+      ]
+    },
+    {
+      "name": "Fastener_Head_Flange",
+      "group": "Fastener Icon",
+      "type": "boolean",
+      "default": false,
+      "description": "Toggle flanged head",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Fastener_Driver_Security",
+      "group": "Fastener Icon",
+      "type": "boolean",
+      "default": false,
+      "description": "Toggle securty nub in center of driver",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Select_Hardware",
+      "group": "Hardware Icon",
+      "type": "string",
+      "default": "none",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "washer",
+          "label": "Washer"
+        },
+        {
+          "value": "washer_locking",
+          "label": "Locking Washer"
+        },
+        {
+          "value": "threaded_insert",
+          "label": "Threaded Insert"
+        },
+        {
+          "value": "nut",
+          "label": "Nut"
+        },
+        {
+          "value": "nut_square",
+          "label": "Square Nut"
+        },
+        {
+          "value": "nut_nylon",
+          "label": "Nylon Lock Nut"
+        },
+        {
+          "value": "tnut_1",
+          "label": "T-Nut Side"
+        },
+        {
+          "value": "tnut_2",
+          "label": "T-Nut Top"
+        },
+        {
+          "value": "magnet",
+          "label": "Magnet"
+        },
+        {
+          "value": "crimp_ring_open",
+          "label": "Crimp Ring - Open"
+        },
+        {
+          "value": "crimp_ring_closed",
+          "label": "Crimp Ring - Closed"
+        },
+        {
+          "value": "crimp_fork_open",
+          "label": "Crimp Fork - Open"
+        },
+        {
+          "value": "crimp_fork_closed",
+          "label": "Crimp Fork - Closed"
+        },
+        {
+          "value": "crimp_spade_open",
+          "label": "Crimp Spade - Open"
+        },
+        {
+          "value": "crimp_spade_closed",
+          "label": "Crimp Spade - Closed"
+        },
+        {
+          "value": "crimp_receptacle_open",
+          "label": "Crimp Receptacle - Open"
+        },
+        {
+          "value": "crimp_receptacle_closed",
+          "label": "Crimp Receptacle - Closed"
+        },
+        {
+          "value": "crimp_butt_splice",
+          "label": "Crimp Butt Splice"
+        }
+      ]
+    },
+    {
+      "name": "offset_xy",
+      "group": "Advanced",
+      "type": "number[]",
+      "default": [
+        0,
+        0
+      ],
+      "description": "Ajust fitment for X and Y dimensions",
+      "widget": "vector"
+    },
+    {
+      "name": "gridfinity",
+      "group": "Advanced",
+      "type": "boolean",
+      "default": true,
+      "description": "Use gridfinity U",
+      "widget": "checkbox"
+    },
+    {
+      "name": "labelXmm",
+      "group": "Advanced",
+      "type": "number",
+      "default": 36.0,
+      "description": "Width of label in mm",
+      "widget": "number"
+    },
+    {
+      "name": "labelYmm",
+      "group": "Advanced",
+      "type": "number",
+      "default": 11.0,
+      "description": "Height of label in mm",
+      "widget": "number"
+    },
+    {
+      "name": "labelZmm",
+      "group": "Advanced",
+      "type": "number",
+      "default": 1.2,
+      "description": "Thickness of label in mm",
+      "widget": "number"
+    },
+    {
+      "name": "layer",
+      "group": "Advanced",
+      "type": "number",
+      "default": 0.2,
+      "description": null,
+      "widget": "number"
+    }
+  ],
+  "computed_skipped": [],
+  "model": "cullenect-label/label"
+}

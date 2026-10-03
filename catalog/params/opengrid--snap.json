@@ -1,0 +1,58 @@
+{
+  "source": "adapters/opengrid/opengrid-snap.scad",
+  "groups": [
+    "Snap"
+  ],
+  "parameters": [
+    {
+      "name": "Snap_Type",
+      "group": "Snap",
+      "type": "string",
+      "default": "Full",
+      "description": "Lite snaps are thinner, for openGrid Lite tiles.",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "Full",
+          "label": "Full"
+        },
+        {
+          "value": "Lite",
+          "label": "Lite"
+        }
+      ]
+    },
+    {
+      "name": "Directional",
+      "group": "Snap",
+      "type": "boolean",
+      "default": false,
+      "description": "Directional snaps lock on two sides only and show an arrow.",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Count",
+      "group": "Snap",
+      "type": "number",
+      "default": 1,
+      "description": "Number of snaps to lay out on the bed.",
+      "min": 1,
+      "step": 1,
+      "max": 16,
+      "widget": "slider"
+    },
+    {
+      "name": "Spacing",
+      "group": "Snap",
+      "type": "number",
+      "default": 4,
+      "description": "Gap between snaps in mm.",
+      "min": 1,
+      "step": 1,
+      "max": 20,
+      "widget": "slider"
+    }
+  ],
+  "computed_skipped": [],
+  "model": "opengrid/snap"
+}

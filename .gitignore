@@ -1,0 +1,10 @@
+__pycache__/
+.venv/
+build/
+*.log
+*.stl
+*.3mf
+*.csg
+!libraries/**/*.stl
+validation.json
+node_modules/

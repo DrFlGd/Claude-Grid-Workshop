@@ -1,0 +1,87 @@
+{
+  "$schema": "../../schema/family.schema.json",
+  "id": "gridfinity-extended",
+  "name": "Gridfinity Extended",
+  "category": "gridfinity",
+  "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "labels"
+  ],
+  "summary": "Feature-rich Gridfinity bins and baseplates with dividers, labels, patterns and clips.",
+  "authors": [
+    {
+      "name": "ostat",
+      "url": "https://github.com/ostat"
+    }
+  ],
+  "source": {
+    "repository": "https://github.com/ostat/gridfinity_extended_openscad",
+    "commit": "94d5a3e2d39e0b90894c042a255fc487cfcc9197",
+    "vendor_path": "vendor/gridfinity-extended"
+  },
+  "license": {
+    "spdx": "GPL-3.0-only",
+    "public_use": "ok",
+    "notes": "Generated source bundles must keep GPL notices."
+  },
+  "links": {
+    "Documentation": "https://docs.ostat.com/docs/openscad/gridfinity-extended",
+    "Donate": "http://paypal.me/ostat1"
+  },
+  "engine": {
+    "min_version": "2025.01 (development snapshot)",
+    "backend": "manifold",
+    "notes": "Uses syntax that OpenSCAD 2021.01 cannot parse.",
+    "library_paths": [
+      "vendor/libraries"
+    ]
+  },
+  "status": "available",
+  "models": [
+    {
+      "id": "bin",
+      "name": "Basic Bin",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_basic_cup.scad",
+      "status": "available"
+    },
+    {
+      "id": "baseplate",
+      "name": "Baseplate",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_baseplate.scad",
+      "fixed": {
+        "Connector_Only": false
+      },
+      "status": "available"
+    },
+    {
+      "id": "connector-clips",
+      "name": "Connector Clips",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_baseplate.scad",
+      "fixed": {
+        "Connector_Only": true
+      },
+      "defaults": {
+        "Connector_Clip_Enabled": true
+      },
+      "notes": "Same SCAD as the baseplate, rendering only the clips.",
+      "status": "available"
+    }
+  ],
+  "additional_entrypoints_available": [
+    "gridfinity_drawers",
+    "gridfinity_item_holder",
+    "gridfinity_lid",
+    "gridfinity_sliding_lid",
+    "gridfinity_bin_removable_walls",
+    "gridfinity_tray",
+    "gridfinity_silverware",
+    "gridfinity_socket_holder",
+    "gridfinity_sieve",
+    "gridfinity_vertical_divider",
+    "gridfinity_chess",
+    "gridfinity_glue_stick",
+    "gridfinity_marble"
+  ]
+}

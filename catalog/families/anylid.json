@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schema/family.schema.json",
+  "id": "anylid",
+  "name": "Gridfinity Anylid",
+  "category": "gridfinity",
+  "tags": [],
+  "summary": "MakerWorld source page not retrievable; need the author's SCAD and license.",
+  "authors": [],
+  "source": null,
+  "license": {
+    "spdx": "NOASSERTION",
+    "public_use": "blocked"
+  },
+  "links": {},
+  "engine": null,
+  "status": "missing-source",
+  "models": []
+}

@@ -1,0 +1,335 @@
+{
+  "source": "vendor/monoscad/gridfinity/rugged-box/rugged-box-gridfinity.scad",
+  "groups": [
+    "Rendering",
+    "Dimensions",
+    "Gridfinity Features",
+    "Features",
+    "Advanced Size Adjustments"
+  ],
+  "parameters": [
+    {
+      "name": "Part",
+      "group": "Rendering",
+      "type": "string",
+      "default": "assembled_open",
+      "description": "Part selection. Note: Assembled box previews show latches without chamfers for performance reasons.",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "bottom",
+          "label": "Bottom"
+        },
+        {
+          "value": "top",
+          "label": "Top"
+        },
+        {
+          "value": "latch",
+          "label": "Latch"
+        },
+        {
+          "value": "stacking_latch",
+          "label": "Stacking latch"
+        },
+        {
+          "value": "handle",
+          "label": "Handle"
+        },
+        {
+          "value": "label",
+          "label": "Label"
+        },
+        {
+          "value": "side-by-side",
+          "label": "Top and Bottom side-by-side"
+        },
+        {
+          "value": "assembled_open",
+          "label": "Assembled open"
+        },
+        {
+          "value": "assembled_closed",
+          "label": "Assembled closed"
+        },
+        {
+          "value": "bottom_modifier",
+          "label": "Bottom print modifier volume for attachment ribs"
+        },
+        {
+          "value": "top_modifier",
+          "label": "Top print modifier volume for attachment ribs"
+        },
+        {
+          "value": "top_grid_modifier",
+          "label": "Top print modifier volume for Gridfinity lid"
+        }
+      ]
+    },
+    {
+      "name": "Width",
+      "group": "Dimensions",
+      "type": "number",
+      "default": 4,
+      "description": "Interior side-to-side size in 42mm Gridfinity units",
+      "min": 1,
+      "step": 1,
+      "max": 10,
+      "widget": "slider"
+    },
+    {
+      "name": "Length",
+      "group": "Dimensions",
+      "type": "number",
+      "default": 2,
+      "description": "Interior front-to-back size in 42mm Gridfinity units",
+      "min": 1,
+      "step": 1,
+      "max": 10,
+      "widget": "slider"
+    },
+    {
+      "name": "Bottom_Height",
+      "group": "Dimensions",
+      "type": "number",
+      "default": 7,
+      "description": "Interior bottom height in 7mm Gridfinity units",
+      "min": 1,
+      "step": 1,
+      "max": 30,
+      "widget": "slider"
+    },
+    {
+      "name": "Top_Height",
+      "group": "Dimensions",
+      "type": "number",
+      "default": 2,
+      "description": "Interior top height in 7mm Gridfinity units",
+      "min": 1,
+      "step": 1,
+      "max": 10,
+      "widget": "slider"
+    },
+    {
+      "name": "Gridfinity_Base_Style",
+      "group": "Gridfinity Features",
+      "type": "string",
+      "default": "minimal",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "minimal",
+          "label": "No magnet holes with minimal thickness"
+        },
+        {
+          "value": "thick",
+          "label": "No magnet holes but with magnet hole base thickness"
+        },
+        {
+          "value": "enabled",
+          "label": "Magnet holes with skeletonized baseplate"
+        },
+        {
+          "value": "enabled_full",
+          "label": "Magnet holes with filled baseplate"
+        }
+      ]
+    },
+    {
+      "name": "Gridfinity_Stackable",
+      "group": "Gridfinity Features",
+      "type": "boolean",
+      "default": true,
+      "description": "Add Gridfinity base stacking plates to outside of box top and bottom. Requires supports to print.",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Lip_Seal_Type",
+      "group": "Features",
+      "type": "string",
+      "default": "wedge",
+      "description": "Type or shape of seal to use, if desired",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "none",
+          "label": "None"
+        },
+        {
+          "value": "wedge",
+          "label": "Wedge \u25bd"
+        },
+        {
+          "value": "square",
+          "label": "Square \u25a1"
+        },
+        {
+          "value": "filament-1.75mm",
+          "label": "1.75mm Filament \u25cb"
+        }
+      ]
+    },
+    {
+      "name": "Reinforced_Corners",
+      "group": "Features",
+      "type": "boolean",
+      "default": true,
+      "description": "Make the corners as thick as the box lip",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Top_Grip",
+      "group": "Features",
+      "type": "boolean",
+      "default": true,
+      "description": "Add a front grip to the box top (for boxes with two latches)",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Hinge_End_Stops",
+      "group": "Features",
+      "type": "boolean",
+      "default": true,
+      "description": "Add end stops to the hinges on the box bottom",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Stacking_Latches",
+      "group": "Features",
+      "type": "boolean",
+      "default": true,
+      "description": "Add stacking latches and attachment points to the sides of the box",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Latch_Type",
+      "group": "Features",
+      "type": "string",
+      "default": "draw",
+      "description": "Latch style",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "clip",
+          "label": "Clip"
+        },
+        {
+          "value": "draw",
+          "label": "Draw"
+        }
+      ]
+    },
+    {
+      "name": "Third_Hinge",
+      "group": "Features",
+      "type": "boolean",
+      "default": true,
+      "description": "Add a third hinge for boxes 5U or wider",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Handle",
+      "group": "Features",
+      "type": "boolean",
+      "default": true,
+      "description": "Optional handle for sufficiently wide boxes",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Label",
+      "group": "Features",
+      "type": "boolean",
+      "default": true,
+      "description": "Optional label for sufficiently wide boxes",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Label_Text",
+      "group": "Features",
+      "type": "string",
+      "default": "Label",
+      "description": "Custom text for optional label",
+      "widget": "text"
+    },
+    {
+      "name": "Label_Text_Size",
+      "group": "Features",
+      "type": "number",
+      "default": 10,
+      "description": "Approximate height of text for optional label in millimeters",
+      "min": 5,
+      "step": 0.1,
+      "max": 25,
+      "widget": "slider"
+    },
+    {
+      "name": "Wall_Thickness",
+      "group": "Advanced Size Adjustments",
+      "type": "number",
+      "default": 3.0,
+      "description": "Base wall thickness in millimeters for most of the box",
+      "min": 2.4,
+      "step": 0.1,
+      "max": 10,
+      "widget": "slider"
+    },
+    {
+      "name": "Lip_Thickness",
+      "group": "Advanced Size Adjustments",
+      "type": "number",
+      "default": 3.0,
+      "description": "Thickness in millimeters to add to the wall thickness for the box lip",
+      "min": 0.4,
+      "step": 0.1,
+      "max": 10,
+      "widget": "slider"
+    },
+    {
+      "name": "Rib_Width",
+      "group": "Advanced Size Adjustments",
+      "type": "number",
+      "default": 6,
+      "description": "Base thickness in millimeters of the support ribs. The latch ribs are this thick, while the hinge and side ribs are twice this thick.",
+      "min": 1,
+      "step": 0.1,
+      "max": 20,
+      "widget": "slider"
+    },
+    {
+      "name": "Latch_Width",
+      "group": "Advanced Size Adjustments",
+      "type": "number",
+      "default": 28,
+      "description": "Latch width in millimeters",
+      "min": 5,
+      "step": 1,
+      "max": 50,
+      "widget": "slider"
+    },
+    {
+      "name": "Latch_Screw_Separation",
+      "group": "Advanced Size Adjustments",
+      "type": "number",
+      "default": 16,
+      "description": "Distance in millimeters between the latch hinge and catch screws which determines the latch vertical size",
+      "min": 5,
+      "step": 1,
+      "max": 40,
+      "widget": "slider"
+    },
+    {
+      "name": "Size_Tolerance",
+      "group": "Advanced Size Adjustments",
+      "type": "number",
+      "default": 0.2,
+      "description": "Width in millimeters subtracted from latches for fit",
+      "min": 0,
+      "step": 0.01,
+      "max": 1,
+      "widget": "slider"
+    }
+  ],
+  "computed_skipped": [],
+  "model": "gridfinity-rugged-box/box"
+}

@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "family.schema.json",
+  "title": "Generator family",
+  "description": "One OpenSCAD project (family) and the models it exposes on the site. Drop a new file in catalog/families/ to add a generator.",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "category",
+    "status",
+    "models"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "category": {
+      "enum": [
+        "gridfinity",
+        "carrying",
+        "labels",
+        "wall",
+        "other"
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "authors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "source": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "vendor_path": {
+          "type": "string"
+        }
+      }
+    },
+    "license": {
+      "type": "object",
+      "required": [
+        "spdx",
+        "public_use"
+      ],
+      "properties": {
+        "spdx": {
+          "type": "string"
+        },
+        "public_use": {
+          "enum": [
+            "ok",
+            "review",
+            "blocked"
+          ],
+          "description": "ok = can be offered publicly; review = check terms first; blocked = keep hidden"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "engine": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "min_version": {
+          "type": "string"
+        },
+        "backend": {
+          "type": "string"
+        },
+        "library_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "available",
+        "partial",
+        "missing-source",
+        "disabled"
+      ]
+    },
+    "additional_entrypoints_available": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "models": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/model"
+      }
+    }
+  },
+  "$defs": {
+    "model": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "entrypoint": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Repo-relative SCAD file. Only allowlisted entrypoints are ever rendered."
+        },
+        "status": {
+          "enum": [
+            "available",
+            "missing-source",
+            "disabled"
+          ]
+        },
+        "engine_override": {
+          "type": "object"
+        },
+        "fixed": {
+          "type": "object",
+          "description": "Parameters forced to these values and hidden from the form."
+        },
+        "defaults": {
+          "type": "object",
+          "description": "Site defaults that replace the SCAD defaults."
+        },
+        "hidden": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Parameters not shown in the form."
+        },
+        "part_parameter": {
+          "type": "string",
+          "description": "Dropdown parameter that selects which printable part to render; enables 'download all parts'."
+        },
+        "ui": {
+          "type": "object",
+          "description": "Per-parameter overrides: label, help, unit, advanced, show_if."
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "params.schema.json",
+  "title": "Extracted parameters",
+  "description": "Output of tools/extract_params.py: the Customizer parameters of one SCAD entrypoint.",
+  "type": "object",
+  "required": [
+    "source",
+    "groups",
+    "parameters"
+  ],
+  "properties": {
+    "model": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "group",
+          "type",
+          "default",
+          "widget"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "boolean",
+              "number",
+              "string",
+              "number[]",
+              "string[]",
+              "boolean[]",
+              "list"
+            ]
+          },
+          "default": {},
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "widget": {
+            "enum": [
+              "checkbox",
+              "number",
+              "slider",
+              "dropdown",
+              "text",
+              "vector"
+            ]
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "step": {
+            "type": "number"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {},
+                "label": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "computed_skipped": {
+      "type": "array",
+      "description": "Top-level assignments that are expressions, not user parameters."
+    }
+  }
+}

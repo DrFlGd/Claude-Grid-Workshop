@@ -1,0 +1,2022 @@
+{
+  "source": "vendor/gridfinity-extended/gridfinity_basic_cup.scad",
+  "groups": [
+    "General Cup",
+    "Cup Lip",
+    "Subdivisions",
+    "Removable Divider Walls",
+    "Base",
+    "Label",
+    "Sliding Lid",
+    "Finger Slide",
+    "Tapered Corner",
+    "Wall Pattern",
+    "Floor Pattern",
+    "Wall Cutout",
+    "Extendable",
+    "Bottom Text",
+    "debug",
+    "Model detail"
+  ],
+  "parameters": [
+    {
+      "name": "width",
+      "group": "General Cup",
+      "type": "number[]",
+      "default": [
+        2,
+        0
+      ],
+      "description": "X dimension. grid units (multiples of 42mm) or mm.",
+      "widget": "vector"
+    },
+    {
+      "name": "depth",
+      "group": "General Cup",
+      "type": "number[]",
+      "default": [
+        1,
+        0
+      ],
+      "description": "Y dimension. grid units (multiples of 42mm) or mm.",
+      "widget": "vector"
+    },
+    {
+      "name": "height",
+      "group": "General Cup",
+      "type": "number[]",
+      "default": [
+        3,
+        0
+      ],
+      "description": "Z dimension excluding. grid units (multiples of 7mm) or mm.",
+      "widget": "vector"
+    },
+    {
+      "name": "filled_in",
+      "group": "General Cup",
+      "type": "string",
+      "default": "disabled",
+      "description": "Fill in solid block (overrides all following options)",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "enabled",
+          "label": "enabled"
+        },
+        {
+          "value": "enabledfilllip",
+          "label": "\"Fill cup and lip\""
+        }
+      ]
+    },
+    {
+      "name": "wall_thickness",
+      "group": "General Cup",
+      "type": "number",
+      "default": 0,
+      "description": "Wall thickness of outer walls. default, height < 8 0.95, height < 16 1.2, height > 16 1.6 (Zack's design is 0.95 mm)",
+      "widget": "number"
+    },
+    {
+      "name": "headroom",
+      "group": "General Cup",
+      "type": "number",
+      "default": 0.8,
+      "description": "under size the bin top by this amount to allow for better stacking",
+      "widget": "number"
+    },
+    {
+      "name": "lip_style",
+      "group": "Cup Lip",
+      "type": "string",
+      "default": "normal",
+      "description": "Style of the cup lip",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "normal",
+          "label": "normal"
+        },
+        {
+          "value": "reduced",
+          "label": "reduced"
+        },
+        {
+          "value": "reduced_double",
+          "label": "reduced_double"
+        },
+        {
+          "value": "minimum",
+          "label": "minimum"
+        },
+        {
+          "value": "none",
+          "label": "not stackable"
+        }
+      ]
+    },
+    {
+      "name": "lip_side_relief_trigger",
+      "group": "Cup Lip",
+      "type": "number[]",
+      "default": [
+        1,
+        1
+      ],
+      "description": "Below this the inside of the lip will be reduced for easier access.",
+      "widget": "vector"
+    },
+    {
+      "name": "lip_top_relief_height",
+      "group": "Cup Lip",
+      "type": "number",
+      "default": -1,
+      "description": "Create a relief in the lip",
+      "widget": "number"
+    },
+    {
+      "name": "lip_top_relief_width",
+      "group": "Cup Lip",
+      "type": "number",
+      "default": -1,
+      "description": "how much of the lip to retain on each end",
+      "widget": "number"
+    },
+    {
+      "name": "lip_top_notches",
+      "group": "Cup Lip",
+      "type": "boolean",
+      "default": true,
+      "description": "add a notch to the lip to prevent sliding.",
+      "widget": "checkbox"
+    },
+    {
+      "name": "lip_clip_position",
+      "group": "Cup Lip",
+      "type": "string",
+      "default": "disabled",
+      "description": "enable lip clip for connection cups",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "intersection",
+          "label": "intersection"
+        },
+        {
+          "value": "center_wall",
+          "label": "center_wall"
+        },
+        {
+          "value": "both",
+          "label": "both"
+        }
+      ]
+    },
+    {
+      "name": "lip_non_blocking",
+      "group": "Cup Lip",
+      "type": "boolean",
+      "default": false,
+      "description": "allow stacking when bin is not multiples of 42",
+      "widget": "checkbox"
+    },
+    {
+      "name": "height_includes_lip",
+      "group": "Cup Lip",
+      "type": "boolean",
+      "default": false,
+      "description": null,
+      "widget": "checkbox"
+    },
+    {
+      "name": "chamber_wall_thickness",
+      "group": "Subdivisions",
+      "type": "number[]",
+      "default": [
+        1.2,
+        1.2
+      ],
+      "description": "Wall thickness [bottom, top]",
+      "widget": "vector"
+    },
+    {
+      "name": "chamber_wall_headroom",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 0,
+      "description": "Reduce the wall height by this amount",
+      "widget": "number"
+    },
+    {
+      "name": "chamber_wall_top_radius",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 0,
+      "description": "Radius of the top of the chamber wall, -ve is ratio of top wall thickenss. (disabled for bent walls)",
+      "widget": "number"
+    },
+    {
+      "name": "vertical_chambers",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 1,
+      "description": "Reduce the wall height by this amount",
+      "widget": "number"
+    },
+    {
+      "name": "vertical_separator_bend_separation",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 0,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "vertical_separator_bend_angle",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 45,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "vertical_separator_bend_position",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 0,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "vertical_separator_cut_depth",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 0,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "horizontal_chambers",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 1,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "horizontal_separator_bend_separation",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 0,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "horizontal_separator_bend_angle",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 45,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "horizontal_separator_bend_position",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 0,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "horizontal_separator_cut_depth",
+      "group": "Subdivisions",
+      "type": "number",
+      "default": 0,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "vertical_irregular_subdivisions",
+      "group": "Subdivisions",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable irregular subdivisions",
+      "widget": "checkbox"
+    },
+    {
+      "name": "vertical_separator_config",
+      "group": "Subdivisions",
+      "type": "string",
+      "default": "10.5|21|42|50|60",
+      "description": "Separator positions are defined in terms of grid units from the left end",
+      "widget": "text"
+    },
+    {
+      "name": "horizontal_irregular_subdivisions",
+      "group": "Subdivisions",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable irregular subdivisions",
+      "widget": "checkbox"
+    },
+    {
+      "name": "horizontal_separator_config",
+      "group": "Subdivisions",
+      "type": "string",
+      "default": "10.5|21|42|50|60",
+      "description": "Separator positions are defined in terms of grid units from the left end",
+      "widget": "text"
+    },
+    {
+      "name": "divider_walls_enabled",
+      "group": "Removable Divider Walls",
+      "type": "boolean",
+      "default": false,
+      "description": null,
+      "widget": "checkbox"
+    },
+    {
+      "name": "divider_walls",
+      "group": "Removable Divider Walls",
+      "type": "number[]",
+      "default": [
+        1,
+        1
+      ],
+      "description": "Wall to enable on, x direction, y direction",
+      "min": 0,
+      "step": 1,
+      "max": 1,
+      "widget": "slider"
+    },
+    {
+      "name": "divider_walls_thickness",
+      "group": "Removable Divider Walls",
+      "type": "number",
+      "default": 2.5,
+      "description": "Thickness of the divider walls.",
+      "widget": "number"
+    },
+    {
+      "name": "divider_walls_spacing",
+      "group": "Removable Divider Walls",
+      "type": "number",
+      "default": 0,
+      "description": "Spacing between the divider walls (0=divider_walls_thickness*2).",
+      "widget": "number"
+    },
+    {
+      "name": "divider_walls_support_thickness",
+      "group": "Removable Divider Walls",
+      "type": "number",
+      "default": 2,
+      "description": "Thickness of the support walls (0=walls_thickness*2).",
+      "widget": "number"
+    },
+    {
+      "name": "divider_wall_slot_size",
+      "group": "Removable Divider Walls",
+      "type": "number[]",
+      "default": [
+        0,
+        0
+      ],
+      "description": "Size of the slot in the divider walls. width(0=divider_walls_thickness), depth(0=divider_walls_support_thickness)",
+      "widget": "vector"
+    },
+    {
+      "name": "divider_headroom",
+      "group": "Removable Divider Walls",
+      "type": "number",
+      "default": 0.1,
+      "description": "Clearance between the divider walls top",
+      "widget": "number"
+    },
+    {
+      "name": "divider_clearance",
+      "group": "Removable Divider Walls",
+      "type": "number[]",
+      "default": [
+        0.3,
+        0.2
+      ],
+      "description": "Clearance subtracted from the removable divider wall. Width, Length",
+      "widget": "vector"
+    },
+    {
+      "name": "divider_slot_spanning",
+      "group": "Removable Divider Walls",
+      "type": "number",
+      "default": 2,
+      "description": "Number of slot spanning divider to generate.",
+      "widget": "number"
+    },
+    {
+      "name": "divider_wall_cutout_depth",
+      "group": "Removable Divider Walls",
+      "type": "number",
+      "default": 0,
+      "description": "depth of wall cut, -ve relative to height",
+      "widget": "number"
+    },
+    {
+      "name": "divider_wall_cutout_width",
+      "group": "Removable Divider Walls",
+      "type": "number",
+      "default": 0,
+      "description": "width of wall cut, -ve relative to length",
+      "widget": "number"
+    },
+    {
+      "name": "divider_wall_cutout_radius",
+      "group": "Removable Divider Walls",
+      "type": "number",
+      "default": 0,
+      "description": "radius of wall cut, -ve relative to cut depth",
+      "widget": "number"
+    },
+    {
+      "name": "divider_top_radius",
+      "group": "Removable Divider Walls",
+      "type": "number",
+      "default": 0,
+      "description": "radius of wall top, -ve relative to thickness",
+      "widget": "number"
+    },
+    {
+      "name": "divider_label_size",
+      "group": "Removable Divider Walls",
+      "type": "number",
+      "default": 0,
+      "description": "add label to the divider wall",
+      "widget": "number"
+    },
+    {
+      "name": "enable_magnets",
+      "group": "Base",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable magnets",
+      "widget": "checkbox"
+    },
+    {
+      "name": "enable_screws",
+      "group": "Base",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable screws",
+      "widget": "checkbox"
+    },
+    {
+      "name": "magnet_size",
+      "group": "Base",
+      "type": "number[]",
+      "default": [
+        6.5,
+        2.4
+      ],
+      "description": "size of magnet, diameter and height. Zack's original used 6.5 and 2.4",
+      "widget": "vector"
+    },
+    {
+      "name": "magnet_easy_release",
+      "group": "Base",
+      "type": "string",
+      "default": "auto",
+      "description": "create relief for magnet removal",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "off",
+          "label": "off"
+        },
+        {
+          "value": "auto",
+          "label": "auto"
+        },
+        {
+          "value": "inner",
+          "label": "inner"
+        },
+        {
+          "value": "outer",
+          "label": "outer"
+        }
+      ]
+    },
+    {
+      "name": "magnet_side_access",
+      "group": "Base",
+      "type": "string",
+      "default": "disabled",
+      "description": "Use with captive magnet for a 'refinded style' magnet",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "left",
+          "label": "\"\u21b0 left\""
+        },
+        {
+          "value": "right",
+          "label": "\"\u2b11 right\""
+        }
+      ]
+    },
+    {
+      "name": "magnet_captive_height",
+      "group": "Base",
+      "type": "number",
+      "default": 0,
+      "description": "raise the magnet void inside the part for print-in-magnets",
+      "widget": "number"
+    },
+    {
+      "name": "magnet_crush_depth",
+      "group": "Base",
+      "type": "number",
+      "default": 0,
+      "description": "add a wavy pattern to the magnet hole",
+      "widget": "number"
+    },
+    {
+      "name": "magnet_chamfer",
+      "group": "Base",
+      "type": "number",
+      "default": 0,
+      "description": "add a chamfer to the magent hole",
+      "widget": "number"
+    },
+    {
+      "name": "screw_size",
+      "group": "Base",
+      "type": "number[]",
+      "default": [
+        3,
+        6
+      ],
+      "description": "size of screw, diameter and height. Zack's original used 3 and 6",
+      "widget": "vector"
+    },
+    {
+      "name": "center_magnet_size",
+      "group": "Base",
+      "type": "number[]",
+      "default": [
+        0,
+        0
+      ],
+      "description": "size of center magnet, diameter and height.",
+      "widget": "vector"
+    },
+    {
+      "name": "hole_overhang_remedy",
+      "group": "Base",
+      "type": "number",
+      "default": 2,
+      "description": "Sequential Bridging hole overhang remedy is active only when both screws and magnets are nonzero (and this option is selected)",
+      "widget": "number"
+    },
+    {
+      "name": "box_corner_attachments_only",
+      "group": "Base",
+      "type": "string",
+      "default": "enabled",
+      "description": "Only add attachments (magnets and screw) to box corners (prints faster).",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "enabled",
+          "label": "enabled"
+        },
+        {
+          "value": "aligned",
+          "label": "aligned"
+        }
+      ]
+    },
+    {
+      "name": "floor_thickness",
+      "group": "Base",
+      "type": "number",
+      "default": 0.7,
+      "description": "Minimum thickness above cutouts in base (Zack's design is effectively 1.2)",
+      "widget": "number"
+    },
+    {
+      "name": "cavity_floor_radius",
+      "group": "Base",
+      "type": "number",
+      "default": -1,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "efficient_floor",
+      "group": "Base",
+      "type": "string",
+      "default": "off",
+      "description": "Efficient floor option saves material and time, but the internal floor is not flat",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "off",
+          "label": "off"
+        },
+        {
+          "value": "on",
+          "label": "on"
+        },
+        {
+          "value": "rounded",
+          "label": "rounded"
+        },
+        {
+          "value": "smooth",
+          "label": "smooth"
+        }
+      ]
+    },
+    {
+      "name": "sub_pitch",
+      "group": "Base",
+      "type": "number",
+      "default": 1,
+      "description": "AKA half pitch. Enable to subdivide bottom pads to allow sub-cell offsets",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": 1,
+          "label": "\"disabled\""
+        },
+        {
+          "value": 2,
+          "label": "\"half pitch\""
+        },
+        {
+          "value": 3,
+          "label": "\"third pitch\""
+        },
+        {
+          "value": 4,
+          "label": "\"quarter pitch\""
+        }
+      ]
+    },
+    {
+      "name": "flat_base",
+      "group": "Base",
+      "type": "string",
+      "default": "off",
+      "description": "Removes the internal grid from base the shape",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "off",
+          "label": "off"
+        },
+        {
+          "value": "gridfinity",
+          "label": "gridfinity stackable"
+        },
+        {
+          "value": "rounded",
+          "label": "rounded"
+        }
+      ]
+    },
+    {
+      "name": "spacer",
+      "group": "Base",
+      "type": "boolean",
+      "default": false,
+      "description": "Remove floor to create a vertical spacer",
+      "widget": "checkbox"
+    },
+    {
+      "name": "minimum_printable_pad_size",
+      "group": "Base",
+      "type": "number",
+      "default": 0.2,
+      "description": "Pads smaller than this will not be rendered as it interferes with the baseplate. Ensure appropriate support is added in slicer.",
+      "widget": "number"
+    },
+    {
+      "name": "flat_base_rounded_radius",
+      "group": "Base",
+      "type": "number",
+      "default": -1,
+      "description": "Adjust the radius of the rounded flat base. -1 uses the corner radius.",
+      "widget": "number"
+    },
+    {
+      "name": "flat_base_rounded_easyPrint",
+      "group": "Base",
+      "type": "number",
+      "default": -1,
+      "description": "Add chamfer to the rounded bottom corner to make easier to print. -1 add auto 45deg.",
+      "widget": "number"
+    },
+    {
+      "name": "align_grid_x",
+      "group": "Base",
+      "type": "string",
+      "default": "near",
+      "description": "grid position x",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "near",
+          "label": "near"
+        },
+        {
+          "value": "far",
+          "label": "far"
+        }
+      ]
+    },
+    {
+      "name": "align_grid_y",
+      "group": "Base",
+      "type": "string",
+      "default": "near",
+      "description": "grid position y",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "near",
+          "label": "near"
+        },
+        {
+          "value": "far",
+          "label": "far"
+        }
+      ]
+    },
+    {
+      "name": "label_style",
+      "group": "Label",
+      "type": "string",
+      "default": "disabled",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "no label"
+        },
+        {
+          "value": "normal",
+          "label": "normal"
+        },
+        {
+          "value": "gflabel",
+          "label": "gflabel basic label"
+        },
+        {
+          "value": "pred",
+          "label": "pred - labels by pred"
+        },
+        {
+          "value": "cullenect",
+          "label": "Cullenect click labels V2"
+        },
+        {
+          "value": "cullenect_legacy",
+          "label": "Cullenect click labels v1"
+        }
+      ]
+    },
+    {
+      "name": "label_position",
+      "group": "Label",
+      "type": "string",
+      "default": "left",
+      "description": "Include overhang for labeling (and specify left/right/center justification)",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "left",
+          "label": "left"
+        },
+        {
+          "value": "right",
+          "label": "right"
+        },
+        {
+          "value": "center",
+          "label": "center"
+        },
+        {
+          "value": "leftchamber",
+          "label": "leftchamber"
+        },
+        {
+          "value": "rightchamber",
+          "label": "rightchamber"
+        },
+        {
+          "value": "centerchamber",
+          "label": "centerchamber"
+        }
+      ]
+    },
+    {
+      "name": "label_dividers",
+      "group": "Label",
+      "type": "string",
+      "default": "disabled",
+      "description": "Width, Depth, Height, Radius. Width in Gridfinity units of 42mm, Depth and Height in mm, radius in mm. Width of 0 uses full width. Height of 0 uses Depth, height of -1 uses depth*3/4. Enable labels on internal divider walls",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "horizontal",
+          "label": "horizontal"
+        },
+        {
+          "value": "vertical",
+          "label": "vertical"
+        },
+        {
+          "value": "both",
+          "label": "both"
+        }
+      ]
+    },
+    {
+      "name": "label_size",
+      "group": "Label",
+      "type": "number[]",
+      "default": [
+        0,
+        14,
+        0,
+        0.6
+      ],
+      "description": null,
+      "widget": "vector"
+    },
+    {
+      "name": "label_relief",
+      "group": "Label",
+      "type": "number[]",
+      "default": [
+        0,
+        0,
+        0,
+        0.6
+      ],
+      "description": "Size in mm of relief where appropriate. Width, depth, height, radius",
+      "widget": "vector"
+    },
+    {
+      "name": "label_walls",
+      "group": "Label",
+      "type": "number[]",
+      "default": [
+        0,
+        1,
+        0,
+        0
+      ],
+      "description": "wall to enable on, front, back, left, right. 0: disabled; 1: enabled;",
+      "min": 0,
+      "step": 1,
+      "max": 1,
+      "widget": "slider"
+    },
+    {
+      "name": "sliding_lid_enabled",
+      "group": "Sliding Lid",
+      "type": "boolean",
+      "default": false,
+      "description": null,
+      "widget": "checkbox"
+    },
+    {
+      "name": "sliding_lid_thickness",
+      "group": "Sliding Lid",
+      "type": "number",
+      "default": 0,
+      "description": "0 = wall thickness *2",
+      "widget": "number"
+    },
+    {
+      "name": "sliding_lid_min_wall_thickness",
+      "group": "Sliding Lid",
+      "type": "number",
+      "default": 0,
+      "description": "0 = wall_thickness/2",
+      "widget": "number"
+    },
+    {
+      "name": "sliding_lid_min_support",
+      "group": "Sliding Lid",
+      "type": "number",
+      "default": 0,
+      "description": "0 = default_sliding_lid_thickness/2",
+      "widget": "number"
+    },
+    {
+      "name": "sliding_lid_clearance",
+      "group": "Sliding Lid",
+      "type": "number",
+      "default": 0.1,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "sliding_lid_pull_style",
+      "group": "Sliding Lid",
+      "type": "string",
+      "default": "disabled",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "lip",
+          "label": "lip"
+        },
+        {
+          "value": "finger",
+          "label": "finger"
+        }
+      ]
+    },
+    {
+      "name": "sliding_lid_nub_size",
+      "group": "Sliding Lid",
+      "type": "number",
+      "default": 0.5,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "fingerslide",
+      "group": "Finger Slide",
+      "type": "string",
+      "default": "none",
+      "description": "Include larger corner fillet",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "none",
+          "label": "none"
+        },
+        {
+          "value": "rounded",
+          "label": "rounded"
+        },
+        {
+          "value": "chamfered",
+          "label": "chamfered"
+        }
+      ]
+    },
+    {
+      "name": "fingerslide_radius",
+      "group": "Finger Slide",
+      "type": "number",
+      "default": -3,
+      "description": "Radius of the corner fillet, 0:none, >1: radius in mm, <0 dimention/abs(n) (i.e. -3 is 1/3 the width)",
+      "widget": "number"
+    },
+    {
+      "name": "fingerslide_walls",
+      "group": "Finger Slide",
+      "type": "number[]",
+      "default": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "description": "wall to enable on, front, back, left, right. 0: disabled; 1: enabled using radius; >1: override radius.",
+      "widget": "vector"
+    },
+    {
+      "name": "fingerslide_lip_aligned",
+      "group": "Finger Slide",
+      "type": "boolean",
+      "default": true,
+      "description": "Align the fingerslide with the lip",
+      "widget": "checkbox"
+    },
+    {
+      "name": "tapered_corner",
+      "group": "Tapered Corner",
+      "type": "string",
+      "default": "none",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "none",
+          "label": "none"
+        },
+        {
+          "value": "rounded",
+          "label": "rounded"
+        },
+        {
+          "value": "chamfered",
+          "label": "chamfered"
+        }
+      ]
+    },
+    {
+      "name": "tapered_corner_size",
+      "group": "Tapered Corner",
+      "type": "number",
+      "default": 10,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "tapered_setback",
+      "group": "Tapered Corner",
+      "type": "number",
+      "default": -1,
+      "description": "Set back of the tapered corner, default is the gridfinity corner radius",
+      "widget": "number"
+    },
+    {
+      "name": "wallpattern_enabled",
+      "group": "Wall Pattern",
+      "type": "boolean",
+      "default": false,
+      "description": "Grid wall patter",
+      "widget": "checkbox"
+    },
+    {
+      "name": "wallpattern_style",
+      "group": "Wall Pattern",
+      "type": "string",
+      "default": "hexgrid",
+      "description": "Style of the pattern",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "hexgrid",
+          "label": "hexgrid"
+        },
+        {
+          "value": "grid",
+          "label": "grid"
+        },
+        {
+          "value": "slats",
+          "label": "slats"
+        },
+        {
+          "value": "voronoi",
+          "label": "voronoi"
+        },
+        {
+          "value": "voronoigrid",
+          "label": "voronoigrid"
+        },
+        {
+          "value": "voronoihexgrid",
+          "label": "voronoihexgrid"
+        },
+        {
+          "value": "brick",
+          "label": "brick"
+        },
+        {
+          "value": "brickoffset",
+          "label": "brickoffset"
+        },
+        {
+          "value": "kumiko_tobi_asanoha",
+          "label": "kumiko_tobi_asanoha"
+        },
+        {
+          "value": "kumiko_asanoha",
+          "label": "kumiko_asanoha"
+        },
+        {
+          "value": "kumiko_goma",
+          "label": "kumiko_goma"
+        },
+        {
+          "value": "kumiko_tsumiishi_kikko",
+          "label": "kumiko_tsumiishi_kikko"
+        },
+        {
+          "value": "kumiko_bishamon_kikkou",
+          "label": "kumiko_bishamon_kikkou"
+        },
+        {
+          "value": "kumiko_mikado",
+          "label": "kumiko_mikado"
+        }
+      ]
+    },
+    {
+      "name": "wallpattern_strength",
+      "group": "Wall Pattern",
+      "type": "number",
+      "default": 2,
+      "description": "Spacing between pattern",
+      "widget": "number"
+    },
+    {
+      "name": "wallpattern_walls",
+      "group": "Wall Pattern",
+      "type": "number[]",
+      "default": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "description": "wall to enable on, front, back, left, right.",
+      "min": 0,
+      "step": 1,
+      "max": 1,
+      "widget": "slider"
+    },
+    {
+      "name": "wallpattern_rotate_grid",
+      "group": "Wall Pattern",
+      "type": "boolean",
+      "default": false,
+      "description": "rotate the grid",
+      "widget": "checkbox"
+    },
+    {
+      "name": "wallpattern_cell_size",
+      "group": "Wall Pattern",
+      "type": "number[]",
+      "default": [
+        10,
+        10
+      ],
+      "description": "Size of the hole",
+      "widget": "vector"
+    },
+    {
+      "name": "wallpattern_dividers_enabled",
+      "group": "Wall Pattern",
+      "type": "string",
+      "default": "disabled",
+      "description": "Add the pattern to the dividers",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "horizontal",
+          "label": "horizontal"
+        },
+        {
+          "value": "vertical",
+          "label": "vertical"
+        },
+        {
+          "value": "both",
+          "label": "both"
+        }
+      ]
+    },
+    {
+      "name": "wallpattern_hole_sides",
+      "group": "Wall Pattern",
+      "type": "number",
+      "default": 6,
+      "description": "Number of sides of the hole op",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": 4,
+          "label": "square"
+        },
+        {
+          "value": 6,
+          "label": "hex"
+        },
+        {
+          "value": 8,
+          "label": "octo"
+        },
+        {
+          "value": 64,
+          "label": "circle"
+        }
+      ]
+    },
+    {
+      "name": "wallpattern_hole_radius",
+      "group": "Wall Pattern",
+      "type": "number",
+      "default": 0.5,
+      "description": "Radius of corners",
+      "widget": "number"
+    },
+    {
+      "name": "wallpattern_fill",
+      "group": "Wall Pattern",
+      "type": "string",
+      "default": "none",
+      "description": "pattern fill mode",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "none",
+          "label": "none"
+        },
+        {
+          "value": "space",
+          "label": "space"
+        },
+        {
+          "value": "crop",
+          "label": "crop"
+        },
+        {
+          "value": "crophorizontal",
+          "label": "crophorizontal"
+        },
+        {
+          "value": "cropvertical",
+          "label": "cropvertical"
+        },
+        {
+          "value": "crophorizontal_spacevertical",
+          "label": "crophorizontal_spacevertical"
+        },
+        {
+          "value": "cropvertical_spacehorizontal",
+          "label": "cropvertical_spacehorizontal"
+        },
+        {
+          "value": "spacevertical",
+          "label": "spacevertical"
+        },
+        {
+          "value": "spacehorizontal",
+          "label": "spacehorizontal"
+        }
+      ]
+    },
+    {
+      "name": "wallpattern_border",
+      "group": "Wall Pattern",
+      "type": "number",
+      "default": 0,
+      "description": "border around the wall pattern, default is wall thickness",
+      "widget": "number"
+    },
+    {
+      "name": "wallpattern_depth",
+      "group": "Wall Pattern",
+      "type": "number",
+      "default": 0,
+      "description": "depth of imprint in mm, 0 = is wall width.",
+      "widget": "number"
+    },
+    {
+      "name": "wallpattern_pattern_grid_chamfer",
+      "group": "Wall Pattern",
+      "type": "number",
+      "default": 0,
+      "description": "grid pattern hole taper",
+      "widget": "number"
+    },
+    {
+      "name": "wallpattern_pattern_voronoi_noise",
+      "group": "Wall Pattern",
+      "type": "number",
+      "default": 0.75,
+      "description": "voronoi pattern noise,",
+      "widget": "number"
+    },
+    {
+      "name": "wallpattern_pattern_brick_weight",
+      "group": "Wall Pattern",
+      "type": "number",
+      "default": 5,
+      "description": "brick pattern center weight",
+      "widget": "number"
+    },
+    {
+      "name": "wallpattern_pattern_kumiko_fill_ratio",
+      "group": "Wall Pattern",
+      "type": "number[]",
+      "default": [
+        0.5,
+        1
+      ],
+      "description": "Kumiko pattern ratio of main wall to fill wall",
+      "widget": "vector"
+    },
+    {
+      "name": "wallpattern_pattern_quality",
+      "group": "Wall Pattern",
+      "type": "number",
+      "default": 0.4,
+      "description": "$fs for floor pattern, min size face.",
+      "widget": "number"
+    },
+    {
+      "name": "wallpattern_colored",
+      "group": "Wall Pattern",
+      "type": "string",
+      "default": "disabled",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "enabled",
+          "label": "enabled"
+        },
+        {
+          "value": "split",
+          "label": "enabled and split from model"
+        }
+      ]
+    },
+    {
+      "name": "floorpattern_enabled",
+      "group": "Floor Pattern",
+      "type": "boolean",
+      "default": false,
+      "description": "enable Grid floor patter",
+      "widget": "checkbox"
+    },
+    {
+      "name": "floorpattern_style",
+      "group": "Floor Pattern",
+      "type": "string",
+      "default": "hexgrid",
+      "description": "Style of the pattern",
+      "widget": "text"
+    },
+    {
+      "name": "floorpattern_strength",
+      "group": "Floor Pattern",
+      "type": "number",
+      "default": 2,
+      "description": "Spacing between pattern",
+      "widget": "number"
+    },
+    {
+      "name": "floorpattern_rotate_grid",
+      "group": "Floor Pattern",
+      "type": "boolean",
+      "default": false,
+      "description": "rotate the grid",
+      "widget": "checkbox"
+    },
+    {
+      "name": "floorpattern_cell_size",
+      "group": "Floor Pattern",
+      "type": "number[]",
+      "default": [
+        10,
+        10
+      ],
+      "description": "Size of the hole",
+      "widget": "vector"
+    },
+    {
+      "name": "floorpattern_hole_sides",
+      "group": "Floor Pattern",
+      "type": "number",
+      "default": 6,
+      "description": "Number of sides of the hole op",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": 4,
+          "label": "square"
+        },
+        {
+          "value": 6,
+          "label": "hex"
+        },
+        {
+          "value": 8,
+          "label": "octo"
+        },
+        {
+          "value": 64,
+          "label": "circle"
+        }
+      ]
+    },
+    {
+      "name": "floorpattern_hole_radius",
+      "group": "Floor Pattern",
+      "type": "number",
+      "default": 0.5,
+      "description": "Radius of corners",
+      "widget": "number"
+    },
+    {
+      "name": "floorpattern_fill",
+      "group": "Floor Pattern",
+      "type": "string",
+      "default": "crop",
+      "description": "pattern fill mode",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "none",
+          "label": "none"
+        },
+        {
+          "value": "space",
+          "label": "space"
+        },
+        {
+          "value": "crop",
+          "label": "crop"
+        },
+        {
+          "value": "crophorizontal",
+          "label": "crophorizontal"
+        },
+        {
+          "value": "cropvertical",
+          "label": "cropvertical"
+        },
+        {
+          "value": "crophorizontal_spacevertical",
+          "label": "crophorizontal_spacevertical"
+        },
+        {
+          "value": "cropvertical_spacehorizontal",
+          "label": "cropvertical_spacehorizontal"
+        },
+        {
+          "value": "spacevertical",
+          "label": "spacevertical"
+        },
+        {
+          "value": "spacehorizontal",
+          "label": "spacehorizontal"
+        }
+      ]
+    },
+    {
+      "name": "floorpattern_border",
+      "group": "Floor Pattern",
+      "type": "number",
+      "default": 0,
+      "description": "border around the wall pattern, default is wall thickness",
+      "widget": "number"
+    },
+    {
+      "name": "floorpattern_depth",
+      "group": "Floor Pattern",
+      "type": "number",
+      "default": 0,
+      "description": "depth of imprint in mm, 0 = is wall width.",
+      "widget": "number"
+    },
+    {
+      "name": "floorpattern_pattern_grid_chamfer",
+      "group": "Floor Pattern",
+      "type": "number",
+      "default": 0,
+      "description": "grid pattern hole taper",
+      "widget": "number"
+    },
+    {
+      "name": "floorpattern_pattern_voronoi_noise",
+      "group": "Floor Pattern",
+      "type": "number",
+      "default": 0.75,
+      "description": "voronoi pattern noise,",
+      "widget": "number"
+    },
+    {
+      "name": "floorpattern_pattern_brick_weight",
+      "group": "Floor Pattern",
+      "type": "number",
+      "default": 5,
+      "description": "brick pattern center weight",
+      "widget": "number"
+    },
+    {
+      "name": "floorpattern_pattern_kumiko_fill_ratio",
+      "group": "Floor Pattern",
+      "type": "number",
+      "default": 1,
+      "description": "Kumiko ratio of main wall to fill wall",
+      "widget": "number"
+    },
+    {
+      "name": "floorpattern_pattern_quality",
+      "group": "Floor Pattern",
+      "type": "number",
+      "default": 0.4,
+      "description": "$fs for floor pattern, min size face.",
+      "widget": "number"
+    },
+    {
+      "name": "wallcutout_vertical",
+      "group": "Wall Cutout",
+      "type": "string",
+      "default": "disabled",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "enabled",
+          "label": "enabled"
+        },
+        {
+          "value": "inneronly",
+          "label": "inneronly"
+        },
+        {
+          "value": "wallsonly",
+          "label": "wallsonly"
+        },
+        {
+          "value": "frontonly",
+          "label": "frontonly"
+        },
+        {
+          "value": "backonly",
+          "label": "backonly"
+        }
+      ]
+    },
+    {
+      "name": "wallcutout_vertical_position",
+      "group": "Wall Cutout",
+      "type": "number[]",
+      "default": [
+        -2,
+        -0.5,
+        -0.5,
+        -0.5
+      ],
+      "description": "wallcoutout position -0.5: disabled; Positive: GF units; Negative: ratio length/abs(value)",
+      "widget": "vector"
+    },
+    {
+      "name": "wallcutout_vertical_width",
+      "group": "Wall Cutout",
+      "type": "number",
+      "default": 0,
+      "description": "default will be binwidth/2",
+      "widget": "number"
+    },
+    {
+      "name": "wallcutout_vertical_angle",
+      "group": "Wall Cutout",
+      "type": "number",
+      "default": 70,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "wallcutout_vertical_height",
+      "group": "Wall Cutout",
+      "type": "number",
+      "default": 0,
+      "description": "default will be binHeight. 0: radius, -1 floor, Positive: depth from top; Negative: ratio height/abs(value)",
+      "widget": "number"
+    },
+    {
+      "name": "wallcutout_vertical_corner_radius",
+      "group": "Wall Cutout",
+      "type": "number",
+      "default": 5,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "wallcutout_horizontal",
+      "group": "Wall Cutout",
+      "type": "string",
+      "default": "disabled",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "enabled",
+          "label": "enabled"
+        },
+        {
+          "value": "inneronly",
+          "label": "inneronly"
+        },
+        {
+          "value": "wallsonly",
+          "label": "wallsonly"
+        },
+        {
+          "value": "leftonly",
+          "label": "leftonly"
+        },
+        {
+          "value": "rightonly",
+          "label": "rightonly"
+        }
+      ]
+    },
+    {
+      "name": "wallcutout_horizontal_position",
+      "group": "Wall Cutout",
+      "type": "number[]",
+      "default": [
+        -2,
+        -0.5,
+        -0.5,
+        -0.5
+      ],
+      "description": "wallcoutout position -0.5: disabled; Positive: GF units; Negative: ratio length/abs(value)",
+      "widget": "vector"
+    },
+    {
+      "name": "wallcutout_horizontal_width",
+      "group": "Wall Cutout",
+      "type": "number",
+      "default": 0,
+      "description": "default will be binwidth/2",
+      "widget": "number"
+    },
+    {
+      "name": "wallcutout_horizontal_angle",
+      "group": "Wall Cutout",
+      "type": "number",
+      "default": 70,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "wallcutout_horizontal_height",
+      "group": "Wall Cutout",
+      "type": "number",
+      "default": 0,
+      "description": "default will be binHeight",
+      "widget": "number"
+    },
+    {
+      "name": "wallcutout_horizontal_corner_radius",
+      "group": "Wall Cutout",
+      "type": "number",
+      "default": 5,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "extension_x_enabled",
+      "group": "Extendable",
+      "type": "string",
+      "default": "disabled",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "front",
+          "label": "front"
+        },
+        {
+          "value": "back",
+          "label": "back"
+        }
+      ]
+    },
+    {
+      "name": "extension_x_position",
+      "group": "Extendable",
+      "type": "number",
+      "default": 0.5,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "extension_y_enabled",
+      "group": "Extendable",
+      "type": "string",
+      "default": "disabled",
+      "description": null,
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "front",
+          "label": "front"
+        },
+        {
+          "value": "back",
+          "label": "back"
+        }
+      ]
+    },
+    {
+      "name": "extension_y_position",
+      "group": "Extendable",
+      "type": "number",
+      "default": 0.5,
+      "description": null,
+      "widget": "number"
+    },
+    {
+      "name": "extension_tabs_enabled",
+      "group": "Extendable",
+      "type": "boolean",
+      "default": true,
+      "description": null,
+      "widget": "checkbox"
+    },
+    {
+      "name": "extension_tab_size",
+      "group": "Extendable",
+      "type": "number[]",
+      "default": [
+        10,
+        0,
+        0,
+        0
+      ],
+      "description": "Tab size, height, width, thickness, style. width default is height, thickness default is 1.4, style {0,1,2}.",
+      "widget": "vector"
+    },
+    {
+      "name": "text_1",
+      "group": "Bottom Text",
+      "type": "boolean",
+      "default": false,
+      "description": "Add bin size to bin bottom",
+      "widget": "checkbox"
+    },
+    {
+      "name": "text_size",
+      "group": "Bottom Text",
+      "type": "number",
+      "default": 0,
+      "description": "Font Size of text, in mm (0 will auto size)",
+      "widget": "number"
+    },
+    {
+      "name": "text_depth",
+      "group": "Bottom Text",
+      "type": "number",
+      "default": 0.3,
+      "description": "Depth of text, in mm",
+      "widget": "number"
+    },
+    {
+      "name": "text_offset",
+      "group": "Bottom Text",
+      "type": "number[]",
+      "default": [
+        0,
+        0
+      ],
+      "description": "Offset of text , in mm",
+      "widget": "vector"
+    },
+    {
+      "name": "text_font",
+      "group": "Bottom Text",
+      "type": "string",
+      "default": "Aldo",
+      "description": "Font to use",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "Aldo",
+          "label": "Aldo"
+        },
+        {
+          "value": "B612",
+          "label": "B612"
+        },
+        {
+          "value": "Open Sans",
+          "label": "Open Sans"
+        },
+        {
+          "value": "Ubuntu",
+          "label": "Ubuntu"
+        }
+      ]
+    },
+    {
+      "name": "text_2",
+      "group": "Bottom Text",
+      "type": "boolean",
+      "default": false,
+      "description": "Add free-form text line to bin bottom (printing date, serial, etc)",
+      "widget": "checkbox"
+    },
+    {
+      "name": "text_2_text",
+      "group": "Bottom Text",
+      "type": "string",
+      "default": "Gridfinity Extended",
+      "description": "Actual text to add",
+      "widget": "text"
+    },
+    {
+      "name": "cut",
+      "group": "debug",
+      "type": "number[]",
+      "default": [
+        0,
+        0,
+        0
+      ],
+      "description": "Debug slice",
+      "widget": "vector"
+    },
+    {
+      "name": "enable_help",
+      "group": "debug",
+      "type": "string",
+      "default": "disabled",
+      "description": "Enable loging of help messages during render.",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "info",
+          "label": "info"
+        },
+        {
+          "value": "debug",
+          "label": "debug"
+        },
+        {
+          "value": "trace",
+          "label": "trace"
+        }
+      ]
+    },
+    {
+      "name": "pitch",
+      "group": "Model detail",
+      "type": "number[]",
+      "default": [
+        42,
+        42,
+        7
+      ],
+      "description": "Work in progress,  Modify the default grid size. Will break compatibility",
+      "min": 0,
+      "step": 1,
+      "max": 9999,
+      "widget": "slider"
+    },
+    {
+      "name": "clearance",
+      "group": "Model detail",
+      "type": "number[]",
+      "default": [
+        0.5,
+        0.5,
+        0
+      ],
+      "description": "clearance around the bin, will reduce the bin by this amount in mm.",
+      "widget": "vector"
+    },
+    {
+      "name": "set_colour",
+      "group": "Model detail",
+      "type": "string",
+      "default": "enable",
+      "description": "Assign colours to the bin",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "disabled",
+          "label": "disabled"
+        },
+        {
+          "value": "enable",
+          "label": "enable"
+        },
+        {
+          "value": "preview",
+          "label": "preview"
+        },
+        {
+          "value": "lip",
+          "label": "lip"
+        }
+      ]
+    },
+    {
+      "name": "render_position",
+      "group": "Model detail",
+      "type": "string",
+      "default": "center",
+      "description": "Where to render the model",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": "default",
+          "label": "default"
+        },
+        {
+          "value": "center",
+          "label": "center"
+        },
+        {
+          "value": "zero",
+          "label": "zero"
+        }
+      ]
+    },
+    {
+      "name": "fa",
+      "group": "Model detail",
+      "type": "number",
+      "default": 6,
+      "description": "Minimum angle for a fragment (fragments = 360/fa).  Low is more fragments",
+      "widget": "number"
+    },
+    {
+      "name": "fs",
+      "group": "Model detail",
+      "type": "number",
+      "default": 0.4,
+      "description": "minimum size of a fragment.  Low is more fragments",
+      "widget": "number"
+    },
+    {
+      "name": "fn",
+      "group": "Model detail",
+      "type": "number",
+      "default": 0,
+      "description": "number of fragments, overrides $fa and $fs",
+      "widget": "number"
+    },
+    {
+      "name": "random_seed",
+      "group": "Model detail",
+      "type": "number",
+      "default": 0,
+      "description": "set random seed for",
+      "widget": "number"
+    },
+    {
+      "name": "force_render",
+      "group": "Model detail",
+      "type": "boolean",
+      "default": true,
+      "description": "force render on costly components",
+      "widget": "checkbox"
+    }
+  ],
+  "computed_skipped": [],
+  "model": "gridfinity-extended/bin"
+}

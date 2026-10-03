@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schema/family.schema.json",
+  "id": "opengrid-shelf",
+  "name": "openGrid Shelf",
+  "category": "wall",
+  "tags": [],
+  "summary": "MakerWorld source (Mikey Ward) not retrievable; need the SCAD and license.",
+  "authors": [],
+  "source": null,
+  "license": {
+    "spdx": "NOASSERTION",
+    "public_use": "blocked"
+  },
+  "links": {},
+  "engine": null,
+  "status": "missing-source",
+  "models": []
+}
