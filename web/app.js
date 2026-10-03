@@ -52,12 +52,6 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const bytes = (n) => (n > 1048576 ? `${fmt(n / 1048576)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const savedColor = (() => { try { return localStorage.getItem("gw-filament"); } catch { return null; } })() || FILAMENTS[0][1];
 
-function licenseBadge(lic) {
-  if (!lic || lic.public_use === "ok") return null;
-  const text = lic.public_use === "blocked" ? "License unclear" : "Check license";
-  return el("span", { class: `badge ${lic.public_use}`, title: lic.notes || lic.spdx, text });
-}
-
 /** Keep simple formatting from third-party descriptions; drop anything active. */
 const SAFE_TAGS = new Set(["A", "B", "STRONG", "I", "EM", "BR", "P", "SPAN", "CODE", "UL", "OL", "LI", "DIV", "SMALL"]);
 function safeHTML(html) {
@@ -96,7 +90,7 @@ function route() {
   const p = h.match(/^parts\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/);
   if (m) openModel(`${m[1]}/${m[2]}`);
   else if (p) openLibrary(p[1], p[2]);
-  else if (h === "about") showAbout();
+  else if (h === "about" || h.startsWith("licenses")) showLicenses(h.split("/")[1]);
   else showCatalog();
 }
 window.addEventListener("hashchange", route);
@@ -171,12 +165,10 @@ function renderCatalog(query = "") {
     const blocks = [...projects.values()].sort((a, b) => a.name.localeCompare(b.name)).map((p) => {
       shown += p.models.length;
       const authors = (p.fam.authors || []).map((a) => a.name).join(", ");
-      const badge = licenseBadge(p.models[0].license);
       return el("div", { class: "project" },
         el("div", { class: "project-head" },
           el("h3", { text: p.name }),
-          el("p", { class: "project-meta" }, `${p.models.length} generator${p.models.length > 1 ? "s" : ""}${authors ? `, by ${authors}` : ""}`),
-          badge),
+          el("p", { class: "project-meta" }, `${p.models.length} generator${p.models.length > 1 ? "s" : ""}${authors ? `, by ${authors}` : ""}`)),
         el("ul", { class: "chips" }, p.models.map((m) => el("li", {},
           el("a", { href: `#/m/${m.key}`, class: "chip", title: m.summary, text: p.models.length === 1 && m.name === p.name ? "Open" : m.name })))));
     });
@@ -223,6 +215,9 @@ function renderCatalog(query = "") {
   if (!q && missing.length) {
     list.append(el("p", { class: "missing", text: `Coming once their source files are added: ${missing.map((f) => f.name).join(", ")}.` }));
   }
+  list.append(el("footer", { class: "site-footer" },
+    el("a", { href: "#/licenses", text: "Licenses & credits" }),
+    el("span", { text: "Every model is open work by its author. See each project's license before sharing or selling prints." })));
 }
 $("#catalog-search").addEventListener("input", (e) => renderCatalog(e.target.value));
 
@@ -258,7 +253,9 @@ async function openModel(key) {
   setCrumbs([{ text: "Generators", href: "#/" }, { text: detail.family_name }]);
 
   const fam = detail.family_name, nm = detail.name;
-  $("#model-title").textContent = fam.toLowerCase().endsWith(nm.toLowerCase()) ? fam : `${fam} ${nm.toLowerCase()}`;
+  // "Gridfinity Rebuilt basic bin", but keep single letters and acronyms: "Underware X channel"
+  const soft = nm.split(" ").map((w) => (/^[A-Z][a-z]/.test(w) ? w.toLowerCase() : w)).join(" ");
+  $("#model-title").textContent = fam.toLowerCase().endsWith(nm.toLowerCase()) ? fam : `${fam} ${soft}`;
   $("#model-summary").textContent = detail.summary;
   const credit = $("#model-credit");
   credit.replaceChildren();
@@ -271,8 +268,7 @@ async function openModel(key) {
     credit.append(". ");
   }
   if (detail.source?.repository) credit.append(el("a", { href: detail.source.repository, target: "_blank", rel: "noopener", text: "Source" }), ". ");
-  credit.append(`License: ${detail.license?.spdx === "NOASSERTION" ? "not stated" : detail.license?.spdx}.`);
-  $("#model-license").replaceChildren(...[licenseBadge(detail.license)].filter(Boolean));
+  credit.append(el("a", { href: `#/licenses/${detail.family}`, text: "License details" }), ".");
   // author notes fold away; their conditional warnings stay visible above the form
   const notesNodes = detail.description_html ? safeHTML(detail.description_html) : [];
   const holder = document.createElement("div");
@@ -805,7 +801,7 @@ async function openLibrary(libId, itemId) {
     credit.replaceChildren();
     if (lib.authors?.length) credit.append(`By ${lib.authors.map((a) => a.name).join(", ")}. `);
     if (lib.source_url) credit.append(el("a", { href: lib.source_url, target: "_blank", rel: "noopener", text: "Original page" }), ". ");
-    credit.append(`License: ${lib.license?.spdx}.`);
+    credit.append(el("a", { href: `#/licenses/${lib.id}`, text: "License details" }), ".");
     $("#part-search").value = "";
     buildPartList(lib);
   }
@@ -877,24 +873,47 @@ async function showPart(lib, item) {
   }
 }
 
-// ---------------------------------------------------------------- about
-function showAbout() {
+// ---------------------------------------------------------------- licenses & credits
+const STATUS_TEXT = { ok: "OK to share", review: "Check license", blocked: "License unclear" };
+const spdx = (l) => (!l?.spdx || l.spdx === "NOASSERTION" ? "Not stated" : l.spdx);
+
+function showLicenses(focus) {
   showView("about");
-  document.title = "About | Claude Grid Workshop";
-  setCrumbs([{ text: "Generators", href: "#/" }, { text: "About" }]);
+  document.title = "Licenses & credits | Claude Grid Workshop";
+  setCrumbs([{ text: "Generators", href: "#/" }, { text: "Licenses & credits" }]);
   const c = state.catalog;
-  const body = $("#about-body");
-  body.replaceChildren(
-    el("p", { text: `Every part is made in your browser by OpenSCAD ${c?.engine || ""} (WebAssembly build). Nothing you configure is sent to a server, and once loaded the site keeps working offline.` }),
-    el("p", {}, "OpenSCAD is free software under the GNU GPL, version 2 or later: ",
-      el("a", { href: "https://github.com/openscad/openscad", target: "_blank", rel: "noopener", text: "source code" }), ", ",
-      el("a", { href: "engine/COPYING", target: "_blank", text: "license" }), "."),
+  const fams = (c?.families || []).filter((f) => f.status !== "missing-source").sort((a, b) => a.name.localeCompare(b.name));
+  const row = (id, name, what, authors, lic, source) => el("tr", { id: `lic-${id}`, class: id === focus ? "focus" : null },
+    el("th", { scope: "row" }, el("div", { class: "lic-name" }, el("b", { text: name }), el("span", { class: "muted", text: what }))),
+    el("td", { text: authors || "Not stated" }),
+    el("td", { text: spdx(lic) }),
+    el("td", {}, el("span", { class: `badge ${lic?.public_use || "ok"}`, text: STATUS_TEXT[lic?.public_use || "ok"] }),
+      lic?.notes ? el("span", { class: "lic-note", text: lic.notes }) : null),
+    el("td", {}, source ? el("a", { href: source, target: "_blank", rel: "noopener", text: "Source" }) : "Supplied file"));
+  const table = (rows) => el("div", { class: "lic-wrap" }, el("table", { class: "lic-table" },
+    el("thead", {}, el("tr", {}, ["Project", "Authors", "License", "Status", "Source"].map((h) => el("th", { scope: "col", text: h })))),
+    el("tbody", {}, rows)));
+  const review = fams.filter((f) => f.license?.public_use && f.license.public_use !== "ok");
+  $("#about-body").replaceChildren(
+    el("p", { text: "Every generator and part here is someone else's open work, credited below with its license. Generated files carry the same license as the project that made them." }),
+    review.length ? el("p", { class: "lic-summary" },
+      `${review.length} project${review.length > 1 ? "s need" : " needs"} a license check before files are shared or sold: `,
+      ...review.flatMap((f, i) => [i ? ", " : "", el("a", { href: `#/licenses/${f.id}`, text: f.name })]), ".") : null,
     el("h2", { text: "Generators" }),
-    el("ul", {}, (c?.families || []).filter((f) => f.status !== "missing-source").map((f) => el("li", {},
-      el("b", { text: f.name }), ` by ${(f.authors || []).map((a) => a.name).join(", ") || "unknown"}. License: ${f.license?.spdx === "NOASSERTION" ? "not stated" : f.license?.spdx}.`))),
-    el("h2", { text: "Parts" }),
-    el("ul", {}, state.libraries.map((l) => el("li", {}, el("b", { text: l.name }), ` by ${(l.authors || []).map((a) => a.name).join(", ")}. License: ${l.license?.spdx}.`))),
-    el("p", { class: "muted", text: "Fonts for text on parts: Liberation Sans and Liberation Mono (SIL Open Font License). 3D preview: three.js (MIT)." }));
+    table(fams.map((f) => row(f.id, f.name, (f.models || []).join(", "), (f.authors || []).map((a) => a.name).join(", "), f.license, f.source))),
+    el("h2", { text: "Ready-made parts" }),
+    table(state.libraries.map((l) => row(l.id, l.name, `${l.item_count} parts`, (l.authors || []).map((a) => a.name).join(", "), l.license, l.source_url))),
+    el("h2", { text: "This site" }),
+    el("ul", {},
+      el("li", {}, `OpenSCAD ${c?.engine || ""} (WebAssembly build) makes every part in your browser. GNU GPL version 2 or later: `,
+        el("a", { href: "https://github.com/openscad/openscad", target: "_blank", rel: "noopener", text: "source code" }), ", ",
+        el("a", { href: "engine/COPYING", target: "_blank", text: "license text" }), "."),
+      el("li", { text: "3D preview: three.js (MIT)." }),
+      el("li", { text: "Fonts for text on parts: Liberation Sans and Liberation Mono (SIL Open Font License 1.1)." }),
+      el("li", { text: "Nothing you configure is sent to a server; once loaded, the site keeps working offline." })));
+  const target = focus && document.getElementById(`lic-${focus}`);
+  if (target) requestAnimationFrame(() => target.scrollIntoView({ block: "center" }));
+  else window.scrollTo(0, 0);
 }
 
 // ---------------------------------------------------------------- viewer tools

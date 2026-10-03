@@ -43,7 +43,7 @@ jobs:
         run: python tools/fetch_engine.py --out build/engine
 
       - name: Build site
-        run: python tools/build_site.py --engine build/engine --out _site --hide-blocked
+        run: python tools/build_site.py --engine build/engine --out _site
 
       - name: Render every model with the browser engine (Node)
         run: |

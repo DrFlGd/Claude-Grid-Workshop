@@ -377,7 +377,9 @@ def main():
         if (args.public and use != "ok") or (args.hide_blocked and use == "blocked"):
             continue
         families.append({"id": fam["id"], "name": fam["name"], "status": fam["status"], "category": fam["category"],
-                         "license": fam.get("license", {}), "authors": fam.get("authors", [])})
+                         "license": fam.get("license", {}), "authors": fam.get("authors", []),
+                         "source": (fam.get("source") or {}).get("repository") or next(iter((fam.get("links") or {}).values()), None),
+                         "models": [m["name"] for m in fam.get("models", []) if m.get("status") == "available" and m.get("browser") is not False]})
         editor_cfg = load_editor_toml(ROOT / fam["editor_toml"]) if fam.get("editor_toml") else {}
         lib_paths = (fam.get("engine") or {}).get("library_paths", [])
         for m in fam.get("models", []):

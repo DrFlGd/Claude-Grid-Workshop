@@ -17,7 +17,7 @@
 
 | ID | Feature | What you get |
 | --- | --- | --- |
-| B1 ✅ (Extended) | **Switch on vendored extras** | Done for all 13 extra Gridfinity Extended generators. The 8 extra Underware variants stay off (license). |
+| B1 ✅ (Extended) | **Switch on vendored extras** | Done: all 13 extra Gridfinity Extended generators and 7 of the 8 extra Underware variants (Mitre channel crashes the WASM engine). Site is for private use, so Underware is enabled. |
 | B2 | **Drawer-fit wizard** | Enter drawer size and printer bed; get a split, interlocking baseplate set (GridFlock) plus a bin-count summary. |
 | B3 | **Your new generators** | The upload path for the generators you'll provide: drop in SCAD + manifest, CI validates, form appears. |
 | B4 | **Fill the source gaps** | Anylid, openGrid Shelf, Multiboard, openGrid Connector — once you supply sources. |

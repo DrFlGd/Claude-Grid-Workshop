@@ -26,7 +26,7 @@
   "license": {
     "spdx": "NOASSERTION",
     "public_use": "blocked",
-    "notes": "Root LICENSE says AGPL-3.0; README and SCAD headers say CC-BY-NC-SA-4.0. Keep disabled publicly until clarified."
+    "notes": "Root LICENSE says AGPL-3.0; README and SCAD headers say CC-BY-NC-SA-4.0 (non-commercial). Fine for private use; clarify with the author before sharing or selling."
   },
   "links": {},
   "engine": {
@@ -95,16 +95,56 @@
       "name": "Label",
       "entrypoint": "vendor/monokini/monokini_text_label.scad",
       "status": "available"
+    },
+    {
+      "id": "i-channel-hok",
+      "name": "I Channel (HOK)",
+      "entrypoint": "vendor/monokini/monokini_I_channel_hok.scad",
+      "status": "available"
+    },
+    {
+      "id": "i-channel-leaf",
+      "name": "I Channel (leaf texture)",
+      "entrypoint": "vendor/monokini/monokini_I_channel_leaf.scad",
+      "status": "available"
+    },
+    {
+      "id": "i-channel-tex",
+      "name": "I Channel (textured)",
+      "entrypoint": "vendor/monokini/monokini_I_channel_tex.scad",
+      "status": "available"
+    },
+    {
+      "id": "i-channel-wood",
+      "name": "I Channel (wood texture)",
+      "entrypoint": "vendor/monokini/monokini_I_channel_wood.scad",
+      "status": "available"
+    },
+    {
+      "id": "i-height-change-channel",
+      "name": "I Channel, height change",
+      "entrypoint": "vendor/monokini/monokini_I_height_change_channel.scad",
+      "status": "available"
+    },
+    {
+      "id": "i-width-change-channel",
+      "name": "I Channel, width change",
+      "entrypoint": "vendor/monokini/monokini_I_width_change_channel.scad",
+      "status": "available"
+    },
+    {
+      "id": "mitre-channel",
+      "name": "Mitre Channel",
+      "entrypoint": "vendor/monokini/monokini_mitre_channel.scad",
+      "status": "available",
+      "browser": false,
+      "notes": "Crashes the OpenSCAD WebAssembly engine (2026.10.02), like the T and I bridge channels. Renders with native OpenSCAD."
+    },
+    {
+      "id": "cable-winder",
+      "name": "Cable Winder",
+      "entrypoint": "vendor/monokini/monokini_cable_winder.scad",
+      "status": "available"
     }
-  ],
-  "additional_entrypoints_available": [
-    "monokini_I_channel_hok",
-    "monokini_I_channel_leaf",
-    "monokini_I_channel_tex",
-    "monokini_I_channel_wood",
-    "monokini_I_height_change_channel",
-    "monokini_I_width_change_channel",
-    "monokini_mitre_channel",
-    "monokini_cable_winder"
   ]
 }

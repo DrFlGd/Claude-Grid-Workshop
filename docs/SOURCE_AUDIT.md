@@ -28,7 +28,7 @@ Checked 2026-10-03. Carried forward from Grid-Storage-Workshop and re-verified h
 | Cullenect Label | Collected | |
 | Honeycomb Storage Wall | Collected | Original v2 (site) and v2.3 |
 | openGrid | Partial | Tile, Snap (via adapter), Border. The site's `opengrid-connectors.scad` is not in QuackWorks |
-| Underware (Monokini) | Collected; license conflict | AGPL-3.0 vs CC-BY-NC-SA-4.0 declarations |
+| Underware (Monokini) | Collected; license conflict | AGPL-3.0 vs CC-BY-NC-SA-4.0 declarations. Enabled for private use (owner decision 2026-10-03); 14 of 17 entrypoints run in the browser (T, I-bridge, Mitre crash the WASM engine) |
 | Gridfinity Anylid | Collected (owner-supplied) | Rendered from `adapters/anylid/anylid.scad`, which fixes magnet/screw holes; license unstated |
 | openGrid Shelf | Collected (owner-supplied) | License unstated |
 | Label Generator for Gridfinity | Collected | laurensguijt/Label-Generator-Gridfinity @ 350b406; bin and box labels |

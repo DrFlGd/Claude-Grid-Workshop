@@ -81,7 +81,7 @@ Repository **Settings → Pages → Build and deployment → Source: GitHub Acti
 | Modular Minimalist Kitchen | Scoop Bin | ✅ (about 25 s per render) | Unstated · review |
 | Gridfinity Anylid | Lid | ✅ | Unstated · review |
 | openGrid Shelf | Shelf | ✅ | Unstated · review |
-| Underware (Monokini) | 7 of 9 channels/labels | ⚠️ T and I-bridge channels crash the WASM engine; family hidden on the public site (license conflict) | Conflict · blocked |
+| Underware (Monokini) | 14 channels, labels and textured variants | ⚠️ T, I-bridge and Mitre channels crash the WASM engine | Conflict · private use only |
 | Multiboard | — | ❌ source needed | — |
 
 GRIPS and GridPlates are intentionally excluded (superseded). Details: [docs/SOURCE_AUDIT.md](docs/SOURCE_AUDIT.md).
@@ -106,6 +106,9 @@ Files with the same name (`part.3mf`, `part.step`) become one item with several 
 The earlier version rendered on a server (Starlette + native OpenSCAD in Docker, with a shared render cache). It's preserved on the `archive/server-v1` branch and can come back as an optional fallback for models too heavy for a browser.
 
 ## Licensing
+
+The site's **Licenses & credits** page (linked at the bottom of the home page) lists every project's authors, license, status and source, plus the engine, fonts and three.js. Model pages only credit the author and link there.
+
 
 No repository-wide license overrides third-party terms. Each `vendor/` project keeps its own notices; see [THIRD_PARTY.md](THIRD_PARTY.md). The OpenSCAD engine is GPL-2.0-or-later (source: https://github.com/openscad/openscad; text in `assets/engine/COPYING`). Original code in `web/`, `tools/`, `adapters/`, `catalog/` and `schema/` is the repository owner's.
 
