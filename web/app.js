@@ -131,42 +131,93 @@ function showCatalog() {
   renderCatalog($("#catalog-search").value);
 }
 
+// Collapsed/expanded state of home-page sections, remembered per browser
+const openState = (() => { try { return JSON.parse(localStorage.getItem("gw-open") || "{}"); } catch { return {}; } })();
+const saveOpen = (id, open) => { openState[id] = open; try { localStorage.setItem("gw-open", JSON.stringify(openState)); } catch { /* private mode */ } };
+
+function foldable(id, defaultOpen, cls, summary, ...body) {
+  const d = el("details", { class: cls, "data-fold": id }, el("summary", {}, summary), ...body);
+  d.open = id in openState ? openState[id] : defaultOpen;
+  d.addEventListener("toggle", () => { if (!d.dataset.searching) saveOpen(id, d.open); });
+  return d;
+}
+
+/** Home page: type -> project -> generators. Each project is one compact block. */
 function renderCatalog(query = "") {
   const list = $("#catalog-list");
   list.replaceChildren();
   if (!state.catalog) return;
   const q = query.trim().toLowerCase();
+  const famById = Object.fromEntries(state.catalog.families.map((f) => [f.id, f]));
+  const hit = (...words) => !q || words.join(" ").toLowerCase().includes(q);
+  const sections = [];
   let shown = 0;
+
   for (const cat of state.catalog.categories) {
-    const models = cat.models.filter((m) => !q ||
-      [m.name, m.family_name, m.summary, ...(m.tags || [])].join(" ").toLowerCase().includes(q));
-    if (!models.length) continue;
-    shown += models.length;
-    list.append(el("section", { class: "cat-section" },
-      el("h2", {}, cat.label, el("small", { text: `${models.length} generator${models.length > 1 ? "s" : ""}` })),
-      el("ul", { class: "cat-rows" }, models.map((m) => el("li", {},
-        el("a", { href: `#/m/${m.key}` },
-          el("span", { class: "m-name", text: m.name }),
-          el("span", { class: "m-family", text: m.family_name }),
-          licenseBadge(m.license) && el("span", { class: "m-badge" }, licenseBadge(m.license))))))));
-  }
-  const hits = [];
-  for (const lib of state.libraries) {
-    for (const it of lib.items) {
-      if (q && [it.name, it.category, lib.name, ...(it.tags || [])].join(" ").toLowerCase().includes(q)) hits.push([lib, it]);
+    const projects = new Map();
+    for (const m of cat.models) {
+      if (!projects.has(m.family)) projects.set(m.family, { fam: famById[m.family] || {}, name: m.family_name, summary: m.summary, tags: m.tags || [], models: [] });
+      projects.get(m.family).models.push(m);
     }
+    // a search shows the generators whose own name matches; if none do, a match on the
+    // project's name, author, tags or description shows the whole project
+    for (const [id, p] of projects) {
+      if (!q) continue;
+      const named = p.models.filter((m) => hit(m.name));
+      if (named.length) p.models = named;
+      else if (!hit(p.name, p.summary, ...p.tags, ...(p.fam.authors || []).map((a) => a.name))) projects.delete(id);
+    }
+    if (!projects.size) continue;
+    const blocks = [...projects.values()].sort((a, b) => a.name.localeCompare(b.name)).map((p) => {
+      shown += p.models.length;
+      const authors = (p.fam.authors || []).map((a) => a.name).join(", ");
+      const badge = licenseBadge(p.models[0].license);
+      return el("div", { class: "project" },
+        el("div", { class: "project-head" },
+          el("h3", { text: p.name }),
+          el("p", { class: "project-meta" }, `${p.models.length} generator${p.models.length > 1 ? "s" : ""}${authors ? `, by ${authors}` : ""}`),
+          badge),
+        el("ul", { class: "chips" }, p.models.map((m) => el("li", {},
+          el("a", { href: `#/m/${m.key}`, class: "chip", title: m.summary, text: p.models.length === 1 && m.name === p.name ? "Open" : m.name })))));
+    });
+    const count = [...projects.values()].reduce((n, p) => n + p.models.length, 0);
+    sections.push(foldable(`type:${cat.id}`, true, "type-section",
+      [el("h2", { text: cat.label }), el("small", { text: `${projects.size} project${projects.size > 1 ? "s" : ""}, ${count} generator${count > 1 ? "s" : ""}` })],
+      el("div", { class: "projects" }, blocks)));
   }
-  if (state.libraries.length && (!q || hits.length)) {
-    shown += q ? hits.length : state.libraries.length;
-    list.append(el("section", { class: "cat-section" },
-      el("h2", {}, "Ready-made parts", el("small", { text: q ? `${hits.length} part${hits.length === 1 ? "" : "s"}` : `${state.libraries.length} collection${state.libraries.length > 1 ? "s" : ""}` })),
-      el("ul", { class: "cat-rows" }, q
-        ? hits.slice(0, 30).map(([lib, it]) => el("li", {}, el("a", { href: `#/parts/${lib.id}/${it.id}` },
-            el("span", { class: "m-name", text: it.name }), el("span", { class: "m-family", text: `${lib.name}, ${it.category.toLowerCase()}` }))))
-        : state.libraries.map((lib) => el("li", {}, el("a", { href: `#/parts/${lib.id}` },
-            el("span", { class: "m-name", text: lib.name }),
-            el("span", { class: "m-family", text: `${lib.item_count} parts: ${lib.categories.join(", ").toLowerCase()}` })))))));
+
+  // ready-made parts: libraries as projects, their categories as chips
+  const libBlocks = [];
+  for (const lib of state.libraries) {
+    const items = lib.items.filter((it) => hit(it.name, it.category, lib.name, ...(it.tags || [])));
+    if (!items.length) continue;
+    shown += q ? items.length : 1;
+    const chips = q
+      ? items.slice(0, 40).map((it) => el("li", {}, el("a", { class: "chip", href: `#/parts/${lib.id}/${it.id}`, text: it.name })))
+      : [...new Set(lib.items.map((i) => i.category))].map((c) => {
+          const first = lib.items.find((i) => i.category === c);
+          const n = lib.items.filter((i) => i.category === c).length;
+          return el("li", {}, el("a", { class: "chip", href: `#/parts/${lib.id}/${first.id}`, text: `${c} (${n})` }));
+        });
+    libBlocks.push(el("div", { class: "project" },
+      el("div", { class: "project-head" }, el("h3", { text: lib.name }),
+        el("p", { class: "project-meta" }, `${lib.item_count} parts, by ${(lib.authors || []).map((a) => a.name).join(", ")}`)),
+      el("ul", { class: "chips" }, chips)));
   }
+  if (libBlocks.length) {
+    sections.push(foldable("type:parts", true, "type-section",
+      [el("h2", { text: "Ready-made parts" }), el("small", { text: `${libBlocks.length} collection${libBlocks.length > 1 ? "s" : ""}` })],
+      el("div", { class: "projects" }, libBlocks)));
+  }
+
+  if (q) for (const s of sections) { s.dataset.searching = "1"; s.open = true; }
+  // jump bar: one link per type, so a long page stays easy to move around
+  if (!q && sections.length > 2) {
+    list.append(el("nav", { class: "type-nav", "aria-label": "Jump to a type" },
+      sections.map((s) => el("a", { href: "#", text: s.querySelector("h2").textContent,
+        onclick: (e) => { e.preventDefault(); s.open = true; s.scrollIntoView({ behavior: "smooth", block: "start" }); } }))));
+  }
+  list.append(...sections);
   if (!shown) list.append(el("p", { class: "empty", text: `Nothing matches “${query}”. Try “bin”, “baseplate”, “label” or “connector”.` }));
   const missing = state.catalog.families.filter((f) => f.status === "missing-source");
   if (!q && missing.length) {
