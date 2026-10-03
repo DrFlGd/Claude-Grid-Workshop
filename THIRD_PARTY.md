@@ -16,6 +16,8 @@ Everything under `vendor/` is third-party work, vendored unmodified at the commi
 | gridflock-rebuilt-dependency (library) | — | [kennetek/gridfinity-rebuilt-openscad](https://github.com/kennetek/gridfinity-rebuilt-openscad) @ `910e22d` | MIT | `vendor/gridflock/gridfinity-rebuilt-openscad` |
 | rugged-box-rebuilt-dependency (library) | — | [kennetek/gridfinity-rebuilt-openscad](https://github.com/kennetek/gridfinity-rebuilt-openscad) @ `0b7bf6e` | MIT | `vendor/monoscad/libraries/gridfinity-rebuilt-openscad` |
 | bosl2 (library) | — | [BelfrySCAD/BOSL2](https://github.com/BelfrySCAD/BOSL2) @ `e173fa0` | BSD-2-Clause; retain file-level notices | `vendor/libraries/BOSL2` |
+| Gridfinity Bin for Pred Labels | 3DLG; base by ABDELat; gridfinity-rebuilt by kennetek | owner-supplied file (2026-10-03) | CC-BY-NC-SA (base, per header) | `vendor/pred-label-bin` |
+| Gridfinity Kitchen | ostat (Gridfinity Extended) | owner-supplied ZIP (2026-10-03) + 1 file from ostat/gridfinity_extended_openscad @ `ee7d25f` | MIT | `vendor/gridfinity-kitchen` |
 
 ## Site runtime
 

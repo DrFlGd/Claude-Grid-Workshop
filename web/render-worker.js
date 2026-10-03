@@ -36,7 +36,7 @@ function parameterSet(values) {
 self.onmessage = async ({ data }) => {
   const started = performance.now();
   try {
-    const { files, entry, values } = data;
+    const { files, entry, values, defines = [] } = data;
     self.postMessage({ type: "stage", stage: "Loading model files…" });
     const entries = Object.entries(files);
     const contents = await Promise.all(entries.map(([, url]) => getFile(url)));
@@ -60,12 +60,15 @@ self.onmessage = async ({ data }) => {
       engine.FS.mkdirTree(p.slice(0, p.lastIndexOf("/")) || "/");
       engine.FS.writeFile(p, contents[i]);
     });
-    engine.FS.writeFile("/params.json", parameterSet(values));
+    const plain = Object.fromEntries(Object.entries(values).filter(([k]) => !defines.includes(k)));
+    engine.FS.writeFile("/params.json", parameterSet(plain));
+    // settings the file computes with an expression can only be overridden with -D
+    const defineArgs = defines.filter((k) => k in values).flatMap((k) => ["-D", `${k}=${JSON.stringify(values[k])}`]);
 
     self.postMessage({ type: "stage", stage: "Rendering…" });
     let code;
     try {
-      code = engine.callMain([entry, "--backend=Manifold", "--export-format=binstl",
+      code = engine.callMain([entry, ...defineArgs, "--backend=Manifold", "--export-format=binstl",
         "-p", "/params.json", "-P", "site", "-o", "/out.stl"]);
     } catch (e) {
       throw new Error(typeof e === "number" ? `OpenSCAD stopped with code ${e}.`

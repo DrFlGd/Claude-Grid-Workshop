@@ -217,6 +217,40 @@
         "editor_model": {
           "type": "string",
           "description": "[[model]] file name in editor_toml, if not the entrypoint's file name"
+        },
+        "presets": {
+          "type": "array",
+          "description": "'Start from' menu: whole-model starting points.",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "values"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "values": {
+                "type": "object"
+              },
+              "source_file": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "extra_params": {
+          "type": "array",
+          "description": "Settings for variables the file computes with an expression (not exposed by OpenSCAD's Customizer). Passed to OpenSCAD with -D.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "group",
+              "default"
+            ]
+          }
         }
       }
     }

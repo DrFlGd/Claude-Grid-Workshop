@@ -267,7 +267,7 @@ def apply_metadata(params: list[dict], groups: list[str], fam: dict, model: dict
         if isinstance(m.get("presets"), dict) and m["presets"].get("values"):
             p["presets"] = {"label": m["presets"].get("text", "Presets"),
                             "values": [{"label": k, "value": v} for k, v in m["presets"]["values"].items()]}
-        for k in ("label", "unit", "advanced"):
+        for k in ("label", "unit", "advanced", "axes"):
             if k in m:
                 p[k] = m[k]
         if isinstance(m.get("options"), list):  # site override, e.g. fonts the browser engine has
@@ -411,6 +411,15 @@ def main():
             problems.append(f"{key}: parameter export failed\n{raw[key]['error']}")
             continue
         params, groups = convert_params(raw[key])
+        # site-declared settings for variables OpenSCAD's Customizer can't expose
+        # (computed with an expression in the file); the page passes these with -D
+        for extra in m.get("extra_params", []):
+            e = {"type": "number", "widget": "number", "description": None, **extra, "define": True}
+            after = e.pop("after", None)
+            at = next((i for i, p in enumerate(params) if p["name"] == after), None)
+            params.insert(at + 1 if at is not None else len(params), e)
+            if e["group"] not in groups:
+                groups.append(e["group"])
         params, tabs = apply_metadata(params, groups, fam, m, mdl["editor"])
         groups = [g for g in groups if any(p["group"] == g for p in params)]
         summary = {
@@ -424,7 +433,7 @@ def main():
             "notes": m.get("notes"), "part_parameter": m.get("part_parameter"),
             "description_html": clean_html(mdl["editor"].get("description-extra-html")),
             "entry": mdl["entry"], "files": mdl["files"], "fixed": m.get("fixed", {}),
-            "groups": groups, "tabs": tabs, "parameters": params,
+            "groups": groups, "tabs": tabs, "parameters": params, "presets": m.get("presets", []),
             "input_bytes": sum((out / "fs" / s).stat().st_size for s in mdl["files"].values()),
         }
         (out / "data/models" / (key.replace("/", "--") + ".json")).write_text(json.dumps(detail, separators=(",", ":")))

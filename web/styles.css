@@ -175,7 +175,7 @@ input:invalid, .field.has-error input { border-color: var(--danger); }
   font-weight: 700; color: var(--focus); text-decoration: none; cursor: pointer;
 }
 .field .reset:hover, .help-link:hover { color: var(--ink); }
-.field.changed .label::before, .field.changed label::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--tool); margin-right: 5px; vertical-align: 1px; box-shadow: 0 0 0 1px #c69500; }
+.field.changed > .field-head .label::before, .field.changed > .field-head label::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--tool); margin-right: 5px; vertical-align: 1px; box-shadow: 0 0 0 1px #c69500; }
 .field .help { display: none; font-size: 12px; color: var(--graphite); margin: 0 0 4px; }
 body.show-help .field .help { display: block; }
 .field .err { font-size: 12.5px; color: var(--danger); }
@@ -184,7 +184,7 @@ body.show-help .field .help { display: block; }
 .vector { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 4px; }
 .vector label { position: relative; display: block; font-size: 0; }
 .vector label::before { content: attr(data-axis); position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 10.5px; font-weight: 700; color: var(--graphite); pointer-events: none; }
-.vector input { padding-left: 18px !important; }
+.vector input { padding-left: calc(12px + var(--ax, 1) * 7px) !important; }
 .field select, .field input[type="text"], .field input[type="number"] { width: 100%; }
 
 .actionbar { border-top: 1px solid var(--steel-2); padding: 8px 16px 12px; background: var(--white); display: grid; gap: 8px; }
@@ -259,6 +259,11 @@ body.show-help .field .help { display: block; }
 .about h1 { font-size: 34px; font-stretch: 80%; font-weight: 800; }
 .about h2 { font-size: 18px; margin-top: 10px; }
 .about ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+
+/* ---- model presets ----------------------------------------------------- */
+.preset-bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 10px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--steel-2); background: var(--white); }
+.preset-bar label { font-weight: 700; font-size: 13px; }
+.preset-bar select { padding: 5px 8px; font-size: 13.5px; }
 
 /* ---- batch dialog ------------------------------------------------------ */
 .batch { width: min(560px, calc(100vw - 32px)); border: 1px solid var(--steel-2); border-radius: var(--radius-m); padding: 0; color: var(--ink); }

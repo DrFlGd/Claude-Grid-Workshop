@@ -201,6 +201,33 @@
    "files": 2,
    "scad_files": 1,
    "note": "Supplied by repository owner 2026-10-03; unmodified"
+  },
+  {
+   "id": "pred-label-bin",
+   "repository": null,
+   "commit": null,
+   "directory": "vendor/pred-label-bin",
+   "license_summary": "CC-BY-NC-SA (base, per file header)",
+   "files": 2,
+   "scad_files": 1,
+   "note": "Supplied by repository owner 2026-10-03; unmodified"
+  },
+  {
+   "id": "gridfinity-kitchen",
+   "repository": null,
+   "commit": null,
+   "directory": "vendor/gridfinity-kitchen",
+   "license_summary": "MIT (LICENSE.txt, Copyright 2024 Ostat)",
+   "files": 49,
+   "scad_files": 44,
+   "note": "ZIP supplied by repository owner 2026-10-03; unmodified; Gridfinity Extended 2024-02-17 snapshot plus kitchen presets; modules/module_gridfinity_cup_base_text.scad was missing from the ZIP and is taken unmodified from ostat/gridfinity_extended_openscad @ ee7d25f (2024-11-26, MIT), the commit whose 30 module files match the ZIP's exactly",
+   "supplement": {
+    "repository": "https://github.com/ostat/gridfinity_extended_openscad",
+    "commit": "ee7d25f",
+    "files": [
+     "modules/module_gridfinity_cup_base_text.scad"
+    ]
+   }
   }
  ]
 }

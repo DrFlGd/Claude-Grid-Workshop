@@ -65,8 +65,11 @@ if (cmd === "version") {
     const values = Object.fromEntries(m.parameters.map((p) => [p.name, p.default]));
     Object.assign(values, job.params, m.fixed || {});
     const files = modelFiles(site, m, catalog.common_files);
-    files.set("/params.json", new TextEncoder().encode(parameterSet(values)));
+    const defineNames = new Set(m.parameters.filter((p) => p.define).map((p) => p.name));
+    const plain = Object.fromEntries(Object.entries(values).filter(([k]) => !defineNames.has(k)));
+    files.set("/params.json", new TextEncoder().encode(parameterSet(plain)));
     const args = [m.entry, "--backend=Manifold", "--export-format=binstl", "-p", "/params.json", "-P", "site", "-o", "/out.stl"];
+    for (const k of defineNames) if (k in values) args.splice(1, 0, "-D", `${k}=${JSON.stringify(values[k])}`);
     const r = await engine.run(files, args, ["/out.stl"]);
     const stl = r.outputs["/out.stl"];
     const errors = r.logs.filter(isError);

@@ -255,7 +255,7 @@ async function openModel(key) {
   const fam = detail.family_name, nm = detail.name;
   // "Gridfinity Rebuilt basic bin", but keep single letters and acronyms: "Underware X channel"
   const soft = nm.split(" ").map((w) => (/^[A-Z][a-z]/.test(w) ? w.toLowerCase() : w)).join(" ");
-  $("#model-title").textContent = fam.toLowerCase().endsWith(nm.toLowerCase()) ? fam : `${fam} ${soft}`;
+  $("#model-title").textContent = fam.toLowerCase().includes(nm.toLowerCase()) ? fam : `${fam} ${soft}`;
   $("#model-summary").textContent = detail.summary;
   const credit = $("#model-credit");
   credit.replaceChildren();
@@ -292,7 +292,22 @@ async function openModel(key) {
 function buildForm() {
   const form = $("#params");
   form.replaceChildren();
-  const { parameters, groups, tabs = {} } = state.model;
+  const { parameters, groups, tabs = {}, presets = [] } = state.model;
+  if (presets.length) {
+    // whole-model starting points, e.g. the size variants an author shipped as separate files
+    const pick = el("select", { id: "preset-pick", "aria-label": "Start from a preset",
+      onchange: (e) => {
+        const ps = presets[e.target.selectedIndex - 1];
+        if (!ps) return;
+        for (const p of state.model.parameters) {
+          if (p.name in ps.values) { state.values[p.name] = structuredClone(ps.values[p.name]); syncField(p); }
+        }
+        applyConditions();
+        generate();
+      } },
+      el("option", { text: "Choose…" }), presets.map((ps) => el("option", { text: ps.label })));
+    form.append(el("div", { class: "preset-bar" }, el("label", { for: "preset-pick", text: "Start from" }), pick));
+  }
   const names = parameters.map((p) => p.name).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n));
   state.conditions = [];
   for (const p of parameters) if (p.show_if) state.conditions.push({ test: compileCondition(p.show_if, names), name: p.name });
@@ -361,11 +376,12 @@ function buildField(p) {
       oninput: (e) => { if (e.target.value !== "" && e.target.checkValidity()) { setValue(p, +e.target.value); syncField(p, "number"); } } });
     wrap.append(head(el("label", { for: id, text: label })), el("div", { class: "slider" }, range, num), ...helpNodes);
   } else if (Array.isArray(p.default)) {
-    const axes = p.default.length <= 3 ? ["X", "Y", "Z"] : p.default.map((_, i) => `${i + 1}`);
+    const axes = p.axes || (p.default.length <= 3 ? ["X", "Y", "Z"] : p.default.map((_, i) => `${i + 1}`));
     const editable = p.default.every((v) => typeof v !== "object");
     const inputs = p.default.map((v, i) => {
       const t = typeof v === "boolean" ? "checkbox" : typeof v === "number" ? "number" : "text";
-      return el("label", { "data-axis": axes[i] || `${i + 1}` }, axes[i] || `${i + 1}`, el("input", { type: t, "data-i": i, "aria-label": `${label} ${axes[i] || i + 1}`, step: "any", min: p.min, max: p.max, disabled: !editable,
+      const ax = axes[i] || `${i + 1}`;
+      return el("label", { "data-axis": ax, style: `--ax:${ax.length}` }, ax, el("input", { type: t, "data-i": i, "aria-label": `${label} ${axes[i] || i + 1}`, step: "any", min: p.min, max: p.max, disabled: !editable,
         oninput: (e) => {
           const next = structuredClone(state.values[p.name]);
           next[i] = t === "checkbox" ? e.target.checked : t === "number" ? (e.target.value === "" ? next[i] : +e.target.value) : e.target.value;

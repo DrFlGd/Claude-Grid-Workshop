@@ -20,6 +20,7 @@ the model's files + OpenSCAD -> STL -> three.js preview -> download
 - **Files per model:** `build_site.py` follows `include`/`use`/`import` from each entrypoint (next to the file first, then the family's library folders, mounted at `/libraries` in the engine) and stores each file once by content hash. The browser fetches only what a model needs and caches it.
 - **Settings forms:** OpenSCAD's own Customizer export (`--export-format=param`), run on the same engine at build time. On top of that the site applies the upstream project's `editor.toml` when it has one (the [web-openscad-editor](https://github.com/yawkat/web-openscad-editor) format used by GridFlock and Gridfinity Extended): show-when conditions, presets (e.g. printer bed sizes), help links, collapsed sections, section on/off switches and warnings. Family manifests can add the same metadata (`ui`) for projects without one.
 - **Home page:** grouped by type, then by project (each project one block with its generators as chips). Sections fold and remember their state; search shows generators whose name matches, or whole projects whose name, author or description does.
+- **Presets and extra settings:** a model can list whole-model presets (shown as "Start from") and extra settings for values a file computes with an expression, which OpenSCAD's Customizer can't expose; those are passed with `-D`. Gridfinity Kitchen uses both: its 12 size files became presets, verified to render identically to the originals.
 - **Text on parts:** Liberation Sans/Mono are bundled (`assets/fonts`, SIL OFL), since the browser engine has no system fonts. Font menus on label models are limited to these so every choice really changes the result.
 - **Line endings:** SCAD files with Windows (CRLF) line endings are normalised when packaged; otherwise OpenSCAD's Customizer can't read their dropdown lists.
 
@@ -79,6 +80,8 @@ Repository **Settings → Pages → Build and deployment → Source: GitHub Acti
 | Gridfinity Screw Label (Santalla) | Screw Label | ✅ (adapter fixes include paths) | GPL-3.0-or-later · ok |
 | Just Fit Base Grid | Skeleton Baseplate (units, cm or inches) | ✅ | Unstated · review |
 | Modular Minimalist Kitchen | Scoop Bin | ✅ (about 25 s per render) | Unstated · review |
+| Gridfinity Bin for Pred Labels (3DLG) | Bin with snap-in label holder | ✅ (about 11–13 s) | CC-BY-NC-SA · private use |
+| Gridfinity Kitchen | Full Cutout Bin, Edge Cutout Bin (12 size presets from the original files), Spacer, Spacer with Walls | ✅ | MIT |
 | Gridfinity Anylid | Lid | ✅ | Unstated · review |
 | openGrid Shelf | Shelf | ✅ | Unstated · review |
 | Underware (Monokini) | 14 channels, labels and textured variants | ⚠️ T, I-bridge and Mitre channels crash the WASM engine | Conflict · private use only |

@@ -58,7 +58,8 @@ export class EngineClient {
           worker.terminate();
           reject(new Error(e.message || "The render worker failed to start. Try reloading the page."));
         };
-        const msg = { files, entry: model.entry, values: allValues };
+        const defines = (model.parameters || []).filter((p) => p.define).map((p) => p.name);
+        const msg = { files, entry: model.entry, values: allValues, defines };
         if (module && this.canSendModule) {
           try {
             worker.postMessage({ ...msg, module });

@@ -36,6 +36,8 @@ Checked 2026-10-03. Carried forward from Grid-Storage-Workshop and re-verified h
 | Gridfinity Screw Label (Santalla) | Collected (owner-supplied) | GPL-3.0+ per file header; adapter points BOSL includes at bundled BOSL v1 |
 | Just Fit Base Grid | Collected (owner-supplied) | Author and license not stated |
 | Modular Minimalist Kitchen | Collected (owner-supplied) | Author and license not stated; Manifold minkowski falls back to CGAL, ~25 s |
+| Gridfinity Bin for Pred Labels | Collected (owner-supplied) | 3DLG, based on ABDELat's bin (CC-BY-NC-SA per header); colour settings hidden for STL |
+| Gridfinity Kitchen | Collected (owner-supplied ZIP) | Gridfinity Extended modules match ostat @ ee7d25f (2024-11-26) exactly; the one missing module added from that commit. 12 size files → presets, each verified identical to its file |
 | Multiboard | **Missing** | Site names `multiboard/multiboard.scad`, no source link |
 
 ## Closing the gaps
