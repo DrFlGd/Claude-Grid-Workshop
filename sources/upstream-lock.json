@@ -181,6 +181,26 @@
    "files": 2,
    "scad_files": 1,
    "note": "Supplied by repository owner 2026-10-03; unmodified; rendered via adapters/santalla-screw-label"
+  },
+  {
+   "id": "just-fit-base-grid",
+   "repository": null,
+   "commit": null,
+   "directory": "vendor/just-fit-base-grid",
+   "license_summary": "Unstated; confirm before public use",
+   "files": 2,
+   "scad_files": 1,
+   "note": "Supplied by repository owner 2026-10-03; unmodified"
+  },
+  {
+   "id": "minimalist-kitchen-gridfinity",
+   "repository": null,
+   "commit": null,
+   "directory": "vendor/minimalist-kitchen-gridfinity",
+   "license_summary": "Unstated; confirm before public use",
+   "files": 2,
+   "scad_files": 1,
+   "note": "Supplied by repository owner 2026-10-03; unmodified"
   }
  ]
 }

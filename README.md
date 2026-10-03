@@ -77,6 +77,8 @@ Repository **Settings → Pages → Build and deployment → Source: GitHub Acti
 | Label Generator for Gridfinity | Bin Label, Storage Box Label (for Pred's bins and boxes) | ✅ | GPL-3.0 · ok |
 | Gridfinity Storage Box Label (Kevenaar) | Box Label | ✅ | CC-BY-4.0 · ok |
 | Gridfinity Screw Label (Santalla) | Screw Label | ✅ (adapter fixes include paths) | GPL-3.0-or-later · ok |
+| Just Fit Base Grid | Skeleton Baseplate (units, cm or inches) | ✅ | Unstated · review |
+| Modular Minimalist Kitchen | Scoop Bin | ✅ (about 25 s per render) | Unstated · review |
 | Gridfinity Anylid | Lid | ✅ | Unstated · review |
 | openGrid Shelf | Shelf | ✅ | Unstated · review |
 | Underware (Monokini) | 7 of 9 channels/labels | ⚠️ T and I-bridge channels crash the WASM engine; family hidden on the public site (license conflict) | Conflict · blocked |

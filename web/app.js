@@ -289,6 +289,7 @@ async function openModel(key) {
   $("#param-search").value = "";
   buildForm();
   generate(); // show the default part straight away
+  document.body.dataset.model = key; // lets tests know which model's render is on screen
 }
 
 // ---------------------------------------------------------------- form

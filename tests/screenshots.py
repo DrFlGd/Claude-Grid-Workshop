@@ -21,8 +21,8 @@ DONE = "()=>{const s=document.querySelector('#status');return s&&(s.classList.co
 async def open_and_render(page, base, key, timeout):
     """Navigate to a model and wait for its own render (not the previous page's status)."""
     await page.goto(f"{base}#/m/{key}")
-    await page.wait_for_function(
-        f"()=>location.hash.endsWith('{key}') && document.querySelector('#status').classList.contains('busy')", timeout=30000)
+    # data-model is set once this model's render has started (a cached result may finish at once)
+    await page.wait_for_function(f"()=>document.body.dataset.model === '{key}'", timeout=30000)
     await page.wait_for_function(DONE, timeout=timeout * 1000)
 
 
@@ -48,8 +48,7 @@ async def main():
         for i, key in enumerate(models, 1):
             await pg.goto(f"{a.base}#/m/{key}")
             try:
-                await pg.wait_for_function(
-                    f"()=>location.hash.endsWith('{key}') && document.querySelector('#status').classList.contains('busy')", timeout=30000)
+                await pg.wait_for_function(f"()=>document.body.dataset.model === '{key}'", timeout=30000)
                 await pg.wait_for_function(DONE, timeout=a.timeout * 1000)
             except Exception:
                 failures.append(f"{key}: timed out")

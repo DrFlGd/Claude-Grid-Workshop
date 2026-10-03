@@ -34,6 +34,8 @@ Checked 2026-10-03. Carried forward from Grid-Storage-Workshop and re-verified h
 | Label Generator for Gridfinity | Collected | laurensguijt/Label-Generator-Gridfinity @ 350b406; bin and box labels |
 | Gridfinity Storage Box Label (Kevenaar) | Collected (owner-supplied) | CC-BY-4.0 per file header |
 | Gridfinity Screw Label (Santalla) | Collected (owner-supplied) | GPL-3.0+ per file header; adapter points BOSL includes at bundled BOSL v1 |
+| Just Fit Base Grid | Collected (owner-supplied) | Author and license not stated |
+| Modular Minimalist Kitchen | Collected (owner-supplied) | Author and license not stated; Manifold minkowski falls back to CGAL, ~25 s |
 | Multiboard | **Missing** | Site names `multiboard/multiboard.scad`, no source link |
 
 ## Closing the gaps
