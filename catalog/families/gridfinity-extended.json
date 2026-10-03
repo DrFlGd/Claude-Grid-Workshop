@@ -42,6 +42,103 @@
     ]
   },
   "status": "available",
+  "ui": {
+    "label_size": {
+      "axes": [
+        "width",
+        "depth",
+        "height",
+        "radius"
+      ]
+    },
+    "label_relief": {
+      "axes": [
+        "width",
+        "depth",
+        "height",
+        "radius"
+      ]
+    },
+    "label_walls": {
+      "axes": [
+        "front",
+        "back",
+        "left",
+        "right"
+      ]
+    },
+    "fingerslide_walls": {
+      "axes": [
+        "front",
+        "back",
+        "left",
+        "right"
+      ]
+    },
+    "wallpattern_walls": {
+      "axes": [
+        "front",
+        "back",
+        "left",
+        "right"
+      ]
+    },
+    "wallplacard_walls": {
+      "axes": [
+        "front",
+        "back",
+        "left",
+        "right"
+      ]
+    },
+    "wallcutout_vertical_position": {
+      "axes": [
+        "1st",
+        "2nd",
+        "3rd",
+        "4th"
+      ]
+    },
+    "wallcutout_horizontal_position": {
+      "axes": [
+        "1st",
+        "2nd",
+        "3rd",
+        "4th"
+      ]
+    },
+    "extension_tab_size": {
+      "axes": [
+        "height",
+        "width",
+        "thickness",
+        "style"
+      ]
+    },
+    "handle_size": {
+      "axes": [
+        "width",
+        "depth",
+        "height",
+        "radius"
+      ]
+    },
+    "wallplacard_slot_frame": {
+      "axes": [
+        "reveal",
+        "coverage",
+        "width",
+        "depth"
+      ]
+    },
+    "wallplacard_offset": {
+      "axes": [
+        "horiz.",
+        "vertical",
+        "depth"
+      ]
+    }
+  },
   "models": [
     {
       "id": "bin",
@@ -310,6 +407,178 @@
             "units",
             "mm"
           ]
+        },
+        "number_of_utensils": {
+          "label": "Number of utensils",
+          "min": 1,
+          "max": 14,
+          "description": "How many utensil slots the holder has. Settings for each slot appear below."
+        },
+        "utensil_1": {
+          "label": "Utensil 1",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "description": "Width at the narrow and wide ends and overall length, in mm (wide 0 = same as narrow). Position is the slot it fills, counting from 1."
+        },
+        "utensil_2": {
+          "label": "Utensil 2",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 2"
+          }
+        },
+        "utensil_3": {
+          "label": "Utensil 3",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 3"
+          }
+        },
+        "utensil_4": {
+          "label": "Utensil 4",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 4"
+          }
+        },
+        "utensil_5": {
+          "label": "Utensil 5",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 5"
+          }
+        },
+        "utensil_6": {
+          "label": "Utensil 6",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 6"
+          }
+        },
+        "utensil_7": {
+          "label": "Utensil 7",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 7"
+          }
+        },
+        "utensil_8": {
+          "label": "Utensil 8",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 8"
+          }
+        },
+        "utensil_9": {
+          "label": "Utensil 9",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 9"
+          }
+        },
+        "utensil_10": {
+          "label": "Utensil 10",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 10"
+          }
+        },
+        "utensil_11": {
+          "label": "Utensil 11",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 11"
+          }
+        },
+        "utensil_12": {
+          "label": "Utensil 12",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 12"
+          }
+        },
+        "utensil_13": {
+          "label": "Utensil 13",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 13"
+          }
+        },
+        "utensil_14": {
+          "label": "Utensil 14",
+          "axes": [
+            "narrow",
+            "wide",
+            "length",
+            "position"
+          ],
+          "display-condition": {
+            "js": "number_of_utensils >= 14"
+          }
         }
       }
     },

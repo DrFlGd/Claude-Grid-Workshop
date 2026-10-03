@@ -146,6 +146,10 @@
     "editor_toml": {
       "type": "string",
       "description": "Upstream web-openscad-editor config (editor.toml) whose display conditions, presets, help links and tab settings the site applies"
+    },
+    "ui": {
+      "type": "object",
+      "description": "Per-parameter overrides applied to every model in the family (a model's own ui wins). Same form as a model's ui."
     }
   },
   "$defs": {

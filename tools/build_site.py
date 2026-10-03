@@ -239,7 +239,9 @@ def apply_metadata(params: list[dict], groups: list[str], fam: dict, model: dict
     fixed = dict(model.get("fixed", {}))
     hidden = set(model.get("hidden", [])) | set(fixed)
     defaults = model.get("defaults", {})
-    ui = model.get("ui", {})
+    ui = {k: dict(v) for k, v in fam.get("ui", {}).items()}  # family-wide, model overrides
+    for k, v in model.get("ui", {}).items():
+        ui.setdefault(k, {}).update(v)
     names = {p["name"] for p in params}
     pmeta = meta.get("param-metadata", [])
     out = []
@@ -267,7 +269,7 @@ def apply_metadata(params: list[dict], groups: list[str], fam: dict, model: dict
         if isinstance(m.get("presets"), dict) and m["presets"].get("values"):
             p["presets"] = {"label": m["presets"].get("text", "Presets"),
                             "values": [{"label": k, "value": v} for k, v in m["presets"]["values"].items()]}
-        for k in ("label", "unit", "advanced", "axes"):
+        for k in ("label", "description", "unit", "advanced", "axes", "min", "max"):
             if k in m:
                 p[k] = m[k]
         if isinstance(m.get("options"), list):  # site override, e.g. fonts the browser engine has

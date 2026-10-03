@@ -389,7 +389,7 @@ function buildField(p) {
         } }));
     });
     wrap.append(head(el("span", { class: "label", id, text: label })),
-      el("div", { class: "vector", role: "group", "aria-labelledby": id, style: `--n:${Math.min(p.default.length, 4)}` }, inputs), ...helpNodes);
+      el("div", { class: p.default.length >= 3 && axes.some((a) => a.length > 2) ? "vector named" : "vector", role: "group", "aria-labelledby": id, style: `--n:${Math.min(p.default.length, 4)}` }, inputs), ...helpNodes);
   } else {
     const t = p.type === "number" ? "number" : "text";
     wrap.append(head(el("label", { for: id, text: label })),

@@ -185,6 +185,12 @@ body.show-help .field .help { display: block; }
 .vector label { position: relative; display: block; font-size: 0; }
 .vector label::before { content: attr(data-axis); position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 10.5px; font-weight: 700; color: var(--graphite); pointer-events: none; }
 .vector input { padding-left: calc(12px + var(--ax, 1) * 7px) !important; }
+/* Longer box names (e.g. front/back/left/right) sit above each box instead of inside it. */
+.vector.named label::before { position: static; display: block; transform: none; margin: 0 0 2px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: capitalize; }
+.vector.named input { padding-left: 8px !important; padding-right: 4px; }
+.field > .vector.named { grid-column: 1 / -1; }
+.vector input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.vector input[type="number"]::-webkit-inner-spin-button, .vector input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .field select, .field input[type="text"], .field input[type="number"] { width: 100%; }
 
 .actionbar { border-top: 1px solid var(--steel-2); padding: 8px 16px 12px; background: var(--white); display: grid; gap: 8px; }

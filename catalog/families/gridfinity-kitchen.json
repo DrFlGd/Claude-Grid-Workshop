@@ -38,6 +38,103 @@
     "library_paths": []
   },
   "status": "available",
+  "ui": {
+    "label_size": {
+      "axes": [
+        "width",
+        "depth",
+        "height",
+        "radius"
+      ]
+    },
+    "label_relief": {
+      "axes": [
+        "width",
+        "depth",
+        "height",
+        "radius"
+      ]
+    },
+    "label_walls": {
+      "axes": [
+        "front",
+        "back",
+        "left",
+        "right"
+      ]
+    },
+    "fingerslide_walls": {
+      "axes": [
+        "front",
+        "back",
+        "left",
+        "right"
+      ]
+    },
+    "wallpattern_walls": {
+      "axes": [
+        "front",
+        "back",
+        "left",
+        "right"
+      ]
+    },
+    "wallplacard_walls": {
+      "axes": [
+        "front",
+        "back",
+        "left",
+        "right"
+      ]
+    },
+    "wallcutout_vertical_position": {
+      "axes": [
+        "1st",
+        "2nd",
+        "3rd",
+        "4th"
+      ]
+    },
+    "wallcutout_horizontal_position": {
+      "axes": [
+        "1st",
+        "2nd",
+        "3rd",
+        "4th"
+      ]
+    },
+    "extension_tab_size": {
+      "axes": [
+        "height",
+        "width",
+        "thickness",
+        "style"
+      ]
+    },
+    "handle_size": {
+      "axes": [
+        "width",
+        "depth",
+        "height",
+        "radius"
+      ]
+    },
+    "wallplacard_slot_frame": {
+      "axes": [
+        "reveal",
+        "coverage",
+        "width",
+        "depth"
+      ]
+    },
+    "wallplacard_offset": {
+      "axes": [
+        "horiz.",
+        "vertical",
+        "depth"
+      ]
+    }
+  },
   "models": [
     {
       "id": "full-cutout",
