@@ -35,10 +35,20 @@ jobs:
           OPENSCAD: openscad-nightly
         run: python3 tools/validate_sources.py --stl --jobs 4 --output validation.json
 
+      - name: Compare generators with published parts
+        continue-on-error: true
+        env:
+          OPENSCAD: openscad-nightly
+        run: |
+          python3 -m pip install --quiet --break-system-packages numpy
+          python3 tools/parity.py --output parity.json
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: validation-report
-          path: validation.json
+          path: |
+            validation.json
+            parity.json
           if-no-files-found: ignore
