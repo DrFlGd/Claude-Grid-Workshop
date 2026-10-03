@@ -17,6 +17,15 @@ Everything under `vendor/` is third-party work, vendored unmodified at the commi
 | rugged-box-rebuilt-dependency (library) | — | [kennetek/gridfinity-rebuilt-openscad](https://github.com/kennetek/gridfinity-rebuilt-openscad) @ `0b7bf6e` | MIT | `vendor/monoscad/libraries/gridfinity-rebuilt-openscad` |
 | bosl2 (library) | — | [BelfrySCAD/BOSL2](https://github.com/BelfrySCAD/BOSL2) @ `e173fa0` | BSD-2-Clause; retain file-level notices | `vendor/libraries/BOSL2` |
 
+## Site runtime
+
+| Component | Use | License |
+| --- | --- | --- |
+| [OpenSCAD](https://github.com/openscad/openscad) 2026.10.02 WebAssembly build | Renders every model in the browser; unmodified official snapshot (`engine.json`) | GPL-2.0-or-later (`assets/engine/COPYING`) |
+| [three.js](https://github.com/mrdoob/three.js) r186 | 3D preview (`web/vendor/three`) | MIT |
+| Liberation Sans / Mono | Fonts for text() in the browser engine (`assets/fonts`) | SIL OFL 1.1 |
+| [web-openscad-editor](https://github.com/yawkat/web-openscad-editor) | Its `editor.toml` format is read for form metadata; its build approach (dependency discovery, content-addressed files, fonts) informed `tools/build_site.py`. No code copied. | MIT |
+
 ## Part libraries
 
 | Library | Author | Source | License | Path |

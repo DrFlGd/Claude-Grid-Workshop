@@ -52,7 +52,8 @@ a { color: inherit; }
 .crumbs a { color: #d6dee5; text-decoration: none; }
 .crumbs a:hover { text-decoration: underline; }
 .crumbs .sep { opacity: .5; }
-.engine { margin-left: auto; font-size: 12.5px; color: #aab6c1; white-space: nowrap; }
+.engine { margin-left: auto; font-size: 12.5px; color: #aab6c1; white-space: nowrap; text-decoration: none; }
+.engine:hover { color: var(--white); text-decoration: underline; }
 .engine.off { color: #ffb4ab; }
 
 /* ---- buttons & inputs ------------------------------------------------- */
@@ -204,6 +205,28 @@ input:invalid, .field.has-error input { border-color: var(--danger); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---- upstream editor metadata ----------------------------------------- */
+.field.cond-hidden, .field.search-hidden { display: none; }
+.group > summary { gap: 10px; }
+.group-title { flex: 1; }
+.group-switch { width: 18px; height: 18px; accent-color: var(--ink); margin: 0; }
+.group > summary .changed-count { margin-left: 0; margin-right: 0; }
+.help-link { font-size: 12.5px; font-weight: 600; color: var(--focus); }
+.field-head .help-link { margin-left: auto; }
+.field-head .help-link + .reset { margin-left: 10px; }
+.presets { font-size: 13px; padding: 5px 8px; color: var(--graphite); }
+.group-note, .model-notes { font-size: 13px; color: var(--graphite); }
+.group-note a, .model-notes a, .help a { color: var(--focus); }
+.model-notes { padding: 12px 20px; border-bottom: 1px solid var(--steel-2); max-height: 22vh; overflow: auto; line-height: 1.5; }
+.model-notes > br:first-child { display: none; }
+.model-notes .alert { display: block; padding: 8px 10px; border-radius: var(--radius-s); border: 1px solid; margin-top: 4px; }
+.model-notes .alert-warning { color: #6b4e00; background: #fff6d8; border-color: #e3c36a; }
+.model-notes .alert-danger { color: var(--danger); background: #fdeceb; border-color: #efb7b2; }
+.about { max-width: 720px; display: grid; gap: 14px; }
+.about h1 { font-size: 34px; font-stretch: 80%; font-weight: 800; }
+.about h2 { font-size: 18px; margin-top: 10px; }
+.about ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
 
 /* ---- part libraries --------------------------------------------------- */
 .part-list { flex: 1; overflow: auto; padding: 4px 0 20px; }

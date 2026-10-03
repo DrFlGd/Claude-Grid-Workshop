@@ -27,6 +27,7 @@
     "notes": "Bundled openGrid 3MF adapter assets are CC-BY-4.0 with attribution."
   },
   "links": {},
+  "editor_toml": "vendor/gridflock/editor.toml",
   "engine": {
     "min_version": "2025.01 (development snapshot)",
     "backend": "manifold",

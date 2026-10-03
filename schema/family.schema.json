@@ -142,6 +142,10 @@
       "items": {
         "$ref": "#/$defs/model"
       }
+    },
+    "editor_toml": {
+      "type": "string",
+      "description": "Upstream web-openscad-editor config (editor.toml) whose display conditions, presets, help links and tab settings the site applies"
     }
   },
   "$defs": {
@@ -201,10 +205,18 @@
         },
         "ui": {
           "type": "object",
-          "description": "Per-parameter overrides: label, help, unit, advanced, show_if."
+          "description": "Per-parameter overrides in editor.toml param-metadata form: display-condition, help-link, description-html, presets, plus label."
         },
         "notes": {
           "type": "string"
+        },
+        "browser": {
+          "type": "boolean",
+          "description": "false = can't run in the WebAssembly engine; left off the site"
+        },
+        "editor_model": {
+          "type": "string",
+          "description": "[[model]] file name in editor_toml, if not the entrypoint's file name"
         }
       }
     }

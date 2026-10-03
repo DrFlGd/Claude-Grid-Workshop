@@ -5,29 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Claude Grid Workshop</title>
   <meta name="description" content="Generate printable Gridfinity, openGrid and wall-storage parts from open-source OpenSCAD models.">
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&display=swap">
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="styles.css">
   <script type="importmap">
-    { "imports": { "three": "/static/vendor/three/three.module.js" } }
+    { "imports": { "three": "./vendor/three/three.module.js" } }
   </script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/" data-link>
+    <a class="brand" href="#/">
       <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="9" height="9" rx="2"/><rect x="13" y="2" width="9" height="9" rx="2"/><rect x="2" y="13" width="9" height="9" rx="2"/><rect x="13" y="13" width="9" height="9" rx="2" class="filled"/></svg>
       <span>Claude Grid Workshop</span>
     </a>
     <nav class="crumbs" id="crumbs" aria-label="Location"></nav>
-    <span class="engine" id="engine" title="Rendering engine"></span>
+    <a class="engine" id="engine" href="#/about" title="About the rendering engine and licenses"></a>
   </header>
 
   <main id="view-catalog" class="catalog" hidden>
     <div class="catalog-head">
       <h1>Make storage that fits</h1>
-      <p>Pick a generator, set the sizes, and download a print-ready STL. Every model is open source and credited to its author.</p>
+      <p>Pick a generator, set the sizes, and download a print-ready STL. Parts are made right here in your browser with OpenSCAD, and every model is open source and credited to its author.</p>
       <label class="search">
         <span class="visually-hidden">Search generators</span>
         <input id="catalog-search" type="search" placeholder="Search: bin, baseplate, label, shelf…" autocomplete="off">
@@ -51,12 +51,13 @@
         </label>
         <button type="button" class="ghost" id="reset-all">Reset all</button>
       </div>
+      <div id="model-notes" class="model-notes"></div>
       <form id="params" class="params" novalidate></form>
       <div class="actionbar">
         <div id="status" class="status" role="status" aria-live="polite"></div>
         <div class="actions">
           <button type="button" id="generate" class="primary">Generate</button>
-          <a id="download" class="button secondary is-disabled" aria-disabled="true" href="#" download>Download STL</a>
+          <a id="download" class="button secondary is-disabled" aria-disabled="true" href="#" download="model.stl">Download STL</a>
         </div>
       </div>
     </aside>
@@ -106,7 +107,14 @@
     </aside>
   </main>
 
+  <main id="view-about" class="catalog" hidden>
+    <div class="about">
+      <h1>About this site</h1>
+      <div id="about-body"></div>
+    </div>
+  </main>
+
   <noscript><p class="noscript">This generator needs JavaScript to build its forms and 3D preview.</p></noscript>
-  <script type="module" src="/static/app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

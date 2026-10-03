@@ -1,0 +1,8 @@
+{
+  "version": "2026.10.02",
+  "url": "https://files.openscad.org/snapshots/OpenSCAD-2026.10.02-WebAssembly-web.zip",
+  "sha256": "9e3c5af25954371503de2ec4dbe8119dcfcb6385a91832a7eee2299ad5b1259b",
+  "license": "GPL-2.0-or-later",
+  "source": "https://github.com/openscad/openscad",
+  "note": "OpenSCAD WebAssembly build from the official snapshots, unmodified. Pinned by checksum; tools/fetch_engine.py downloads and verifies it."
+}

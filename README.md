@@ -1,51 +1,80 @@
 # Claude Grid Workshop
 
-A web generator for 3D-printable storage (Gridfinity, openGrid, Honeycomb Storage Wall and friends), driven by server-side OpenSCAD and open-source SCAD projects, with room for a searchable library of ready-made STLs.
+Generate 3D-printable storage (Gridfinity, openGrid, Honeycomb Storage Wall and friends) from open-source OpenSCAD models, right in the browser, and download ready-made parts. It's a static website: OpenSCAD runs in each visitor's browser as WebAssembly, so it can be hosted free on GitHub Pages.
 
-**Stage: A1 + A2 built.** Pick any of 26 models, change its settings, generate with server-side OpenSCAD, preview in 3D and download the STL. A first parts library (official openGrid connectors, mounts, snaps and Multiconnect parts, 44 items) can be browsed, previewed and downloaded. Next features come from [docs/FEATURES.md](docs/FEATURES.md).
+**Live site:** https://drflgd.github.io/Claude-Grid-Workshop/ (once Pages is enabled; see below)
 
-## Run it
+## How it works
 
-```sh
-docker build -t grid-workshop .
-docker run -p 8000:8000 -v gw-cache:/data grid-workshop
-# open http://localhost:8000
+```
+catalog/families/*.json  ─┐                      ┌─> _site/data/catalog.json, data/models/*.json
+vendor/, adapters/        ├─> tools/build_site.py ├─> _site/fs/<sha256>   (each SCAD/font file once)
+upstream editor.toml      │     + OpenSCAD WASM   ├─> _site/engine/       (OpenSCAD WebAssembly)
+catalog/libraries/        ┘                       └─> _site/parts/        (ready-made parts)
+
+Browser: pick model -> form from data/models/<model>.json -> web worker loads
+the model's files + OpenSCAD -> STL -> three.js preview -> download
 ```
 
-Without Docker: install an OpenSCAD development snapshot (`openscad-nightly`), then `pip install -r requirements.txt` and `uvicorn app.main:app --port 8000`. Settings are listed at the top of `app/main.py` (workers, timeout, cache size, `GW_PUBLIC=1` to hide models whose license isn't cleared for public use).
+- **Engine:** the official OpenSCAD WebAssembly snapshot pinned in `engine.json` (2026.10.02), downloaded and checksum-verified by `tools/fetch_engine.py`. Each render runs in its own web worker (cancel = stop the worker); the page compiles the engine once and reuses it.
+- **Files per model:** `build_site.py` follows `include`/`use`/`import` from each entrypoint (next to the file first, then the family's library folders, mounted at `/libraries` in the engine) and stores each file once by content hash. The browser fetches only what a model needs and caches it.
+- **Settings forms:** OpenSCAD's own Customizer export (`--export-format=param`), run on the same engine at build time. On top of that the site applies the upstream project's `editor.toml` when it has one (the [web-openscad-editor](https://github.com/yawkat/web-openscad-editor) format used by GridFlock and Gridfinity Extended): show-when conditions, presets (e.g. printer bed sizes), help links, collapsed sections, section on/off switches and warnings. Family manifests can add the same metadata (`ui`) for projects without one.
+- **Text on parts:** Liberation Sans/Mono are bundled (`assets/fonts`, SIL OFL), since the browser engine has no system fonts.
+
+## Build and run locally
+
+Needs Python 3.11+ (with numpy for part previews) and Node 20+.
+
+```sh
+python3 tools/fetch_engine.py --out build/engine        # or --zip <downloaded zip>
+python3 tools/build_site.py --engine build/engine --out _site
+python3 -m http.server -d _site 8000                     # open http://localhost:8000/
+```
+
+Checks (all run in CI, `.github/workflows/site.yml`):
+
+```sh
+python3 tools/validate_sources.py                   # vendored files match their pinned hashes
+node tools/engine/cli.mjs bench _site               # every model renders; time and memory
+python3 tools/parity.py --site _site                # generators vs published parts
+python3 tests/screenshots.py --base http://localhost:8000/   # every model in Chromium
+```
+
+CI publishes the benchmark, parity report and screenshots to the `ci-screenshots` branch, and deploys `_site` to GitHub Pages from `main`.
+
+## Enabling GitHub Pages (one time)
+
+Repository **Settings → Pages → Build and deployment → Source: GitHub Actions**. Then re-run the latest **Site** workflow (Actions tab), or push any change.
 
 ## What is here
 
 | Path | What it holds |
 | --- | --- |
-| `app/` | Web server (Starlette): catalog API, parameter validation, render queue, STL cache and downloads. |
-| `web/` | Front end: catalog, auto-built settings forms, three.js 3D preview. No build step. |
-| `vendor/` | Unmodified upstream SCAD projects, pinned to exact commits (273 SCAD files). |
+| `web/` | The front end (no build step): catalog, forms, render worker, three.js preview, parts pages. |
+| `vendor/` | Unmodified upstream SCAD projects, pinned to exact commits. |
 | `adapters/` | Small SCAD wrappers/fixes where an upstream file can't be used directly (openGrid Snap, Anylid fix). |
-| `catalog/families/` | **Generator registry.** One JSON manifest per project: models, entrypoints, authors, license, engine needs. Adding a file here adds a generator. |
-| `catalog/params/` | Customizer parameters extracted from each entrypoint — the raw material for the site's forms. Generated; do not hand-edit. |
-| `catalog/libraries/` | **Parts library registry.** One manifest per collection of ready-made parts (`_example.json` is the template). |
-| `libraries/` | The part files themselves (3MF, STL, STEP, Shapr3D), one folder per library. |
-| `schema/` | JSON Schemas for families, STL libraries and extracted parameters. |
-| `sources/` | Provenance: upstream commit lock, SHA-256 of every vendored file, reference-site inventory. |
-| `tools/` | `extract_params.py` (SCAD → form schema), `validate_sources.py` (hashes + renders every catalog model), `import_library.py` (folder of parts → library), `parity.py` + `mesh_stats.py` (does a generator reproduce published parts?). |
-| `.github/workflows/` | CI: source hashes + STL render of every model; website end-to-end test in a real browser; Docker build and render. |
+| `catalog/families/` | **Generator registry.** One JSON manifest per project. Adding a file here adds a generator. |
+| `catalog/libraries/`, `libraries/` | **Parts libraries.** Manifests and the files themselves (3MF, STL, STEP, Shapr3D). |
+| `engine.json`, `assets/` | Pinned engine version and checksum; GPL text; bundled fonts. |
+| `schema/` | JSON Schemas for families, libraries and built parameters. |
+| `sources/` | Provenance: upstream commit lock, SHA-256 of every vendored file, reference-site inventory, parity specs. |
+| `tools/` | Build (`build_site.py`, `fetch_engine.py`, `engine/`), checks (`validate_sources.py`, `parity.py`, `mesh_stats.py`), `import_library.py`. |
 
-## Generators collected
+## Generators
 
-| Family | Models | Status | License / public use |
+| Family | Models | In the browser | License / public use |
 | --- | --- | --- | --- |
 | Gridfinity Rebuilt | Bin, Baseplate, Vase Bin | ✅ | MIT · ok |
-| Gridfinity Extended | Bin, Baseplate, Connector Clips (+13 more generators vendored) | ✅ | GPL-3.0 · ok |
+| Gridfinity Extended | Bin, Baseplate, Connector Clips (+13 more vendored) | ✅ | GPL-3.0 · ok |
 | GridFlock | Baseplate | ✅ | MIT / CC-BY-4.0 · ok |
 | Gridfinity Rugged Box | Box (12 parts) | ✅ | CC-BY-SA-4.0 + MIT · ok |
 | Gridfinity Basket | Basket | ✅ | MIT · ok |
 | Cullenect Label | Label | ✅ | MIT · ok |
 | Honeycomb Storage Wall | Grid (v2, v2.3) | ✅ | CC-BY-4.0 · ok |
-| openGrid | Grid, Snap, Border | ⚠️ Connector missing | CC-BY-NC-SA-4.0 · review |
-| Underware (Monokini) | 9 channel/label types (+8 variants vendored) | ✅ | License conflict · blocked publicly |
-| Gridfinity Anylid | Lid | ✅ (supplied file, bug-fixed copy) | Unstated · review |
-| openGrid Shelf | Shelf | ✅ (supplied file) | Unstated · review |
+| openGrid | Grid, Snap, Border | ✅ (Connector source missing) | CC-BY-NC-SA-4.0 · review |
+| Gridfinity Anylid | Lid | ✅ | Unstated · review |
+| openGrid Shelf | Shelf | ✅ | Unstated · review |
+| Underware (Monokini) | 7 of 9 channels/labels | ⚠️ T and I-bridge channels crash the WASM engine; family hidden on the public site (license conflict) | Conflict · blocked |
 | Multiboard | — | ❌ source needed | — |
 
 GRIPS and GridPlates are intentionally excluded (superseded). Details: [docs/SOURCE_AUDIT.md](docs/SOURCE_AUDIT.md).
@@ -53,9 +82,8 @@ GRIPS and GridPlates are intentionally excluded (superseded). Details: [docs/SOU
 ## Adding a generator
 
 1. Vendor the upstream project under `vendor/<name>/` unchanged; record it in `sources/upstream-lock.json` and append hashes to `sources/SHA256SUMS`.
-2. Add `catalog/families/<id>.json` (see `schema/family.schema.json`): models, entrypoints, `fixed`/`defaults`, `part_parameter`, library paths, license.
-3. Run `python3 tools/extract_params.py --all` and commit `catalog/params/`.
-4. Push — CI renders every model and reports failures.
+2. Add `catalog/families/<id>.json` (see `schema/family.schema.json`): models, entrypoints, library folders, license, and `editor_toml` if the project ships one.
+3. Push. CI builds the site, renders the new models in Node and in Chromium, and deploys.
 
 ## Adding a parts library
 
@@ -64,12 +92,14 @@ python3 tools/import_library.py path/to/unzipped-pack --id my-parts --name "My p
     --license CC-BY-4.0 --public-use ok --author "Someone" --exclude "Big folder/*"
 ```
 
-Files with the same name (`part.3mf`, `part.step`) become one item with several downloads; 3MF/STL items get a 3D preview and measured size. Rename items or categories in the JSON afterwards: re-running keeps those edits. Keep single files under 100 MB (GitHub's limit); bigger collections should move to object storage via `storage`.
+Files with the same name (`part.3mf`, `part.step`) become one item with several downloads; 3MF/STL items get a 3D preview and measured size. Rename items or categories in the JSON afterwards: re-running keeps those edits. Keep single files under 100 MB (GitHub's limit). If a generator might already make some of the parts, add a spec in `sources/parity/` and CI reports which published files it reproduces.
 
-If a generator might already make some of the parts, add a spec in `sources/parity/` and CI will tell you which published files it reproduces.
+## Server version (on hold)
+
+The earlier version rendered on a server (Starlette + native OpenSCAD in Docker, with a shared render cache). It's preserved on the `archive/server-v1` branch and can come back as an optional fallback for models too heavy for a browser.
 
 ## Licensing
 
-No repository-wide license overrides third-party terms. Each `vendor/` project keeps its own notices; see [THIRD_PARTY.md](THIRD_PARTY.md). Original code in `adapters/`, `tools/`, `catalog/` and `schema/` is the repository owner's.
+No repository-wide license overrides third-party terms. Each `vendor/` project keeps its own notices; see [THIRD_PARTY.md](THIRD_PARTY.md). The OpenSCAD engine is GPL-2.0-or-later (source: https://github.com/openscad/openscad; text in `assets/engine/COPYING`). Original code in `web/`, `tools/`, `adapters/`, `catalog/` and `schema/` is the repository owner's.
 
 Reference: <https://gridfinity.perplexinglabs.com/> (inventory only; no UI code or adapter scripts copied).

@@ -1,14 +1,14 @@
 # Feature backlog — pick the order
 
-**Built:** A1, A2, a first version of C1 (one library, browse/preview/download) and C2 (import tool). Reply with the IDs you want next.
+**Built:** A1, A2, F4 (in-browser OpenSCAD, hosted on GitHub Pages), most of A3 for projects that ship an editor.toml (GridFlock, Gridfinity Extended), a first version of C1 and C2. **On hold:** the server (G1), kept on the `archive/server-v1` branch. Reply with the IDs you want next.
 
 ## A. Core generator (the site's reason to exist)
 
 | ID | Feature | What you get |
 | --- | --- | --- |
-| A1 ✅ | **Generate & download** | Pick a model, fill in a form auto-built from the SCAD parameters, Generate (server-side OpenSCAD), download STL. |
+| A1 ✅ | **Generate & download** | Pick a model, fill in a form built from OpenSCAD's own Customizer data, Generate (OpenSCAD in the browser), download STL. |
 | A2 ✅ | **3D preview** | Orbit/zoom/pan viewer of the result, with overall dimensions shown. |
-| A3 | **Friendly forms** | Grouped settings, Simple/Advanced toggle, help text, units, sliders/dropdowns, reset-to-default, show-only-when-relevant fields. Curated per model on top of the auto-extracted parameters. |
+| A3 (partly) | **Friendly forms** | Grouped settings, Simple/Advanced toggle, help text, units, sliders/dropdowns, reset-to-default, show-only-when-relevant fields. Curated per model on top of the auto-extracted parameters. |
 | A4 | **Model catalog home** | Cards by system (Gridfinity, openGrid, HSW, …) and type (bins, baseplates, labels, wall, carrying), search, author credit and license on every model. |
 | A5 | **Fast repeat renders** | Job queue with progress and cancel; identical settings are cached and download instantly. |
 | A6 | **Multi-part downloads** | One click for every part of a model (e.g. Rugged Box bottom, top, latches, handle) as a ZIP. |
@@ -55,13 +55,13 @@
 | F1 | **Printer profiles** | Save your bed size; warnings when a part won't fit; auto-split where the generator supports it. |
 | F2 | **Print estimates** | Volume, rough filament weight and cost per part. |
 | F3 | **Drawer layout planner** | Drag bins onto a measured drawer grid, catch overlaps, generate the full set. |
-| F4 | **Instant in-browser preview** | OpenSCAD (WebAssembly) renders a quick preview while you type; the server makes the final file. |
+| F4 ✅ | **In-browser OpenSCAD** | Done: every render runs in the visitor's browser; the site is static and hosted on GitHub Pages. |
 
 ## G. Running it
 
 | ID | Feature | What you get |
 | --- | --- | --- |
-| G1 | **Deployable container** | One Docker image (web app + pinned OpenSCAD + workers), sandboxed renders with time/memory limits. |
+| G1 (on hold) | **Server fallback** | Server-side OpenSCAD for models too heavy for a browser (2 Underware channels today). Kept on `archive/server-v1`. |
 | G2 | **Admin view** | Enable/disable families (license gating for openGrid/Underware), see render stats and failures. |
 | G3 | **Upstream tracker** | Flags new upstream commits, re-renders, and shows what parameters changed before you update. |
 

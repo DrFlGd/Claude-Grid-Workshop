@@ -30,6 +30,7 @@
     "Documentation": "https://docs.ostat.com/docs/openscad/gridfinity-extended",
     "Donate": "http://paypal.me/ostat1"
   },
+  "editor_toml": "vendor/gridfinity-extended/editor.toml",
   "engine": {
     "min_version": "2025.01 (development snapshot)",
     "backend": "manifold",

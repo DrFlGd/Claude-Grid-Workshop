@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "params.schema.json",
   "title": "Extracted parameters",
-  "description": "Output of tools/extract_params.py: the Customizer parameters of one SCAD entrypoint.",
+  "description": "One model's settings in _site/data/models/*.json, built by tools/build_site.py from OpenSCAD's own Customizer export (--export-format=param) plus site and editor.toml metadata.",
   "type": "object",
   "required": [
     "source",
@@ -86,6 +86,33 @@
                 "label": {
                   "type": "string"
                 }
+              }
+            }
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "show_if": {
+            "type": "string",
+            "description": "JS expression over parameter names (editor.toml display-condition)"
+          },
+          "help_link": {
+            "type": "string"
+          },
+          "description_html": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "presets": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "values": {
+                "type": "array"
               }
             }
           }

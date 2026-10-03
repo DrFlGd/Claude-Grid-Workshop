@@ -44,8 +44,10 @@ These need the owner to supply the file or a source link; nothing here is guesse
 
 ## Engine and render check
 
-This workspace cannot install OpenSCAD (package mirrors and openscad.org are blocked here), so rendering runs in GitHub Actions (`.github/workflows/validate.yml`).
+The site renders in the browser with the official OpenSCAD WebAssembly snapshot pinned in `engine.json` (**2026.10.02**, the same date as the native build used for the earlier checks). CI downloads it from files.openscad.org and verifies its SHA-256.
 
-Latest CI run (2026-10-03, **OpenSCAD 2026.10.02 nightly, Manifold backend**): **all 24 catalog models exported to STL with default parameters**, zero errors; GridFlock reports one warning. Every push that touches sources, adapters, catalog or tools re-runs this, and the results appear as a "Render summary" annotation on the commit.
+Benchmark (Node, same engine as the browser, default settings): **24 of 26 models render**; most in under 2 s, the rugged box in about 3 s using ~210 MB of engine memory, the Underware X channel in about 25 s. Triangle counts match the native build where they could be compared (Rebuilt bin 17,132; rugged box 72,086), and the openGrid parity check gives identical results to the native run. In headless Chromium (software rendering), all 17 models on the public build render in 0.1 to 5 s.
 
-This confirms the sources, includes and library paths are complete. It does not prove every parameter combination works, or that parts fit and print well. The old OpenSCAD 2021.01 cannot parse five of the models, so production should pin a tested development snapshot.
+Two Underware models, **T channel** and **I bridge channel**, crash the WebAssembly engine on both 2026.01.19 and 2026.10.02 (memory corruption consistent with deep recursion overflowing the engine's fixed stack). They render natively, so they're marked `"browser": false` and left off the site. The 2025.03.25 build used by Cabinet Workshop fails on more models (all Underware, openGrid tile), which is why the newer snapshot is pinned.
+
+These checks use default settings. They don't prove every combination works, or that parts fit and print well.

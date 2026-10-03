@@ -60,7 +60,9 @@
       "id": "t-channel",
       "name": "T Channel",
       "entrypoint": "vendor/monokini/monokini_T_channel.scad",
-      "status": "available"
+      "status": "available",
+      "browser": false,
+      "notes": "Crashes the OpenSCAD WebAssembly engine (2026.10.02; deep recursion overflows its fixed stack). Renders with native OpenSCAD."
     },
     {
       "id": "x-channel",
@@ -78,7 +80,9 @@
       "id": "i-bridge-channel",
       "name": "I Bridge Channel",
       "entrypoint": "vendor/monokini/monokini_I_bridge_channel.scad",
-      "status": "available"
+      "status": "available",
+      "browser": false,
+      "notes": "Crashes the OpenSCAD WebAssembly engine (2026.10.02; deep recursion overflows its fixed stack). Renders with native OpenSCAD."
     },
     {
       "id": "diagonal-channel",

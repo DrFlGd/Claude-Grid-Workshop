@@ -1,0 +1,89 @@
+name: Site
+
+# Builds the static site with the pinned OpenSCAD WebAssembly engine, checks
+# every model renders (in Node and in a real browser), compares generators with
+# published parts, and deploys to GitHub Pages from main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # screenshots and the benchmark go to the ci-screenshots branch
+  pages: write
+  id-token: write
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Install tools
+        run: |
+          pip install numpy playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Verify vendored source checksums
+        run: python tools/validate_sources.py
+
+      - name: Fetch pinned OpenSCAD WebAssembly engine
+        run: python tools/fetch_engine.py --out build/engine
+
+      - name: Build site
+        run: python tools/build_site.py --engine build/engine --out _site --hide-blocked
+
+      - name: Render every model with the browser engine (Node)
+        run: |
+          node tools/engine/cli.mjs bench _site --out bench.json
+          node -e '
+            const r = require("./bench.json");
+            const lines = r.results.map(x => `${x.status} ${x.id} ${x.seconds}s ${x.heap_mb}MB ${x.triangles} tris`);
+            console.log(`::notice title=Benchmark (OpenSCAD ${r.engine})::` + lines.join("%0A"));'
+
+      - name: Compare generators with published parts
+        run: python tools/parity.py --site _site --output parity.json
+
+      - name: Render every model in Chromium
+        run: |
+          python -m http.server -d _site 8000 > /dev/null 2>&1 &
+          sleep 2
+          python tests/screenshots.py --base http://localhost:8000/ --out shots
+
+      - name: Publish screenshots and reports to ci-screenshots branch
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          mkdir -p shots && cp bench.json parity.json shots/ 2>/dev/null || true
+          cd shots
+          git init -q && git checkout -q -b ci-screenshots
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "Site checks for ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with: { path: _site }
+
+  deploy:
+    # Needs Settings -> Pages -> Source: "GitHub Actions" (one-time, by the repo owner)
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

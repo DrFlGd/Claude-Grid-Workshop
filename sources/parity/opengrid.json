@@ -447,7 +447,9 @@
      "Directional": false,
      "Count": 1
     }
-   ]
+   ],
+   "expect": "differs",
+   "note": "Published lite snap was updated in Aug 2025; the generator makes the earlier shape. The published file is kept in the parts library."
   },
   {
    "id": "directional-snap-v2.1",

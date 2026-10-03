@@ -1,7 +1,9 @@
-// Claude Grid Workshop front end: catalog, auto-built settings form, render jobs, preview.
+// Claude Grid Workshop front end (static): catalog, settings forms with
+// upstream editor metadata, in-browser OpenSCAD renders, 3D preview, parts.
 import { Viewer } from "./viewer.js";
+import { EngineClient } from "./engine-client.js";
 
-const $ = (s, el = document) => el.querySelector(s);
+const $ = (s, root = document) => root.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -11,30 +13,26 @@ const el = (tag, attrs = {}, ...kids) => {
     else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
     else n.setAttribute(k, v === true ? "" : v);
   }
-  for (const c of kids.flat()) if (c != null) n.append(c.nodeType ? c : document.createTextNode(c));
+  for (const c of kids.flat()) if (c != null && c !== false) n.append(c.nodeType ? c : document.createTextNode(c));
   return n;
 };
-const api = async (path, opts) => {
-  const r = await fetch(path, opts);
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(data.error || `Request failed (${r.status})`), { status: r.status });
-  return data;
+const getJSON = async (path) => {
+  const r = await fetch(path);
+  if (!r.ok) throw Object.assign(new Error(`Couldn't load ${path} (${r.status})`), { status: r.status });
+  return r.json();
 };
 
 const FILAMENTS = [
   ["Tool yellow", "#f2b705"], ["Signal blue", "#2f6fd0"], ["Galaxy grey", "#6b7680"],
   ["Orange", "#ee6a1f"], ["Green", "#3c9a5f"], ["White", "#f4f4f2"], ["Black", "#26292c"],
 ];
-const GRID_FAMILIES = new Set(["gridfinity"]);
+const GRID_CATEGORIES = new Set(["gridfinity"]);
+const FORMAT_LABEL = { "3mf": "3MF", stl: "STL", step: "STEP", shapr: "Shapr3D", pdf: "PDF", obj: "OBJ" };
 
 const state = {
-  catalog: null,
-  model: null,       // detail of the open model
-  values: {},        // current form values
-  rendered: null,    // JSON of values used for the shown preview
-  job: null,
-  pollTimer: null,
-  viewer: null,
+  catalog: null, engine: null, viewer: null, viewerOwner: null,
+  model: null, values: {}, rendered: null, lastResult: null, job: null, conditions: [],
+  libraries: [], libDetail: {}, openLib: null, downloadUrl: null,
 };
 
 // ---------------------------------------------------------------- helpers
@@ -42,16 +40,16 @@ function humanize(name) {
   const axis = name.match(/^([a-z]{3,})([xyz])$/);
   if (axis) name = `${axis[1]}_${axis[2].toUpperCase()}`;
   const s = name.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim();
-  const words = s.split(" ").map((w, i) => {
+  return s.split(" ").map((w, i) => {
     if (/^(mm|deg)$/i.test(w)) return `(${w.toLowerCase()})`;
     if (/^[A-Z0-9]{2,}$/.test(w) || /^[XYZ]$/.test(w)) return w;
     return i === 0 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase();
-  });
-  return words.join(" ");
+  }).join(" ");
 }
 const fmt = (n) => (Math.round(n * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const bytes = (n) => (n > 1048576 ? `${fmt(n / 1048576)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const savedColor = (() => { try { return localStorage.getItem("gw-filament"); } catch { return null; } })() || FILAMENTS[0][1];
 
 function licenseBadge(lic) {
   if (!lic || lic.public_use === "ok") return null;
@@ -59,45 +57,68 @@ function licenseBadge(lic) {
   return el("span", { class: `badge ${lic.public_use}`, title: lic.notes || lic.spdx, text });
 }
 
-// ---------------------------------------------------------------- routing
-function route() {
-  const m = location.pathname.match(/^\/m\/([a-z0-9-]+)\/([a-z0-9-]+)\/?$/);
-  const p = location.pathname.match(/^\/parts\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/);
-  stopPolling();
-  if (m) openModel(`${m[1]}/${m[2]}`);
-  else if (p) openLibrary(p[1], p[2]);
-  else showCatalog();
+/** Keep simple formatting from third-party descriptions; drop anything active. */
+const SAFE_TAGS = new Set(["A", "B", "STRONG", "I", "EM", "BR", "P", "SPAN", "CODE", "UL", "OL", "LI", "DIV", "SMALL"]);
+function safeHTML(html) {
+  const doc = new DOMParser().parseFromString(`<div>${html || ""}</div>`, "text/html");
+  const walk = (node) => {
+    for (const child of [...node.childNodes]) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        if (!SAFE_TAGS.has(child.tagName)) { child.replaceWith(...child.childNodes); continue; }
+        for (const attr of [...child.attributes]) {
+          const keep = (attr.name === "href" && /^https?:\/\//i.test(attr.value)) ||
+            attr.name === "data-display-condition" || (attr.name === "class" && /^alert/.test(attr.value));
+          if (!keep) child.removeAttribute(attr.name);
+        }
+        if (child.tagName === "A") { child.target = "_blank"; child.rel = "noopener"; }
+        walk(child);
+      } else if (child.nodeType !== Node.TEXT_NODE) child.remove();
+    }
+  };
+  const root = doc.body.firstChild;
+  walk(root);
+  return [...root.childNodes];
 }
 
+/** Upstream display conditions are small JS expressions over parameter names. */
+function compileCondition(expr, names) {
+  try {
+    const fn = new Function(...names, `"use strict"; return (${expr});`);
+    return (values) => { try { return !!fn(...names.map((n) => values[n])); } catch { return true; } };
+  } catch { return () => true; }
+}
+
+// ---------------------------------------------------------------- routing
+function route() {
+  const h = location.hash.replace(/^#\/?/, "");
+  const m = h.match(/^m\/([a-z0-9-]+)\/([a-z0-9-]+)\/?$/);
+  const p = h.match(/^parts\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/);
+  if (m) openModel(`${m[1]}/${m[2]}`);
+  else if (p) openLibrary(p[1], p[2]);
+  else if (h === "about") showAbout();
+  else showCatalog();
+}
+window.addEventListener("hashchange", route);
+
 function showView(name) {
-  for (const v of ["catalog", "model", "library"]) $(`#view-${v}`).hidden = v !== name;
+  for (const v of ["catalog", "model", "library", "about"]) $(`#view-${v}`).hidden = v !== name;
   const stage = $(".stage");
   if (name === "model" && stage.parentElement.id !== "view-model") $("#view-model").append(stage);
   if (name === "library" && stage.parentElement.id !== "view-library") $("#view-library").append(stage);
-  if (name !== "catalog" && !state.viewer) {
+  if ((name === "model" || name === "library") && !state.viewer) {
     state.viewer = new Viewer($("#viewer"));
     state.viewer.setColor(savedColor);
   }
   state.viewer?.resize();
+  if (name !== "model") cancelJob();
 }
-function go(path) {
-  if (path !== location.pathname) history.pushState({}, "", path);
-  route();
-}
-document.addEventListener("click", (e) => {
-  const a = e.target.closest("a[data-link]");
-  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
-  e.preventDefault();
-  go(a.getAttribute("href"));
-});
-window.addEventListener("popstate", route);
 
 function setCrumbs(parts) {
   const c = $("#crumbs");
   c.replaceChildren();
   parts.forEach((p, i) => {
     if (i) c.append(el("span", { class: "sep", "aria-hidden": "true", text: "/" }));
-    c.append(p.href ? el("a", { href: p.href, "data-link": true, text: p.text }) : el("span", { text: p.text }));
+    c.append(p.href ? el("a", { href: p.href, text: p.text }) : el("span", { text: p.text }));
   });
 }
 
@@ -123,71 +144,66 @@ function renderCatalog(query = "") {
     list.append(el("section", { class: "cat-section" },
       el("h2", {}, cat.label, el("small", { text: `${models.length} generator${models.length > 1 ? "s" : ""}` })),
       el("ul", { class: "cat-rows" }, models.map((m) => el("li", {},
-        el("a", { href: `/m/${m.key}`, "data-link": true },
+        el("a", { href: `#/m/${m.key}` },
           el("span", { class: "m-name", text: m.name }),
           el("span", { class: "m-family", text: m.family_name }),
           licenseBadge(m.license) && el("span", { class: "m-badge" }, licenseBadge(m.license))))))));
   }
-  // ready-made parts: whole libraries when browsing, matching parts when searching
-  const libs = state.libraries || [];
-  const partHits = [];
-  for (const lib of libs) {
+  const hits = [];
+  for (const lib of state.libraries) {
     for (const it of lib.items) {
-      if (q && [it.name, it.category, lib.name, ...(it.tags || [])].join(" ").toLowerCase().includes(q)) partHits.push([lib, it]);
+      if (q && [it.name, it.category, lib.name, ...(it.tags || [])].join(" ").toLowerCase().includes(q)) hits.push([lib, it]);
     }
   }
-  if (libs.length && (!q || partHits.length)) {
-    shown += q ? partHits.length : libs.length;
+  if (state.libraries.length && (!q || hits.length)) {
+    shown += q ? hits.length : state.libraries.length;
     list.append(el("section", { class: "cat-section" },
-      el("h2", {}, "Ready-made parts", el("small", { text: q ? `${partHits.length} part${partHits.length === 1 ? "" : "s"}` : `${libs.length} collection${libs.length > 1 ? "s" : ""}` })),
+      el("h2", {}, "Ready-made parts", el("small", { text: q ? `${hits.length} part${hits.length === 1 ? "" : "s"}` : `${state.libraries.length} collection${state.libraries.length > 1 ? "s" : ""}` })),
       el("ul", { class: "cat-rows" }, q
-        ? partHits.slice(0, 30).map(([lib, it]) => el("li", {}, el("a", { href: `/parts/${lib.id}/${it.id}`, "data-link": true },
+        ? hits.slice(0, 30).map(([lib, it]) => el("li", {}, el("a", { href: `#/parts/${lib.id}/${it.id}` },
             el("span", { class: "m-name", text: it.name }), el("span", { class: "m-family", text: `${lib.name}, ${it.category.toLowerCase()}` }))))
-        : libs.map((lib) => el("li", {}, el("a", { href: `/parts/${lib.id}`, "data-link": true },
+        : state.libraries.map((lib) => el("li", {}, el("a", { href: `#/parts/${lib.id}` },
             el("span", { class: "m-name", text: lib.name }),
             el("span", { class: "m-family", text: `${lib.item_count} parts: ${lib.categories.join(", ").toLowerCase()}` })))))));
   }
   if (!shown) list.append(el("p", { class: "empty", text: `Nothing matches “${query}”. Try “bin”, “baseplate”, “label” or “connector”.` }));
   const missing = state.catalog.families.filter((f) => f.status === "missing-source");
   if (!q && missing.length) {
-    list.append(el("p", { class: "missing",
-      text: `Coming once their source files are added: ${missing.map((f) => f.name).join(", ")}.` }));
+    list.append(el("p", { class: "missing", text: `Coming once their source files are added: ${missing.map((f) => f.name).join(", ")}.` }));
   }
 }
 $("#catalog-search").addEventListener("input", (e) => renderCatalog(e.target.value));
 
-// ---------------------------------------------------------------- model view
+// ---------------------------------------------------------------- model page
 async function openModel(key) {
   showView("model");
-  $("#filament").hidden = false;
   if (state.model?.key === key) {
     if (state.viewerOwner !== "model") {
       state.viewerOwner = "model";
-      state.viewer.clear();
-      $("#dims").hidden = true;
-      if (state.lastJob?.download_url) {
-        state.viewer.load(state.lastJob.download_url.replace(/\?.*/, "?inline=1")).then((d) => showDims(d, state.lastJob)).catch(() => {});
-      }
+      $("#stage-empty").hidden = true;
+      if (state.lastResult) showResult(state.lastResult, state.lastResultValues, true);
+      else { state.viewer.clear(); $("#dims").hidden = true; }
     }
     return;
   }
   state.viewerOwner = "model";
   let detail;
   try {
-    detail = await api(`/api/models/${key}`);
+    detail = await getJSON(`data/models/${key.replace("/", "--")}.json`);
   } catch (e) {
     setStatus("error", e.status === 404 ? "This generator doesn't exist. Pick one from the catalog." : e.message);
     return;
   }
   state.model = detail;
-  $("#stage-empty").hidden = true;
   state.rendered = null;
+  state.lastResult = null;
   state.viewer.clear();
+  $("#stage-empty").hidden = true;
   $("#dims").hidden = true;
   $("#log").hidden = true;
   setDownload(null);
-  document.title = `${detail.name} · ${detail.family_name} · Claude Grid Workshop`;
-  setCrumbs([{ text: "Generators", href: "/" }, { text: detail.family_name }]);
+  document.title = `${detail.name}, ${detail.family_name} | Claude Grid Workshop`;
+  setCrumbs([{ text: "Generators", href: "#/" }, { text: detail.family_name }]);
 
   const fam = detail.family_name, nm = detail.name;
   $("#model-title").textContent = fam.toLowerCase().endsWith(nm.toLowerCase()) ? fam : `${fam} ${nm.toLowerCase()}`;
@@ -204,82 +220,115 @@ async function openModel(key) {
   }
   if (detail.source?.repository) credit.append(el("a", { href: detail.source.repository, target: "_blank", rel: "noopener", text: "Source" }), ". ");
   credit.append(`License: ${detail.license?.spdx === "NOASSERTION" ? "not stated" : detail.license?.spdx}.`);
-  const lic = $("#model-license");
-  lic.replaceChildren();
-  const badge = licenseBadge(detail.license);
-  if (badge) lic.append(badge);
+  $("#model-license").replaceChildren(...[licenseBadge(detail.license)].filter(Boolean));
+  const notes = $("#model-notes");
+  notes.replaceChildren(...(detail.description_html ? safeHTML(detail.description_html) : []));
+  notes.hidden = !detail.description_html;
 
   state.values = Object.fromEntries(detail.parameters.map((p) => [p.name, structuredClone(p.default)]));
   $("#param-search").value = "";
   buildForm();
-  generate(); // show the default part straight away (cached after the first time)
+  generate(); // show the default part straight away
 }
 
 // ---------------------------------------------------------------- form
 function buildForm() {
   const form = $("#params");
   form.replaceChildren();
-  const { parameters, groups } = state.model;
+  const { parameters, groups, tabs = {} } = state.model;
+  const names = parameters.map((p) => p.name).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n));
+  state.conditions = [];
+  for (const p of parameters) if (p.show_if) state.conditions.push({ test: compileCondition(p.show_if, names), name: p.name });
+  for (const node of $("#model-notes").querySelectorAll("[data-display-condition]")) {
+    state.conditions.push({ test: compileCondition(node.dataset.displayCondition, names), node });
+  }
   groups.forEach((g, gi) => {
-    const fields = parameters.filter((p) => p.group === g);
-    const body = el("div", { class: "group-body" }, fields.map(buildField));
-    const det = el("details", { class: "group", "data-group": g, open: gi < 2 || groups.length <= 3 },
-      el("summary", {}, el("span", { text: g === "Parameters" ? "Settings" : g }), el("span", { class: "changed-count" })),
-      body);
+    const tab = tabs[g] || {};
+    const fields = parameters.filter((p) => p.group === g && !p.hidden && p.name !== tab.control);
+    const control = tab.control && parameters.find((p) => p.name === tab.control);
+    const body = el("div", { class: "group-body" },
+      tab.description_html ? el("div", { class: "group-note" }, safeHTML(tab.description_html)) : null,
+      fields.map(buildField));
+    const title = el("span", { class: "group-title", text: g === "Parameters" ? "Settings" : g });
+    const summary = el("summary", {}, title);
+    if (control) {
+      const box = el("input", { type: "checkbox", class: "group-switch", "aria-label": `Use ${g.toLowerCase()}`,
+        onclick: (e) => e.stopPropagation(),
+        onchange: (e) => { setValue(control, e.target.checked); det.open = e.target.checked; } });
+      box.checked = !!state.values[control.name];
+      summary.prepend(box);
+    }
+    if (tab.help_link) summary.append(el("a", { class: "help-link", href: tab.help_link, target: "_blank", rel: "noopener", text: "Help", onclick: (e) => e.stopPropagation() }));
+    summary.append(el("span", { class: "changed-count" }));
+    const open = control ? !!state.values[control.name] : tab.collapsed ? false : gi < 2 || groups.length <= 3;
+    const det = el("details", { class: "group", "data-group": g, open }, summary, body);
+    if (!fields.length && !control) return;
     form.append(det);
   });
   refreshChanged();
+  applyConditions();
 }
 
 function buildField(p) {
   const id = `p-${p.name}`;
-  const label = humanize(p.name);
-  const help = p.description ? el("p", { class: "help", id: `${id}-help`, text: p.description }) : null;
+  const label = p.label || humanize(p.name);
+  const helpNodes = [];
+  if (p.description_html) helpNodes.push(el("div", { class: "help", id: `${id}-help` }, safeHTML(p.description_html)));
+  else if (p.description) helpNodes.push(el("p", { class: "help", id: `${id}-help`, text: p.description }));
   const reset = el("button", { type: "button", class: "reset", text: "Reset", hidden: true,
     "aria-label": `Reset ${label}`, onclick: () => { setValue(p, structuredClone(p.default)); syncField(p); } });
+  const helpLink = p.help_link ? el("a", { class: "help-link", href: p.help_link, target: "_blank", rel: "noopener", text: "Help" }) : null;
+  const head = (labelNode) => el("div", { class: "field-head" }, labelNode, helpLink, reset);
   const wrap = el("div", { class: "field", "data-name": p.name, "data-search": `${p.name} ${label} ${p.description || ""}`.toLowerCase() });
-  const describedby = help ? `${id}-help` : null;
+  const describedby = helpNodes.length ? `${id}-help` : null;
 
   if (p.widget === "checkbox") {
     wrap.classList.add("check");
-    const input = el("input", { type: "checkbox", id, "aria-describedby": describedby,
-      onchange: (e) => setValue(p, e.target.checked) });
-    wrap.append(input, el("div", { class: "field-head" }, el("label", { for: id, text: label }), reset), ...(help ? [help] : []));
+    wrap.append(el("input", { type: "checkbox", id, "aria-describedby": describedby, onchange: (e) => setValue(p, e.target.checked) }),
+      head(el("label", { for: id, text: label })), ...helpNodes);
   } else if (p.widget === "dropdown") {
     const sel = el("select", { id, "aria-describedby": describedby,
       onchange: (e) => setValue(p, p.options[e.target.selectedIndex].value) },
       p.options.map((o) => el("option", { text: o.label })));
-    wrap.append(el("div", { class: "field-head" }, el("label", { for: id, text: label }), reset), sel, ...(help ? [help] : []));
+    wrap.append(head(el("label", { for: id, text: label })), sel, ...helpNodes);
   } else if (p.widget === "slider" && !Array.isArray(p.default)) {
     const step = p.step ?? (Number.isInteger(p.default) && Number.isInteger(p.min ?? 0) && Number.isInteger(p.max ?? 0) ? 1 : "any");
     const range = el("input", { type: "range", min: p.min, max: p.max, step: step === "any" ? (p.max - p.min) / 100 : step,
       "aria-hidden": "true", tabindex: "-1", oninput: (e) => { setValue(p, +e.target.value); syncField(p, "range"); } });
     const num = el("input", { type: "number", id, min: p.min, max: p.max, step, "aria-describedby": describedby,
       oninput: (e) => { if (e.target.value !== "" && e.target.checkValidity()) { setValue(p, +e.target.value); syncField(p, "number"); } } });
-    wrap.append(el("div", { class: "field-head" }, el("label", { for: id, text: label }), reset), el("div", { class: "slider" }, range, num), ...(help ? [help] : []));
+    wrap.append(head(el("label", { for: id, text: label })), el("div", { class: "slider" }, range, num), ...helpNodes);
   } else if (Array.isArray(p.default)) {
     const axes = p.default.length <= 3 ? ["X", "Y", "Z"] : p.default.map((_, i) => `${i + 1}`);
     const editable = p.default.every((v) => typeof v !== "object");
     const inputs = p.default.map((v, i) => {
       const t = typeof v === "boolean" ? "checkbox" : typeof v === "number" ? "number" : "text";
-      const inp = el("input", { type: t, "data-i": i, step: "any", min: p.min, max: p.max, disabled: !editable,
+      return el("label", {}, axes[i] || `${i + 1}`, el("input", { type: t, "data-i": i, step: "any", min: p.min, max: p.max, disabled: !editable,
         oninput: (e) => {
           const next = structuredClone(state.values[p.name]);
           next[i] = t === "checkbox" ? e.target.checked : t === "number" ? (e.target.value === "" ? next[i] : +e.target.value) : e.target.value;
           setValue(p, next);
-        } });
-      return el("label", {}, axes[i] || `${i + 1}`, inp);
+        } }));
     });
-    wrap.append(el("div", { class: "field-head" }, el("span", { class: "label", id, text: label }), reset),
-      el("div", { class: "vector", role: "group", "aria-labelledby": id, style: `--n:${Math.min(p.default.length, 4)}` }, inputs), ...(help ? [help] : []));
+    wrap.append(head(el("span", { class: "label", id, text: label })),
+      el("div", { class: "vector", role: "group", "aria-labelledby": id, style: `--n:${Math.min(p.default.length, 4)}` }, inputs), ...helpNodes);
   } else {
     const t = p.type === "number" ? "number" : "text";
-    const input = el("input", { type: t, id, step: "any", min: p.min, maxlength: t === "text" ? 200 : null, "aria-describedby": describedby,
-      oninput: (e) => {
-        if (t === "number") { if (e.target.value !== "" && e.target.checkValidity()) setValue(p, +e.target.value); }
-        else setValue(p, e.target.value);
-      } });
-    wrap.append(el("div", { class: "field-head" }, el("label", { for: id, text: label }), reset), input, ...(help ? [help] : []));
+    wrap.append(head(el("label", { for: id, text: label })),
+      el("input", { type: t, id, step: "any", min: p.min, max: p.max, maxlength: t === "text" ? 200 : null, "aria-describedby": describedby,
+        oninput: (e) => {
+          if (t === "number") { if (e.target.value !== "" && e.target.checkValidity()) setValue(p, +e.target.value); }
+          else setValue(p, e.target.value);
+        } }), ...helpNodes);
+  }
+  if (p.presets) {
+    const sel = el("select", { class: "presets", "aria-label": `${p.presets.label} for ${label}`,
+      onchange: (e) => {
+        const pick = p.presets.values[e.target.selectedIndex - 1];
+        if (pick) { setValue(p, structuredClone(pick.value)); syncField(p); }
+      } },
+      el("option", { text: `${p.presets.label}…` }), p.presets.values.map((v) => el("option", { text: v.label })));
+    wrap.insertBefore(sel, wrap.querySelector(".help") || null);
   }
   queueMicrotask(() => syncField(p));
   return wrap;
@@ -303,13 +352,26 @@ function syncField(p, skip) {
     const inp = $("input", wrap);
     if (document.activeElement !== inp) inp.value = v;
   }
+  if (p.presets) {
+    const i = p.presets.values.findIndex((x) => same(x.value, v));
+    $(".presets", wrap).selectedIndex = i + 1;
+  }
   refreshChanged();
 }
 
 function setValue(p, v) {
   state.values[p.name] = v;
   refreshChanged();
+  applyConditions();
   updateStatusForEdits();
+}
+
+function applyConditions() {
+  for (const c of state.conditions) {
+    const show = c.test(state.values);
+    if (c.node) c.node.hidden = !show, c.node.style.display = show ? "" : "none";
+    else $(`.field[data-name="${CSS.escape(c.name)}"]`)?.classList.toggle("cond-hidden", !show);
+  }
 }
 
 function refreshChanged() {
@@ -330,6 +392,11 @@ function refreshChanged() {
 $("#reset-all").addEventListener("click", () => {
   if (!state.model) return;
   for (const p of state.model.parameters) { state.values[p.name] = structuredClone(p.default); syncField(p); }
+  document.querySelectorAll(".group-switch").forEach((b) => {
+    const g = b.closest(".group"); const tab = state.model.tabs?.[g.dataset.group];
+    if (tab?.control) { b.checked = !!state.values[tab.control]; g.open = b.checked; }
+  });
+  applyConditions();
   updateStatusForEdits();
 });
 
@@ -339,9 +406,10 @@ $("#param-search").addEventListener("input", (e) => {
     let any = false;
     g.querySelectorAll(".field").forEach((f) => {
       const hit = !q || f.dataset.search.includes(q);
-      f.hidden = !hit; any ||= hit;
+      f.classList.toggle("search-hidden", !hit);
+      any ||= hit && !f.classList.contains("cond-hidden");
     });
-    g.hidden = !any;
+    g.hidden = q ? !any : false;
     if (q && any) g.open = true;
   });
 });
@@ -354,7 +422,7 @@ function setStatus(kind, text) {
 }
 
 function updateStatusForEdits() {
-  if (state.job && ["queued", "running"].includes(state.job.status)) return;
+  if (state.job) return;
   const a = $("#download");
   if (state.rendered && same(JSON.parse(state.rendered), state.values)) {
     setStatus("ok", "Preview matches your settings.");
@@ -365,87 +433,92 @@ function updateStatusForEdits() {
   }
 }
 
-function setDownload(job) {
-  const a = $("#download");
-  if (job?.download_url) {
-    a.href = job.download_url;
-    a.classList.remove("is-disabled");
-    a.removeAttribute("aria-disabled");
-    a.textContent = "Download STL";
-  } else {
-    a.href = "#";
-    a.classList.add("is-disabled");
-    a.setAttribute("aria-disabled", "true");
-    a.textContent = "Download STL";
+function friendlyName(model, values) {
+  let base = `${model.family}-${model.id}`;
+  const dims = [];
+  for (const k of ["gridx", "gridy", "gridz", "Width", "Depth", "Height", "Width_Units", "Length_Units",
+    "Board_Width", "Board_Height", "shelf_width", "shelf_depth", "GridSize", "plate_size"]) {
+    if (k in values) [].concat(values[k]).forEach((x) => { if (typeof x === "number") dims.push(String(x)); });
   }
+  const part = model.part_parameter;
+  if (part && ["string", "number"].includes(typeof values[part])) base += `-${values[part]}`;
+  return (base + (dims.length ? "-" + dims.slice(0, 4).join("x") : "")).replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 120) + ".stl";
 }
 
-async function generate() {
-  if (!state.model) return;
+function setDownload(blob, name) {
+  const a = $("#download");
+  if (state.downloadUrl) URL.revokeObjectURL(state.downloadUrl);
+  state.downloadUrl = blob ? URL.createObjectURL(blob) : null;
+  a.href = state.downloadUrl || "#";
+  a.download = name || "model.stl";
+  a.classList.toggle("is-disabled", !blob);
+  if (blob) a.removeAttribute("aria-disabled"); else a.setAttribute("aria-disabled", "true");
+  a.textContent = "Download STL";
+}
+
+function generate() {
+  if (!state.model || !state.engine) return;
+  cancelJob();
   const values = structuredClone(state.values);
-  const model = state.model.key;
-  stopPolling();
+  const model = state.model;
+  const started = Date.now();
   $("#generate").disabled = true;
   $("#log").hidden = true;
-  setStatus("busy", "Sending to OpenSCAD…");
-  let job;
-  try {
-    job = await api("/api/render", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, params: values }) });
-  } catch (e) {
-    $("#generate").disabled = false;
-    setStatus("error", e.message);
-    return;
-  }
+  let stage = "Starting…";
+  const job = state.engine.render(model, values, (ev) => { if (ev.type === "stage") stage = ev.stage; });
   state.job = job;
-  track(job, values, model);
-}
-
-function track(job, values, model) {
-  const started = Date.now();
-  const tick = async () => {
-    if (state.model?.key !== model) return;
-    if (["queued", "running"].includes(job.status)) {
-      const secs = Math.round((Date.now() - started) / 1000);
-      const msg = job.status === "queued" ? "Waiting for a free renderer…" : `Rendering in OpenSCAD… ${secs}s`;
-      setStatus("busy", msg);
-      showOverlay(secs > 1 || !state.rendered ? `${msg}${secs > 20 ? " Large or detailed parts can take a few minutes." : ""}` : null);
-      state.pollTimer = setTimeout(async () => {
-        try { job = state.job = await api(`/api/jobs/${job.id}`); } catch (e) { job = { ...job, status: "failed", error: e.message }; }
-        tick();
-      }, secs < 5 ? 400 : 1000);
-      return;
-    }
-    showOverlay(null);
-    $("#generate").disabled = false;
-    if (job.status === "done") {
-      try {
-        setStatus("busy", "Loading preview…");
-        const dims = await state.viewer.load(job.download_url.replace(/\?.*/, "?inline=1"));
-        state.lastJob = job;
-        state.rendered = JSON.stringify(values);
-        showDims(dims, job);
-        setDownload(job);
-        setStatus("ok", job.cached ? "Preview matches your settings. Served from cache." : `Preview matches your settings. Rendered in ${fmt(job.seconds)}s.`);
-        if (!same(values, state.values)) updateStatusForEdits(); // edited while it rendered
-      } catch (e) {
-        setStatus("error", e.message);
-      }
-    } else if (job.status === "cancelled") {
-      setStatus("stale", "Render cancelled.");
-    } else {
-      setDownload(null);
-      setStatus("error", job.error || "The render failed.");
-      if (job.log) { $("#log-text").textContent = job.log; $("#log").hidden = false; }
-    }
+  const tick = () => {
+    if (state.job !== job) return;
+    const secs = Math.round((Date.now() - started) / 1000);
+    setStatus("busy", `${stage} ${secs}s`);
+    if (secs >= 1 || !state.rendered) showOverlay(`${stage}${secs > 15 ? " Detailed parts can take a minute or more on slower devices." : ""}`);
+    job.timer = setTimeout(tick, 500);
   };
   tick();
+  job.promise.then(async (result) => {
+    if (state.job !== job) return;
+    finishJob();
+    await showResult(result, values);
+  }, (err) => {
+    if (state.job !== job) return;
+    finishJob();
+    if (err.cancelled) { setStatus("stale", "Render cancelled."); return; }
+    setStatus("error", err.message);
+    if (err.logs?.length) { $("#log-text").textContent = err.logs.join("\n"); $("#log").hidden = false; }
+  });
 }
 
-function stopPolling() {
-  clearTimeout(state.pollTimer);
+function finishJob() {
+  if (state.job) clearTimeout(state.job.timer);
+  state.job = null;
   showOverlay(null);
   $("#generate").disabled = false;
+}
+
+function cancelJob() {
+  if (!state.job) return;
+  const j = state.job;
+  finishJob();
+  j.cancel();
+}
+
+async function showResult(result, values, restoring = false) {
+  try {
+    const url = URL.createObjectURL(result.blob);
+    const dims = await state.viewer.load(url);
+    URL.revokeObjectURL(url);
+    state.rendered = JSON.stringify(values);
+    state.lastResult = result;
+    state.lastResultValues = values;
+    showDims(dims, result.blob.size);
+    setDownload(result.blob, friendlyName(state.model, values));
+    if (!restoring) {
+      setStatus("ok", result.cached ? "Preview matches your settings." : `Preview matches your settings. Made in ${fmt(result.ms / 1000)} s on this device.`);
+    }
+    if (!same(values, state.values)) updateStatusForEdits();
+  } catch (e) {
+    setStatus("error", e.message);
+  }
 }
 
 function showOverlay(text) {
@@ -453,15 +526,15 @@ function showOverlay(text) {
   if (text) $("#overlay-text").textContent = text;
 }
 
-function showDims(d, job) {
+function showDims(d, size) {
   const box = $("#dims");
-  const grid = GRID_FAMILIES.has(state.model.category);
+  const grid = state.viewerOwner === "model" && GRID_CATEGORIES.has(state.model?.category);
   const units = (v) => fmt(Math.round(v / 42 * 2) / 2);
   const gridText = `About ${units(d.x)} × ${units(d.y)} grid units` + (d.z >= 7 ? `, ${fmt(d.z / 7)} height units` : "");
   box.replaceChildren(...[
     el("span", { class: "mm", text: `${fmt(d.x)} × ${fmt(d.y)} × ${fmt(d.z)} mm` }),
     grid && el("span", { class: "units", text: gridText }),
-    el("span", { class: "meta", text: `${d.triangles.toLocaleString()} triangles, ${bytes(job.bytes)}` }),
+    el("span", { class: "meta", text: `${d.triangles.toLocaleString()} triangles${size ? `, ${bytes(size)}` : ""}` }),
   ].filter(Boolean));
   box.hidden = false;
 }
@@ -471,30 +544,20 @@ $("#params").addEventListener("submit", (e) => { e.preventDefault(); generate();
 $("#params").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.matches("input:not([type=checkbox])")) { e.preventDefault(); generate(); }
 });
-$("#cancel").addEventListener("click", async () => {
-  if (!state.job) return;
-  stopPolling();
-  try { await api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" }); } catch {}
-  state.job = { ...state.job, status: "cancelled" };
-  setStatus("stale", "Render cancelled.");
-});
+$("#cancel").addEventListener("click", () => { cancelJob(); setStatus("stale", "Render cancelled."); });
 
 // ---------------------------------------------------------------- part libraries
-const FORMAT_LABEL = { "3mf": "3MF", stl: "STL", step: "STEP", shapr: "Shapr3D", pdf: "PDF", obj: "OBJ" };
-
 async function openLibrary(libId, itemId) {
   showView("library");
-  stopPolling();
-  let lib = state.libDetail?.[libId];
+  let lib = state.libDetail[libId];
   if (!lib) {
     try {
-      lib = await api(`/api/libraries/${libId}`);
-    } catch (e) {
+      lib = state.libDetail[libId] = await getJSON(`data/libraries/${libId}.json`);
+    } catch {
       $("#lib-title").textContent = "Parts not found";
       $("#lib-summary").textContent = "This collection doesn't exist. Go back to the catalog to pick one.";
       return;
     }
-    state.libDetail = { ...(state.libDetail || {}), [libId]: lib };
   }
   if (state.openLib !== libId) {
     state.openLib = libId;
@@ -509,20 +572,18 @@ async function openLibrary(libId, itemId) {
     buildPartList(lib);
   }
   const item = lib.items.find((i) => i.id === itemId) || lib.items.find((i) => i.preview_url) || lib.items[0];
-  if (!itemId && item) history.replaceState({}, "", `/parts/${libId}/${item.id}`);
+  if (!itemId && item) history.replaceState(null, "", `#/parts/${libId}/${item.id}`);
   showPart(lib, item);
 }
 
 function buildPartList(lib) {
   const nav = $("#part-list");
   nav.replaceChildren();
-  const cats = [...new Set(lib.items.map((i) => i.category))];
-  for (const c of cats) {
+  for (const c of [...new Set(lib.items.map((i) => i.category))]) {
     nav.append(el("div", { class: "part-group", "data-cat": c },
       el("h2", { text: c }),
       el("ul", {}, lib.items.filter((i) => i.category === c).map((i) => el("li", {},
-        el("a", { href: `/parts/${lib.id}/${i.id}`, "data-link": true, "data-id": i.id,
-          "data-search": [i.name, c, ...(i.tags || [])].join(" ").toLowerCase() },
+        el("a", { href: `#/parts/${lib.id}/${i.id}`, "data-id": i.id, "data-search": [i.name, c, ...(i.tags || [])].join(" ").toLowerCase() },
           el("span", { text: i.name }),
           el("span", { class: "formats", text: [...new Set(i.files.map((f) => FORMAT_LABEL[f.format] || f.format))].join(" ") })))))));
   }
@@ -539,26 +600,25 @@ $("#part-search").addEventListener("input", (e) => {
 
 async function showPart(lib, item) {
   if (!item) return;
-  document.title = `${item.name} · ${lib.name} · Claude Grid Workshop`;
-  setCrumbs([{ text: "Generators", href: "/" }, { text: lib.name, href: `/parts/${lib.id}` }, { text: item.name }]);
+  document.title = `${item.name}, ${lib.name} | Claude Grid Workshop`;
+  setCrumbs([{ text: "Generators", href: "#/" }, { text: lib.name, href: `#/parts/${lib.id}` }, { text: item.name }]);
   document.querySelectorAll("#part-list a").forEach((a) => a.toggleAttribute("aria-current", a.dataset.id === item.id));
   const nav = $("#part-list"), cur = $(`#part-list a[data-id="${CSS.escape(item.id)}"]`);
-  if (cur && nav.scrollHeight > nav.clientHeight + 1) {  // desktop: the list scrolls on its own
+  if (cur && nav.scrollHeight > nav.clientHeight + 1) {
     const top = cur.offsetTop - nav.offsetTop;
-    if (top < nav.scrollTop || top > nav.scrollTop + nav.clientHeight - 40) nav.scrollTop = top - nav.clientHeight / 3;
+    if (top < nav.scrollTop || top > nav.scrollTop + nav.clientHeight - 80) nav.scrollTop = top - nav.clientHeight / 3;
   }
   const status = $("#part-status");
   status.replaceChildren(el("p", { class: "part-name", text: item.name }));
   if (item.description) status.append(el("p", { class: "help", text: item.description }));
-  if (item.generator) status.append(el("p", { class: "help" }, el("a", { href: `/m/${item.generator}`, "data-link": true, text: "Open the generator" }), " to print it at any size."));
+  if (item.generator) status.append(el("p", { class: "help" }, el("a", { href: `#/m/${item.generator}`, text: "Open the generator" }), " to print it at any size."));
   const dl = $("#part-downloads");
   dl.replaceChildren(...item.files.map((f, i) => el("a", {
-    class: `button ${i === 0 && f.format !== "step" && f.format !== "shapr" ? "primary" : "secondary"}`, href: f.url, download: true,
-    title: f.path.split("/").pop(),
+    class: `button ${i === 0 && !["step", "shapr"].includes(f.format) ? "primary" : "secondary"}`, href: f.url,
+    download: f.path.split("/").pop(), title: f.path.split("/").pop(),
     text: `${f.label ? f.label + ": " : ""}${FORMAT_LABEL[f.format] || f.format} (${bytes(f.bytes)})` })));
   dl.classList.toggle("many", item.files.length > 4);
   state.viewerOwner = "library";
-  $("#filament").hidden = false;
   $("#log").hidden = true;
   showOverlay(null);
   state.viewer.clear();
@@ -572,15 +632,31 @@ async function showPart(lib, item) {
   empty.hidden = true;
   try {
     const d = await state.viewer.load(item.preview_url);
-    if (state.viewerOwner !== "library") return;
-    const box = $("#dims");
-    box.replaceChildren(el("span", { class: "mm", text: `${fmt(d.x)} × ${fmt(d.y)} × ${fmt(d.z)} mm` }),
-      el("span", { class: "meta", text: `${d.triangles.toLocaleString()} triangles` }));
-    box.hidden = false;
+    if (state.viewerOwner === "library") showDims(d);
   } catch (e) {
     empty.textContent = `Preview unavailable: ${e.message}`;
     empty.hidden = false;
   }
+}
+
+// ---------------------------------------------------------------- about
+function showAbout() {
+  showView("about");
+  document.title = "About | Claude Grid Workshop";
+  setCrumbs([{ text: "Generators", href: "#/" }, { text: "About" }]);
+  const c = state.catalog;
+  const body = $("#about-body");
+  body.replaceChildren(
+    el("p", { text: `Every part is made in your browser by OpenSCAD ${c?.engine || ""} (WebAssembly build). Nothing you configure is sent to a server, and once loaded the site keeps working offline.` }),
+    el("p", {}, "OpenSCAD is free software under the GNU GPL, version 2 or later: ",
+      el("a", { href: "https://github.com/openscad/openscad", target: "_blank", rel: "noopener", text: "source code" }), ", ",
+      el("a", { href: "engine/COPYING", target: "_blank", text: "license" }), "."),
+    el("h2", { text: "Generators" }),
+    el("ul", {}, (c?.families || []).filter((f) => f.status !== "missing-source").map((f) => el("li", {},
+      el("b", { text: f.name }), ` by ${(f.authors || []).map((a) => a.name).join(", ") || "unknown"}. License: ${f.license?.spdx === "NOASSERTION" ? "not stated" : f.license?.spdx}.`))),
+    el("h2", { text: "Parts" }),
+    el("ul", {}, state.libraries.map((l) => el("li", {}, el("b", { text: l.name }), ` by ${(l.authors || []).map((a) => a.name).join(", ")}. License: ${l.license?.spdx}.`))),
+    el("p", { class: "muted", text: "Fonts for text on parts: Liberation Sans and Liberation Mono (SIL Open Font License). 3D preview: three.js (MIT)." }));
 }
 
 // ---------------------------------------------------------------- viewer tools
@@ -592,14 +668,13 @@ document.querySelectorAll(".hud-tools [data-toggle]").forEach((b) => b.addEventL
   if (b.dataset.toggle === "grid") state.viewer?.setGrid(on);
 }));
 const fil = $("#filament");
-const savedColor = (() => { try { return localStorage.getItem("gw-filament"); } catch { return null; } })() || FILAMENTS[0][1];
 FILAMENTS.forEach(([name, hex]) => {
   const b = el("button", { type: "button", class: "swatch", role: "radio", "aria-checked": String(hex === savedColor),
     "aria-label": name, title: name, style: `--c:${hex}`,
     onclick: () => {
       fil.querySelectorAll(".swatch").forEach((s) => s.setAttribute("aria-checked", String(s === b)));
       state.viewer?.setColor(hex);
-      try { localStorage.setItem("gw-filament", hex); } catch {}
+      try { localStorage.setItem("gw-filament", hex); } catch { /* private mode */ }
     } });
   fil.append(b);
 });
@@ -607,14 +682,11 @@ FILAMENTS.forEach(([name, hex]) => {
 // ---------------------------------------------------------------- boot
 (async function boot() {
   try {
-    const [health, catalog, libs] = await Promise.all([api("/api/health"), api("/api/models"), api("/api/libraries")]);
-    state.catalog = catalog;
-    // part libraries are small manifests; load them so the catalog search covers every part
-    state.libraries = await Promise.all(libs.libraries.map((l) => api(`/api/libraries/${l.id}`)));
-    state.libDetail = Object.fromEntries(state.libraries.map((l) => [l.id, l]));
-    const eng = $("#engine");
-    if (health.engine) eng.textContent = health.engine.replace(/^OpenSCAD version /i, "OpenSCAD ");
-    else { eng.textContent = "OpenSCAD not installed"; eng.classList.add("off"); }
+    state.catalog = await getJSON("data/catalog.json");
+    state.engine = new EngineClient({ commonFiles: state.catalog.common_files });
+    $("#engine").textContent = `OpenSCAD ${state.catalog.engine}, in your browser`;
+    state.libraries = await Promise.all((state.catalog.libraries || []).map((l) => getJSON(`data/libraries/${l.id}.json`)));
+    for (const l of state.libraries) state.libDetail[l.id] = l;
   } catch (e) {
     $("#catalog-list").replaceChildren(el("p", { class: "empty", text: `Couldn't load the generator list: ${e.message}. Reload to try again.` }));
   }
