@@ -63,6 +63,7 @@
 
     <section class="stage" aria-label="3D preview">
       <canvas id="viewer"></canvas>
+      <p class="stage-empty" id="stage-empty" hidden></p>
       <div class="hud hud-dims" id="dims" hidden></div>
       <div class="hud hud-tools" role="toolbar" aria-label="View">
         <button type="button" data-view="iso" title="Angled view">3D</button>
@@ -82,6 +83,27 @@
         <pre id="log-text"></pre>
       </details>
     </section>
+  </main>
+
+  <main id="view-library" class="workbench" hidden>
+    <aside class="rail" aria-label="Parts">
+      <div class="rail-head">
+        <h1 id="lib-title"></h1>
+        <p id="lib-summary" class="muted"></p>
+        <p id="lib-credit" class="credit"></p>
+      </div>
+      <div class="rail-tools">
+        <label class="search small">
+          <span class="visually-hidden">Find a part</span>
+          <input id="part-search" type="search" placeholder="Find a part" autocomplete="off">
+        </label>
+      </div>
+      <nav id="part-list" class="part-list" aria-label="Parts"></nav>
+      <div class="actionbar">
+        <div id="part-status" class="part-status"></div>
+        <div id="part-downloads" class="downloads"></div>
+      </div>
+    </aside>
   </main>
 
   <noscript><p class="noscript">This generator needs JavaScript to build its forms and 3D preview.</p></noscript>

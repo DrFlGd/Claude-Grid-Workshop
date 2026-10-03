@@ -17,6 +17,12 @@ Everything under `vendor/` is third-party work, vendored unmodified at the commi
 | rugged-box-rebuilt-dependency (library) | — | [kennetek/gridfinity-rebuilt-openscad](https://github.com/kennetek/gridfinity-rebuilt-openscad) @ `0b7bf6e` | MIT | `vendor/monoscad/libraries/gridfinity-rebuilt-openscad` |
 | bosl2 (library) | — | [BelfrySCAD/BOSL2](https://github.com/BelfrySCAD/BOSL2) @ `e173fa0` | BSD-2-Clause; retain file-level notices | `vendor/libraries/BOSL2` |
 
+## Part libraries
+
+| Library | Author | Source | License | Path |
+| --- | --- | --- | --- | --- |
+| openGrid parts | David D | [Printables 1214361](https://www.printables.com/model/1214361-opengrid-walldesk-mounting-framework-and-ecosystem) | CC-BY-4.0 | `libraries/opengrid-official` |
+
 Notes
 - openGrid code: CC-BY-NC-SA-4.0 (non-commercial); file headers license generated parts CC-BY-4.0.
 - Underware/Monokini: root LICENSE says AGPL-3.0, README and SCAD headers say CC-BY-NC-SA-4.0. Unresolved — kept disabled for public use.

@@ -26,6 +26,7 @@ from starlette.staticfiles import StaticFiles
 
 from .catalog import ROOT, Catalog, ParamError
 from .engine import Renderer, detect_engine
+from .libraries import MEDIA, Libraries
 
 PUBLIC = os.environ.get("GW_PUBLIC") == "1"
 catalog = Catalog(public_mode=PUBLIC)
@@ -38,6 +39,7 @@ renderer = Renderer(
     memory_mb=int(os.environ["GW_MEMORY_MB"]) if os.environ.get("GW_MEMORY_MB") else None,
     cache_limit_mb=int(os.environ.get("GW_CACHE_MB", 4096)),
 )
+libraries = Libraries(public_mode=PUBLIC, cache_dir=renderer.cache_dir)
 MAX_BODY = 64 * 1024
 
 
@@ -51,6 +53,7 @@ async def health(request: Request):
         "engine": engine.version if engine else None,
         "manifold": bool(engine and engine.manifold),
         "models": len(catalog.models),
+        "libraries": len(libraries.libs),
         "public_mode": PUBLIC,
     })
 
@@ -113,6 +116,34 @@ async def download(request: Request):
                         headers={"Cache-Control": "private, max-age=86400"})
 
 
+async def list_libraries(request: Request):
+    return JSONResponse({"libraries": libraries.listing()})
+
+
+async def library_detail(request: Request):
+    d = libraries.detail(request.path_params["lib"])
+    return JSONResponse(d) if d else error("Unknown library", 404)
+
+
+async def library_file(request: Request):
+    found = libraries.file(request.path_params["lib"], request.path_params["path"])
+    if not found:
+        return error("Not found", 404)
+    path, meta = found
+    return FileResponse(path, media_type=MEDIA.get(meta["format"], "application/octet-stream"),
+                        filename=path.name, headers={"Cache-Control": "public, max-age=86400"})
+
+
+async def library_preview(request: Request):
+    try:
+        path = libraries.preview(request.path_params["lib"], request.path_params["item"])
+    except Exception:
+        return error("This part can't be previewed.", 422)
+    if not path:
+        return error("Not found", 404)
+    return FileResponse(path, media_type="model/stl", headers={"Cache-Control": "public, max-age=86400"})
+
+
 class SecureHeaders:
     def __init__(self, app):
         self.app = app
@@ -139,9 +170,14 @@ routes = [
     Route("/api/jobs/{job_id}", job_status),
     Route("/api/jobs/{job_id}/cancel", job_cancel, methods=["POST"]),
     Route("/api/files/{key}.stl", download),
+    Route("/api/libraries", list_libraries),
+    Route("/api/libraries/{lib}", library_detail),
+    Route("/api/libraries/{lib}/files/{path:path}", library_file),
+    Route("/api/libraries/{lib}/preview/{item}.stl", library_preview),
     Mount("/static", StaticFiles(directory=ROOT / "web"), name="static"),
     Route("/", spa),
     Route("/m/{rest:path}", spa),
+    Route("/parts/{rest:path}", spa),
 ]
 
 app = SecureHeaders(Starlette(routes=routes))

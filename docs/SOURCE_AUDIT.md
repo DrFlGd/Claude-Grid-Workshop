@@ -38,7 +38,7 @@ Checked 2026-10-03. Carried forward from Grid-Storage-Workshop and re-verified h
 These need the owner to supply the file or a source link; nothing here is guessed:
 
 - **Anylid** and **openGrid Shelf** — added 2026-10-03 from owner-supplied files. Still needed: their license terms (and Anylid's author name for credit).
-- **openGrid official parts (STL/STEP)** — registered as `catalog/libraries/opengrid-official.json`, status pending: Printables can't be reached from the build environment, and the pack is ~282 MB. Upload the ZIP to add it.
+- **openGrid official parts** — added 2026-10-03 from the owner's Printables download (CC-BY-4.0, David D). 44 items in `libraries/opengrid-official/`. Tiles and the standard/directional v2.1 snaps are left out because the generator reproduces them (CI parity check: 0.0 mm size difference, ≤0.08% volume). The two Lite snaps differ by 1.4–2% (the published ones were updated in August 2025), so those are kept. Tile STEP files (390 MB) and the two tile Shapr3D files (206 MB, each over GitHub's 100 MB limit) are not stored yet.
 - **Multiboard** — confirm which generator the site uses. Public candidates: [asciipip/multiboard-parametric-stacked](https://github.com/asciipip/multiboard-parametric-stacked), [slynn1324/mb-tile-generator](https://github.com/slynn1324/mb-tile-generator), and "Multiboard Parametric Extended" on Printables (882280).
 - **openGrid Connector** — no upstream located. A related, actively maintained alternative is [mitufy/opengrid-projects](https://github.com/mitufy/opengrid-projects) (openConnect connectors, shelves, hooks, snaps); it could become its own family.
 

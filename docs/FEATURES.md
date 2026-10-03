@@ -1,6 +1,6 @@
 # Feature backlog — pick the order
 
-**Built:** A1, A2. Reply with the IDs you want next.
+**Built:** A1, A2, a first version of C1 (one library, browse/preview/download) and C2 (import tool). Reply with the IDs you want next.
 
 ## A. Core generator (the site's reason to exist)
 
@@ -26,8 +26,8 @@
 
 | ID | Feature | What you get |
 | --- | --- | --- |
-| C1 | **Library browser** | Search and filter existing STLs by system, category, tags and size; preview in 3D; download single files or ZIPs. |
-| C2 | **Library import tool** | Point it at a folder of STLs → manifest with sizes, hashes, auto-detected grid units, and thumbnails. |
+| C1 (started) | **Library browser** | Done: browse by category, search, 3D preview, per-file downloads. Still to do: filters by size/system, thumbnails, ZIP downloads. |
+| C2 (started) | **Library import tool** | Done: folder → manifest with sizes and hashes, grouped downloads. Still to do: grid-unit detection, thumbnails. |
 | C3 | **Auto thumbnails** | Rendered previews for library items and generator presets. |
 | C4 | **Unified search** | One search box across generators and libraries ("2x3 bin" finds both the generator and matching STLs). |
 

@@ -54,6 +54,10 @@ async def main():
             await m.wait_for_function("() => document.querySelector('#status').classList.contains('ok')", timeout=a.timeout * 1000)
             await m.wait_for_timeout(500)
             await m.screenshot(path=f"{a.out}/92-mobile.png")
+            await pg.goto(f"{a.base}/parts/opengrid-official/mounts-opengrid-wall-mount")
+            await pg.wait_for_selector("#dims:not([hidden])", timeout=60000)
+            await pg.wait_for_timeout(500)
+            await pg.screenshot(path=f"{a.out}/93-parts.png")
         await b.close()
     for e in errors: print("PAGE ERROR:", e)
     return 1 if failures or errors else 0

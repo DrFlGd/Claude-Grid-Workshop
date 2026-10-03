@@ -2,7 +2,7 @@
 
 A web generator for 3D-printable storage (Gridfinity, openGrid, Honeycomb Storage Wall and friends), driven by server-side OpenSCAD and open-source SCAD projects, with room for a searchable library of ready-made STLs.
 
-**Stage: A1 + A2 built.** Pick any of 26 models, change its settings, generate with server-side OpenSCAD, preview in 3D and download the STL. Next features come from [docs/FEATURES.md](docs/FEATURES.md).
+**Stage: A1 + A2 built.** Pick any of 26 models, change its settings, generate with server-side OpenSCAD, preview in 3D and download the STL. A first parts library (official openGrid connectors, mounts, snaps and Multiconnect parts, 44 items) can be browsed, previewed and downloaded. Next features come from [docs/FEATURES.md](docs/FEATURES.md).
 
 ## Run it
 
@@ -24,10 +24,11 @@ Without Docker: install an OpenSCAD development snapshot (`openscad-nightly`), t
 | `adapters/` | Small SCAD wrappers/fixes where an upstream file can't be used directly (openGrid Snap, Anylid fix). |
 | `catalog/families/` | **Generator registry.** One JSON manifest per project: models, entrypoints, authors, license, engine needs. Adding a file here adds a generator. |
 | `catalog/params/` | Customizer parameters extracted from each entrypoint — the raw material for the site's forms. Generated; do not hand-edit. |
-| `catalog/libraries/` | **STL library registry.** One manifest per collection of ready-made models (`_example.json` is the template). |
+| `catalog/libraries/` | **Parts library registry.** One manifest per collection of ready-made parts (`_example.json` is the template). |
+| `libraries/` | The part files themselves (3MF, STL, STEP, Shapr3D), one folder per library. |
 | `schema/` | JSON Schemas for families, STL libraries and extracted parameters. |
 | `sources/` | Provenance: upstream commit lock, SHA-256 of every vendored file, reference-site inventory. |
-| `tools/` | `extract_params.py` (SCAD → form schema), `validate_sources.py` (hashes + renders every catalog model). |
+| `tools/` | `extract_params.py` (SCAD → form schema), `validate_sources.py` (hashes + renders every catalog model), `import_library.py` (folder of parts → library), `parity.py` + `mesh_stats.py` (does a generator reproduce published parts?). |
 | `.github/workflows/` | CI: source hashes + STL render of every model; website end-to-end test in a real browser; Docker build and render. |
 
 ## Generators collected
@@ -56,9 +57,16 @@ GRIPS and GridPlates are intentionally excluded (superseded). Details: [docs/SOU
 3. Run `python3 tools/extract_params.py --all` and commit `catalog/params/`.
 4. Push — CI renders every model and reports failures.
 
-## Adding an STL library
+## Adding a parts library
 
-Copy `catalog/libraries/_example.json`, list the items and files, set the license. Large binaries go in Git LFS or object storage, referenced by `storage`.
+```sh
+python3 tools/import_library.py path/to/unzipped-pack --id my-parts --name "My parts" \
+    --license CC-BY-4.0 --public-use ok --author "Someone" --exclude "Big folder/*"
+```
+
+Files with the same name (`part.3mf`, `part.step`) become one item with several downloads; 3MF/STL items get a 3D preview and measured size. Rename items or categories in the JSON afterwards: re-running keeps those edits. Keep single files under 100 MB (GitHub's limit); bigger collections should move to object storage via `storage`.
+
+If a generator might already make some of the parts, add a spec in `sources/parity/` and CI will tell you which published files it reproduces.
 
 ## Licensing
 

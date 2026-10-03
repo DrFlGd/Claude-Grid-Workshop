@@ -21,6 +21,8 @@ COPY web ./web
 COPY catalog ./catalog
 COPY vendor ./vendor
 COPY adapters ./adapters
+COPY tools/mesh_stats.py ./tools/mesh_stats.py
+COPY libraries ./libraries
 
 RUN useradd --system --uid 10001 --home /data gw && mkdir -p /data && chown gw /data
 USER gw

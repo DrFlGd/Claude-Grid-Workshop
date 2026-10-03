@@ -3,7 +3,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ["app/**", "web/**", "tests/**", "catalog/**", "adapters/**", "Dockerfile", "requirements.txt", ".github/workflows/app.yml"]
+    paths: ["app/**", "web/**", "libraries/**", "tests/**", "catalog/**", "adapters/**", "Dockerfile", "requirements.txt", ".github/workflows/app.yml"]
   pull_request:
   workflow_dispatch:
 

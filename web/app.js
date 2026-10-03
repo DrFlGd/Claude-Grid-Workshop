@@ -62,9 +62,23 @@ function licenseBadge(lic) {
 // ---------------------------------------------------------------- routing
 function route() {
   const m = location.pathname.match(/^\/m\/([a-z0-9-]+)\/([a-z0-9-]+)\/?$/);
+  const p = location.pathname.match(/^\/parts\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/);
   stopPolling();
   if (m) openModel(`${m[1]}/${m[2]}`);
+  else if (p) openLibrary(p[1], p[2]);
   else showCatalog();
+}
+
+function showView(name) {
+  for (const v of ["catalog", "model", "library"]) $(`#view-${v}`).hidden = v !== name;
+  const stage = $(".stage");
+  if (name === "model" && stage.parentElement.id !== "view-model") $("#view-model").append(stage);
+  if (name === "library" && stage.parentElement.id !== "view-library") $("#view-library").append(stage);
+  if (name !== "catalog" && !state.viewer) {
+    state.viewer = new Viewer($("#viewer"));
+    state.viewer.setColor(savedColor);
+  }
+  state.viewer?.resize();
 }
 function go(path) {
   if (path !== location.pathname) history.pushState({}, "", path);
@@ -89,8 +103,7 @@ function setCrumbs(parts) {
 
 // ---------------------------------------------------------------- catalog
 function showCatalog() {
-  $("#view-model").hidden = true;
-  $("#view-catalog").hidden = false;
+  showView("catalog");
   document.title = "Claude Grid Workshop";
   setCrumbs([]);
   renderCatalog($("#catalog-search").value);
@@ -115,7 +128,26 @@ function renderCatalog(query = "") {
           el("span", { class: "m-family", text: m.family_name }),
           licenseBadge(m.license) && el("span", { class: "m-badge" }, licenseBadge(m.license))))))));
   }
-  if (!shown) list.append(el("p", { class: "empty", text: `No generators match “${query}”. Try “bin”, “baseplate” or “label”.` }));
+  // ready-made parts: whole libraries when browsing, matching parts when searching
+  const libs = state.libraries || [];
+  const partHits = [];
+  for (const lib of libs) {
+    for (const it of lib.items) {
+      if (q && [it.name, it.category, lib.name, ...(it.tags || [])].join(" ").toLowerCase().includes(q)) partHits.push([lib, it]);
+    }
+  }
+  if (libs.length && (!q || partHits.length)) {
+    shown += q ? partHits.length : libs.length;
+    list.append(el("section", { class: "cat-section" },
+      el("h2", {}, "Ready-made parts", el("small", { text: q ? `${partHits.length} part${partHits.length === 1 ? "" : "s"}` : `${libs.length} collection${libs.length > 1 ? "s" : ""}` })),
+      el("ul", { class: "cat-rows" }, q
+        ? partHits.slice(0, 30).map(([lib, it]) => el("li", {}, el("a", { href: `/parts/${lib.id}/${it.id}`, "data-link": true },
+            el("span", { class: "m-name", text: it.name }), el("span", { class: "m-family", text: `${lib.name}, ${it.category.toLowerCase()}` }))))
+        : libs.map((lib) => el("li", {}, el("a", { href: `/parts/${lib.id}`, "data-link": true },
+            el("span", { class: "m-name", text: lib.name }),
+            el("span", { class: "m-family", text: `${lib.item_count} parts: ${lib.categories.join(", ").toLowerCase()}` })))))));
+  }
+  if (!shown) list.append(el("p", { class: "empty", text: `Nothing matches “${query}”. Try “bin”, “baseplate”, “label” or “connector”.` }));
   const missing = state.catalog.families.filter((f) => f.status === "missing-source");
   if (!q && missing.length) {
     list.append(el("p", { class: "missing",
@@ -126,13 +158,20 @@ $("#catalog-search").addEventListener("input", (e) => renderCatalog(e.target.val
 
 // ---------------------------------------------------------------- model view
 async function openModel(key) {
-  $("#view-catalog").hidden = true;
-  $("#view-model").hidden = false;
-  if (!state.viewer) {
-    state.viewer = new Viewer($("#viewer"));
-    state.viewer.setColor(savedColor);
+  showView("model");
+  $("#filament").hidden = false;
+  if (state.model?.key === key) {
+    if (state.viewerOwner !== "model") {
+      state.viewerOwner = "model";
+      state.viewer.clear();
+      $("#dims").hidden = true;
+      if (state.lastJob?.download_url) {
+        state.viewer.load(state.lastJob.download_url.replace(/\?.*/, "?inline=1")).then((d) => showDims(d, state.lastJob)).catch(() => {});
+      }
+    }
+    return;
   }
-  if (state.model?.key === key) return;
+  state.viewerOwner = "model";
   let detail;
   try {
     detail = await api(`/api/models/${key}`);
@@ -141,6 +180,7 @@ async function openModel(key) {
     return;
   }
   state.model = detail;
+  $("#stage-empty").hidden = true;
   state.rendered = null;
   state.viewer.clear();
   $("#dims").hidden = true;
@@ -382,6 +422,7 @@ function track(job, values, model) {
       try {
         setStatus("busy", "Loading preview…");
         const dims = await state.viewer.load(job.download_url.replace(/\?.*/, "?inline=1"));
+        state.lastJob = job;
         state.rendered = JSON.stringify(values);
         showDims(dims, job);
         setDownload(job);
@@ -438,6 +479,110 @@ $("#cancel").addEventListener("click", async () => {
   setStatus("stale", "Render cancelled.");
 });
 
+// ---------------------------------------------------------------- part libraries
+const FORMAT_LABEL = { "3mf": "3MF", stl: "STL", step: "STEP", shapr: "Shapr3D", pdf: "PDF", obj: "OBJ" };
+
+async function openLibrary(libId, itemId) {
+  showView("library");
+  stopPolling();
+  let lib = state.libDetail?.[libId];
+  if (!lib) {
+    try {
+      lib = await api(`/api/libraries/${libId}`);
+    } catch (e) {
+      $("#lib-title").textContent = "Parts not found";
+      $("#lib-summary").textContent = "This collection doesn't exist. Go back to the catalog to pick one.";
+      return;
+    }
+    state.libDetail = { ...(state.libDetail || {}), [libId]: lib };
+  }
+  if (state.openLib !== libId) {
+    state.openLib = libId;
+    $("#lib-title").textContent = lib.name;
+    $("#lib-summary").textContent = lib.summary || "";
+    const credit = $("#lib-credit");
+    credit.replaceChildren();
+    if (lib.authors?.length) credit.append(`By ${lib.authors.map((a) => a.name).join(", ")}. `);
+    if (lib.source_url) credit.append(el("a", { href: lib.source_url, target: "_blank", rel: "noopener", text: "Original page" }), ". ");
+    credit.append(`License: ${lib.license?.spdx}.`);
+    $("#part-search").value = "";
+    buildPartList(lib);
+  }
+  const item = lib.items.find((i) => i.id === itemId) || lib.items.find((i) => i.preview_url) || lib.items[0];
+  if (!itemId && item) history.replaceState({}, "", `/parts/${libId}/${item.id}`);
+  showPart(lib, item);
+}
+
+function buildPartList(lib) {
+  const nav = $("#part-list");
+  nav.replaceChildren();
+  const cats = [...new Set(lib.items.map((i) => i.category))];
+  for (const c of cats) {
+    nav.append(el("div", { class: "part-group", "data-cat": c },
+      el("h2", { text: c }),
+      el("ul", {}, lib.items.filter((i) => i.category === c).map((i) => el("li", {},
+        el("a", { href: `/parts/${lib.id}/${i.id}`, "data-link": true, "data-id": i.id,
+          "data-search": [i.name, c, ...(i.tags || [])].join(" ").toLowerCase() },
+          el("span", { text: i.name }),
+          el("span", { class: "formats", text: [...new Set(i.files.map((f) => FORMAT_LABEL[f.format] || f.format))].join(" ") })))))));
+  }
+}
+
+$("#part-search").addEventListener("input", (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  document.querySelectorAll(".part-group").forEach((g) => {
+    let any = false;
+    g.querySelectorAll("a").forEach((a) => { const hit = !q || a.dataset.search.includes(q); a.parentElement.hidden = !hit; any ||= hit; });
+    g.hidden = !any;
+  });
+});
+
+async function showPart(lib, item) {
+  if (!item) return;
+  document.title = `${item.name} · ${lib.name} · Claude Grid Workshop`;
+  setCrumbs([{ text: "Generators", href: "/" }, { text: lib.name, href: `/parts/${lib.id}` }, { text: item.name }]);
+  document.querySelectorAll("#part-list a").forEach((a) => a.toggleAttribute("aria-current", a.dataset.id === item.id));
+  const nav = $("#part-list"), cur = $(`#part-list a[data-id="${CSS.escape(item.id)}"]`);
+  if (cur && nav.scrollHeight > nav.clientHeight + 1) {  // desktop: the list scrolls on its own
+    const top = cur.offsetTop - nav.offsetTop;
+    if (top < nav.scrollTop || top > nav.scrollTop + nav.clientHeight - 40) nav.scrollTop = top - nav.clientHeight / 3;
+  }
+  const status = $("#part-status");
+  status.replaceChildren(el("p", { class: "part-name", text: item.name }));
+  if (item.description) status.append(el("p", { class: "help", text: item.description }));
+  if (item.generator) status.append(el("p", { class: "help" }, el("a", { href: `/m/${item.generator}`, "data-link": true, text: "Open the generator" }), " to print it at any size."));
+  const dl = $("#part-downloads");
+  dl.replaceChildren(...item.files.map((f, i) => el("a", {
+    class: `button ${i === 0 && f.format !== "step" && f.format !== "shapr" ? "primary" : "secondary"}`, href: f.url, download: true,
+    title: f.path.split("/").pop(),
+    text: `${f.label ? f.label + ": " : ""}${FORMAT_LABEL[f.format] || f.format} (${bytes(f.bytes)})` })));
+  dl.classList.toggle("many", item.files.length > 4);
+  state.viewerOwner = "library";
+  $("#filament").hidden = false;
+  $("#log").hidden = true;
+  showOverlay(null);
+  state.viewer.clear();
+  $("#dims").hidden = true;
+  const empty = $("#stage-empty");
+  if (!item.preview_url) {
+    empty.textContent = "No 3D preview: this part comes as CAD files (STEP or Shapr3D) for remixing.";
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+  try {
+    const d = await state.viewer.load(item.preview_url);
+    if (state.viewerOwner !== "library") return;
+    const box = $("#dims");
+    box.replaceChildren(el("span", { class: "mm", text: `${fmt(d.x)} × ${fmt(d.y)} × ${fmt(d.z)} mm` }),
+      el("span", { class: "meta", text: `${d.triangles.toLocaleString()} triangles` }));
+    box.hidden = false;
+  } catch (e) {
+    empty.textContent = `Preview unavailable: ${e.message}`;
+    empty.hidden = false;
+  }
+}
+
 // ---------------------------------------------------------------- viewer tools
 document.querySelectorAll(".hud-tools [data-view]").forEach((b) => b.addEventListener("click", () => state.viewer?.view(b.dataset.view)));
 document.querySelectorAll(".hud-tools [data-toggle]").forEach((b) => b.addEventListener("click", () => {
@@ -462,8 +607,11 @@ FILAMENTS.forEach(([name, hex]) => {
 // ---------------------------------------------------------------- boot
 (async function boot() {
   try {
-    const [health, catalog] = await Promise.all([api("/api/health"), api("/api/models")]);
+    const [health, catalog, libs] = await Promise.all([api("/api/health"), api("/api/models"), api("/api/libraries")]);
     state.catalog = catalog;
+    // part libraries are small manifests; load them so the catalog search covers every part
+    state.libraries = await Promise.all(libs.libraries.map((l) => api(`/api/libraries/${l.id}`)));
+    state.libDetail = Object.fromEntries(state.libraries.map((l) => [l.id, l]));
     const eng = $("#engine");
     if (health.engine) eng.textContent = health.engine.replace(/^OpenSCAD version /i, "OpenSCAD ");
     else { eng.textContent = "OpenSCAD not installed"; eng.classList.add("off"); }

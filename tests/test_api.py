@@ -48,6 +48,21 @@ def test_render_download_and_cache():
         again = c.post("/api/render", json={"model": model, "params": {}}).json()
         assert again["status"] == "done" and again["cached"]
 
+def test_part_library():
+    with TestClient(app) as c:
+        libs = c.get("/api/libraries").json()["libraries"]
+        assert any(l["id"] == "opengrid-official" for l in libs)
+        lib = c.get("/api/libraries/opengrid-official").json()
+        item = next(i for i in lib["items"] if i.get("preview_url"))
+        r = c.get(item["preview_url"])
+        assert r.status_code == 200 and len(r.content) > 84
+        f = item["files"][0]
+        r = c.get(f["url"])
+        assert r.status_code == 200 and len(r.content) == f["bytes"]
+        assert c.get("/api/libraries/opengrid-official/files/../../app/main.py").status_code == 404
+        assert c.get("/api/libraries/opengrid-official/files/README.md").status_code == 404  # not in manifest
+        assert c.get("/api/libraries/nope").status_code == 404
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
