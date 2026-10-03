@@ -41,6 +41,10 @@ These need the owner to supply the file or a source link; nothing here is guesse
 - **Multiboard** — confirm which generator the site uses. Public candidates: [asciipip/multiboard-parametric-stacked](https://github.com/asciipip/multiboard-parametric-stacked), [slynn1324/mb-tile-generator](https://github.com/slynn1324/mb-tile-generator), and "Multiboard Parametric Extended" on Printables (882280).
 - **openGrid Connector** — no upstream located. A related, actively maintained alternative is [mitufy/opengrid-projects](https://github.com/mitufy/opengrid-projects) (openConnect connectors, shelves, hooks, snaps); it could become its own family.
 
-## Engine
+## Engine and render check
 
-This workspace cannot install OpenSCAD (package mirrors and openscad.org are blocked here), so rendering runs in GitHub Actions (`.github/workflows/validate.yml`) on an OpenSCAD development snapshot. Earlier results on OpenSCAD 2021.01 (original repo): 17 of 22 entrypoints compiled; Rebuilt Bin, Extended Bin/Baseplate, GridFlock and Basket need the newer engine. Production should pin one tested development snapshot with the Manifold backend.
+This workspace cannot install OpenSCAD (package mirrors and openscad.org are blocked here), so rendering runs in GitHub Actions (`.github/workflows/validate.yml`).
+
+Latest CI run (2026-10-03, **OpenSCAD 2026.10.02 nightly, Manifold backend**): **all 24 catalog models exported to STL with default parameters**, zero errors; GridFlock reports one warning. Every push that touches sources, adapters, catalog or tools re-runs this, and the results appear as a "Render summary" annotation on the commit.
+
+This confirms the sources, includes and library paths are complete. It does not prove every parameter combination works, or that parts fit and print well. The old OpenSCAD 2021.01 cannot parse five of the models, so production should pin a tested development snapshot.

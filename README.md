@@ -2,7 +2,7 @@
 
 A web generator for 3D-printable storage (Gridfinity, openGrid, Honeycomb Storage Wall and friends), driven by server-side OpenSCAD and open-source SCAD projects, with room for a searchable library of ready-made STLs.
 
-**Stage: foundation.** Sources, catalog and tooling are in place. The website is built next, in the order chosen from [docs/FEATURES.md](docs/FEATURES.md).
+**Stage: foundation.** Sources, catalog and tooling are in place, and all 24 available models render to STL in CI (OpenSCAD 2026.10 nightly). The website is built next, in the order chosen from [docs/FEATURES.md](docs/FEATURES.md).
 
 ## What is here
 
