@@ -1,13 +1,13 @@
 # Feature backlog — pick the order
 
-Nothing below is built yet. Reply with the IDs you want first.
+**Built:** A1, A2. Reply with the IDs you want next.
 
 ## A. Core generator (the site's reason to exist)
 
 | ID | Feature | What you get |
 | --- | --- | --- |
-| A1 | **Generate & download** | Pick a model, fill in a form auto-built from the SCAD parameters, Generate (server-side OpenSCAD), download STL. |
-| A2 | **3D preview** | Orbit/zoom/pan viewer of the result, with overall dimensions shown. |
+| A1 ✅ | **Generate & download** | Pick a model, fill in a form auto-built from the SCAD parameters, Generate (server-side OpenSCAD), download STL. |
+| A2 ✅ | **3D preview** | Orbit/zoom/pan viewer of the result, with overall dimensions shown. |
 | A3 | **Friendly forms** | Grouped settings, Simple/Advanced toggle, help text, units, sliders/dropdowns, reset-to-default, show-only-when-relevant fields. Curated per model on top of the auto-extracted parameters. |
 | A4 | **Model catalog home** | Cards by system (Gridfinity, openGrid, HSW, …) and type (bins, baseplates, labels, wall, carrying), search, author credit and license on every model. |
 | A5 | **Fast repeat renders** | Job queue with progress and cancel; identical settings are cached and download instantly. |

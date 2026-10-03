@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Grid Workshop</title>
+  <meta name="description" content="Generate printable Gridfinity, openGrid and wall-storage parts from open-source OpenSCAD models.">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script type="importmap">
+    { "imports": { "three": "/static/vendor/three/three.module.js" } }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" data-link>
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="9" height="9" rx="2"/><rect x="13" y="2" width="9" height="9" rx="2"/><rect x="2" y="13" width="9" height="9" rx="2"/><rect x="13" y="13" width="9" height="9" rx="2" class="filled"/></svg>
+      <span>Claude Grid Workshop</span>
+    </a>
+    <nav class="crumbs" id="crumbs" aria-label="Location"></nav>
+    <span class="engine" id="engine" title="Rendering engine"></span>
+  </header>
+
+  <main id="view-catalog" class="catalog" hidden>
+    <div class="catalog-head">
+      <h1>Make storage that fits</h1>
+      <p>Pick a generator, set the sizes, and download a print-ready STL. Every model is open source and credited to its author.</p>
+      <label class="search">
+        <span class="visually-hidden">Search generators</span>
+        <input id="catalog-search" type="search" placeholder="Search: bin, baseplate, label, shelf…" autocomplete="off">
+      </label>
+    </div>
+    <div id="catalog-list"></div>
+  </main>
+
+  <main id="view-model" class="workbench" hidden>
+    <aside class="rail" aria-label="Model settings">
+      <div class="rail-head">
+        <h1 id="model-title"></h1>
+        <p id="model-summary" class="muted"></p>
+        <p id="model-credit" class="credit"></p>
+        <div id="model-license"></div>
+      </div>
+      <div class="rail-tools">
+        <label class="search small">
+          <span class="visually-hidden">Find a setting</span>
+          <input id="param-search" type="search" placeholder="Find a setting" autocomplete="off">
+        </label>
+        <button type="button" class="ghost" id="reset-all">Reset all</button>
+      </div>
+      <form id="params" class="params" novalidate></form>
+      <div class="actionbar">
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+        <div class="actions">
+          <button type="button" id="generate" class="primary">Generate</button>
+          <a id="download" class="button secondary is-disabled" aria-disabled="true" href="#" download>Download STL</a>
+        </div>
+      </div>
+    </aside>
+
+    <section class="stage" aria-label="3D preview">
+      <canvas id="viewer"></canvas>
+      <div class="hud hud-dims" id="dims" hidden></div>
+      <div class="hud hud-tools" role="toolbar" aria-label="View">
+        <button type="button" data-view="iso" title="Angled view">3D</button>
+        <button type="button" data-view="top" title="Top view">Top</button>
+        <button type="button" data-view="front" title="Front view">Front</button>
+        <button type="button" data-toggle="edges" aria-pressed="false" title="Show edges">Edges</button>
+        <button type="button" data-toggle="grid" aria-pressed="true" title="Show 42 mm grid">Grid</button>
+      </div>
+      <div class="hud hud-filament" role="radiogroup" aria-label="Preview colour" id="filament"></div>
+      <div class="stage-overlay" id="stage-overlay" hidden>
+        <div class="progress" aria-hidden="true"><span></span></div>
+        <p id="overlay-text"></p>
+        <button type="button" class="ghost light" id="cancel">Cancel</button>
+      </div>
+      <details class="log" id="log" hidden>
+        <summary>OpenSCAD output</summary>
+        <pre id="log-text"></pre>
+      </details>
+    </section>
+  </main>
+
+  <noscript><p class="noscript">This generator needs JavaScript to build its forms and 3D preview.</p></noscript>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

@@ -2,21 +2,33 @@
 
 A web generator for 3D-printable storage (Gridfinity, openGrid, Honeycomb Storage Wall and friends), driven by server-side OpenSCAD and open-source SCAD projects, with room for a searchable library of ready-made STLs.
 
-**Stage: foundation.** Sources, catalog and tooling are in place, and all 24 available models render to STL in CI (OpenSCAD 2026.10 nightly). The website is built next, in the order chosen from [docs/FEATURES.md](docs/FEATURES.md).
+**Stage: A1 + A2 built.** Pick any of 26 models, change its settings, generate with server-side OpenSCAD, preview in 3D and download the STL. Next features come from [docs/FEATURES.md](docs/FEATURES.md).
+
+## Run it
+
+```sh
+docker build -t grid-workshop .
+docker run -p 8000:8000 -v gw-cache:/data grid-workshop
+# open http://localhost:8000
+```
+
+Without Docker: install an OpenSCAD development snapshot (`openscad-nightly`), then `pip install -r requirements.txt` and `uvicorn app.main:app --port 8000`. Settings are listed at the top of `app/main.py` (workers, timeout, cache size, `GW_PUBLIC=1` to hide models whose license isn't cleared for public use).
 
 ## What is here
 
 | Path | What it holds |
 | --- | --- |
-| `vendor/` | Unmodified upstream SCAD projects, pinned to exact commits (271 SCAD files, 341 files total). |
-| `adapters/` | Small original SCAD wrappers where an upstream file isn't directly customizable (currently: openGrid Snap). |
+| `app/` | Web server (Starlette): catalog API, parameter validation, render queue, STL cache and downloads. |
+| `web/` | Front end: catalog, auto-built settings forms, three.js 3D preview. No build step. |
+| `vendor/` | Unmodified upstream SCAD projects, pinned to exact commits (273 SCAD files). |
+| `adapters/` | Small SCAD wrappers/fixes where an upstream file can't be used directly (openGrid Snap, Anylid fix). |
 | `catalog/families/` | **Generator registry.** One JSON manifest per project: models, entrypoints, authors, license, engine needs. Adding a file here adds a generator. |
 | `catalog/params/` | Customizer parameters extracted from each entrypoint — the raw material for the site's forms. Generated; do not hand-edit. |
 | `catalog/libraries/` | **STL library registry.** One manifest per collection of ready-made models (`_example.json` is the template). |
 | `schema/` | JSON Schemas for families, STL libraries and extracted parameters. |
 | `sources/` | Provenance: upstream commit lock, SHA-256 of every vendored file, reference-site inventory. |
 | `tools/` | `extract_params.py` (SCAD → form schema), `validate_sources.py` (hashes + renders every catalog model). |
-| `.github/workflows/validate.yml` | CI: checks hashes, installs an OpenSCAD development snapshot, renders every model to STL. |
+| `.github/workflows/` | CI: source hashes + STL render of every model; website end-to-end test in a real browser; Docker build and render. |
 
 ## Generators collected
 
@@ -31,8 +43,8 @@ A web generator for 3D-printable storage (Gridfinity, openGrid, Honeycomb Storag
 | Honeycomb Storage Wall | Grid (v2, v2.3) | ✅ | CC-BY-4.0 · ok |
 | openGrid | Grid, Snap, Border | ⚠️ Connector missing | CC-BY-NC-SA-4.0 · review |
 | Underware (Monokini) | 9 channel/label types (+8 variants vendored) | ✅ | License conflict · blocked publicly |
-| Gridfinity Anylid | — | ❌ source needed | — |
-| openGrid Shelf | — | ❌ source needed | — |
+| Gridfinity Anylid | Lid | ✅ (supplied file, bug-fixed copy) | Unstated · review |
+| openGrid Shelf | Shelf | ✅ (supplied file) | Unstated · review |
 | Multiboard | — | ❌ source needed | — |
 
 GRIPS and GridPlates are intentionally excluded (superseded). Details: [docs/SOURCE_AUDIT.md](docs/SOURCE_AUDIT.md).

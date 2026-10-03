@@ -1,0 +1,216 @@
+{
+  "source": "adapters/anylid/anylid.scad",
+  "groups": [
+    "Dimensions",
+    "General Properties",
+    "Click Properties",
+    "Label Properties",
+    "Stacking Properties"
+  ],
+  "parameters": [
+    {
+      "name": "Grid_Factor",
+      "group": "Dimensions",
+      "type": "number",
+      "default": 1.0,
+      "description": "1.0 equals standard 42mm Gridfinity size",
+      "widget": "number"
+    },
+    {
+      "name": "Width_Units",
+      "group": "Dimensions",
+      "type": "number",
+      "default": 1.5,
+      "description": "as defined above",
+      "widget": "number"
+    },
+    {
+      "name": "Length_Units",
+      "group": "Dimensions",
+      "type": "number",
+      "default": 2.5,
+      "description": "as defined above",
+      "widget": "number"
+    },
+    {
+      "name": "Mirror_X",
+      "group": "Dimensions",
+      "type": "boolean",
+      "default": false,
+      "description": null,
+      "widget": "checkbox"
+    },
+    {
+      "name": "Mirror_Y",
+      "group": "Dimensions",
+      "type": "boolean",
+      "default": false,
+      "description": null,
+      "widget": "checkbox"
+    },
+    {
+      "name": "Thickness_mm",
+      "group": "General Properties",
+      "type": "number",
+      "default": 0.8,
+      "description": "Thickness of the solid plane",
+      "widget": "number"
+    },
+    {
+      "name": "Include_Click_Mechanism",
+      "group": "Click Properties",
+      "type": "boolean",
+      "default": true,
+      "description": "Should the lid snap into place?",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Click_In_X_Direction",
+      "group": "Click Properties",
+      "type": "boolean",
+      "default": true,
+      "description": "Along the side specified as \"Width\"",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Click_In_Y_Direction",
+      "group": "Click Properties",
+      "type": "boolean",
+      "default": true,
+      "description": "Along the side specified as \"Length\"",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Click_Rail_mm",
+      "group": "Click Properties",
+      "type": "number",
+      "default": 0.6,
+      "description": "Height of the thickest part at the top of the bin",
+      "widget": "number"
+    },
+    {
+      "name": "Leave_Space_For_Label",
+      "group": "Label Properties",
+      "type": "boolean",
+      "default": false,
+      "description": "Enable if the box has a label plate",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Label_Position",
+      "group": "Label Properties",
+      "type": "number",
+      "default": 0,
+      "description": "Position of the label plate",
+      "widget": "dropdown",
+      "options": [
+        {
+          "value": 0,
+          "label": "Front"
+        },
+        {
+          "value": 180,
+          "label": "Back"
+        },
+        {
+          "value": 270,
+          "label": "Left"
+        },
+        {
+          "value": 90,
+          "label": "Right"
+        }
+      ]
+    },
+    {
+      "name": "Label_Width_mm",
+      "group": "Label Properties",
+      "type": "number",
+      "default": 12.0,
+      "description": "Width of the label plate",
+      "widget": "number"
+    },
+    {
+      "name": "Include_Stacking_Grid",
+      "group": "Stacking Properties",
+      "type": "boolean",
+      "default": true,
+      "description": "Add grid on top of the lid",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Shallow_Junctions",
+      "group": "Stacking Properties",
+      "type": "boolean",
+      "default": false,
+      "description": "Compatibility with Mix&Match baseplates",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Use_Magnets",
+      "group": "Stacking Properties",
+      "type": "boolean",
+      "default": false,
+      "description": "Add holes for magnets",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Magnet_Diameter_mm",
+      "group": "Stacking Properties",
+      "type": "number",
+      "default": 6.5,
+      "description": "Only if \"Use Magnets\" is selected",
+      "widget": "number"
+    },
+    {
+      "name": "Magnet_Thickness_mm",
+      "group": "Stacking Properties",
+      "type": "number",
+      "default": 2.4,
+      "description": "Only if \"Use Magnets\" is selected",
+      "widget": "number"
+    },
+    {
+      "name": "Use_Screws",
+      "group": "Stacking Properties",
+      "type": "boolean",
+      "default": false,
+      "description": "Add holes for screws",
+      "widget": "checkbox"
+    },
+    {
+      "name": "Screw_Diameter_mm",
+      "group": "Stacking Properties",
+      "type": "number",
+      "default": 3.0,
+      "description": "Only if \"Use Screws\" is selected",
+      "widget": "number"
+    },
+    {
+      "name": "Screw_Length_mm",
+      "group": "Stacking Properties",
+      "type": "number",
+      "default": 2,
+      "description": "Length of the threaded part",
+      "widget": "number"
+    }
+  ],
+  "computed_skipped": [
+    {
+      "name": "Grid_Size_mm",
+      "group": "Dimensions",
+      "expression": "42 * Grid_Factor"
+    },
+    {
+      "name": "Width_mm",
+      "group": "Dimensions",
+      "expression": "Width_Units * Grid_Size_mm"
+    },
+    {
+      "name": "Length_mm",
+      "group": "Dimensions",
+      "expression": "Length_Units * Grid_Size_mm"
+    }
+  ],
+  "model": "anylid/lid"
+}

@@ -149,6 +149,19 @@
           }
         }
       }
+    },
+    "source_url": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "available",
+        "pending-files",
+        "disabled"
+      ]
+    },
+    "system": {
+      "type": "string"
     }
   }
 }

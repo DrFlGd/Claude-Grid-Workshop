@@ -29,15 +29,16 @@ Checked 2026-10-03. Carried forward from Grid-Storage-Workshop and re-verified h
 | Honeycomb Storage Wall | Collected | Original v2 (site) and v2.3 |
 | openGrid | Partial | Tile, Snap (via adapter), Border. The site's `opengrid-connectors.scad` is not in QuackWorks |
 | Underware (Monokini) | Collected; license conflict | AGPL-3.0 vs CC-BY-NC-SA-4.0 declarations |
-| Gridfinity Anylid | **Missing** | MakerWorld-only source |
-| openGrid Shelf | **Missing** | MakerWorld-only source (Mikey Ward) |
+| Gridfinity Anylid | Collected (owner-supplied) | Rendered from `adapters/anylid/anylid.scad`, which fixes magnet/screw holes; license unstated |
+| openGrid Shelf | Collected (owner-supplied) | License unstated |
 | Multiboard | **Missing** | Site names `multiboard/multiboard.scad`, no source link |
 
 ## Closing the gaps
 
 These need the owner to supply the file or a source link; nothing here is guessed:
 
-- **Anylid** and **openGrid Shelf** — download the SCAD from the MakerWorld pages (logged in) and add it with its license text.
+- **Anylid** and **openGrid Shelf** — added 2026-10-03 from owner-supplied files. Still needed: their license terms (and Anylid's author name for credit).
+- **openGrid official parts (STL/STEP)** — registered as `catalog/libraries/opengrid-official.json`, status pending: Printables can't be reached from the build environment, and the pack is ~282 MB. Upload the ZIP to add it.
 - **Multiboard** — confirm which generator the site uses. Public candidates: [asciipip/multiboard-parametric-stacked](https://github.com/asciipip/multiboard-parametric-stacked), [slynn1324/mb-tile-generator](https://github.com/slynn1324/mb-tile-generator), and "Multiboard Parametric Extended" on Printables (882280).
 - **openGrid Connector** — no upstream located. A related, actively maintained alternative is [mitufy/opengrid-projects](https://github.com/mitufy/opengrid-projects) (openConnect connectors, shelves, hooks, snaps); it could become its own family.
 

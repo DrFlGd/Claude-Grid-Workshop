@@ -1,0 +1,25 @@
+{
+  "$schema": "../../schema/stl-library.schema.json",
+  "id": "opengrid-official",
+  "name": "openGrid (official parts)",
+  "summary": "David D's official openGrid release: tiles, Lite tiles, connectors, mounts, cover snaps, Multiconnect parts and STEP modelling files (315 files, ~282 MB).",
+  "system": "opengrid",
+  "authors": [
+    {
+      "name": "David D",
+      "url": "https://www.printables.com/model/1214361-opengrid-walldesk-mounting-framework-and-ecosystem"
+    }
+  ],
+  "license": {
+    "spdx": "NOASSERTION",
+    "public_use": "review",
+    "notes": "Check the Printables page license before redistributing; the site may need to link out instead of hosting copies."
+  },
+  "source_url": "https://www.printables.com/model/1214361-opengrid-walldesk-mounting-framework-and-ecosystem/files",
+  "status": "pending-files",
+  "storage": {
+    "kind": "git-lfs",
+    "base": "libraries/opengrid-official/"
+  },
+  "items": []
+}
