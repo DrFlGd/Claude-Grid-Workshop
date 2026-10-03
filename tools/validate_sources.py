@@ -116,6 +116,14 @@ def main():
     for r in results:
         print(f'{r["status"]:8s} {r["id"]}' + (f'  ({r.get("warnings")} warnings)' if r.get("warnings") else ""))
     print(f"checksums: {count} files, {len(bad)} mismatches")
+    if os.environ.get("GITHUB_ACTIONS"):
+        # one annotation carrying the whole table, readable through the checks API
+        lines = [report["engine"]] + [
+            f'{r["status"]} {r["id"]} {r.get("bytes", "")} w={r.get("warnings", "")}' for r in results]
+        print("::notice title=Render summary::" + "%0A".join(lines))
+        for r in results:
+            if r["status"] != "pass":
+                print(f'::error title={r["id"]}::' + r["diagnostics"][-800:].replace("\n", "%0A"))
     return 1 if bad or any(r["status"] != "pass" for r in results) else 0
 
 
