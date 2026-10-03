@@ -149,7 +149,8 @@ async function openModel(key) {
   document.title = `${detail.name} · ${detail.family_name} · Claude Grid Workshop`;
   setCrumbs([{ text: "Generators", href: "/" }, { text: detail.family_name }]);
 
-  $("#model-title").textContent = detail.name === detail.family_name ? detail.name : `${detail.family_name} ${detail.name.toLowerCase()}`;
+  const fam = detail.family_name, nm = detail.name;
+  $("#model-title").textContent = fam.toLowerCase().endsWith(nm.toLowerCase()) ? fam : `${fam} ${nm.toLowerCase()}`;
   $("#model-summary").textContent = detail.summary;
   const credit = $("#model-credit");
   credit.replaceChildren();
@@ -415,10 +416,12 @@ function showDims(d, job) {
   const box = $("#dims");
   const grid = GRID_FAMILIES.has(state.model.category);
   const units = (v) => fmt(Math.round(v / 42 * 2) / 2);
-  box.replaceChildren(
+  const gridText = `About ${units(d.x)} × ${units(d.y)} grid units` + (d.z >= 7 ? `, ${fmt(d.z / 7)} height units` : "");
+  box.replaceChildren(...[
     el("span", { class: "mm", text: `${fmt(d.x)} × ${fmt(d.y)} × ${fmt(d.z)} mm` }),
-    grid ? el("span", { class: "units", text: `About ${units(d.x)} × ${units(d.y)} grid units, ${fmt(d.z / 7)} height units` }) : null,
-    el("span", { class: "meta", text: `${d.triangles.toLocaleString()} triangles, ${bytes(job.bytes)}` }));
+    grid && el("span", { class: "units", text: gridText }),
+    el("span", { class: "meta", text: `${d.triangles.toLocaleString()} triangles, ${bytes(job.bytes)}` }),
+  ].filter(Boolean));
   box.hidden = false;
 }
 
