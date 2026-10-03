@@ -1,10 +1,11 @@
 __pycache__/
 .venv/
 build/
-*.log
-*.stl
-*.3mf
-*.csg
-!libraries/**/*.stl
-validation.json
 node_modules/
+*.log
+validation.json
+# generated meshes outside vendored sources and STL libraries
+/*.stl
+/*.3mf
+/*.csg
+out/
