@@ -9,7 +9,7 @@
     "dividers",
     "labels"
   ],
-  "summary": "Feature-rich Gridfinity bins and baseplates with dividers, labels, patterns and clips.",
+  "summary": "Feature-rich Gridfinity bins, baseplates, lids, drawers and holders (silverware, sockets, items) with dividers, labels and patterns.",
   "authors": [
     {
       "name": "ostat",
@@ -68,21 +68,84 @@
       },
       "notes": "Same SCAD as the baseplate, rendering only the clips.",
       "status": "available"
+    },
+    {
+      "id": "drawers",
+      "name": "Drawers",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_drawers.scad",
+      "status": "available"
+    },
+    {
+      "id": "item-holder",
+      "name": "Item Holder",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_item_holder.scad",
+      "status": "available"
+    },
+    {
+      "id": "lid",
+      "name": "Lid",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_lid.scad",
+      "status": "available"
+    },
+    {
+      "id": "sliding-lid",
+      "name": "Sliding Lid",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_sliding_lid.scad",
+      "status": "available"
+    },
+    {
+      "id": "removable-walls",
+      "name": "Bin with Removable Walls",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_bin_removable_walls.scad",
+      "status": "available"
+    },
+    {
+      "id": "tray",
+      "name": "Tray",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_tray.scad",
+      "status": "available"
+    },
+    {
+      "id": "silverware",
+      "name": "Silverware Holder",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_silverware.scad",
+      "status": "available"
+    },
+    {
+      "id": "socket-holder",
+      "name": "Socket Holder",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_socket_holder.scad",
+      "status": "available"
+    },
+    {
+      "id": "sieve",
+      "name": "Sieve",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_sieve.scad",
+      "status": "available"
+    },
+    {
+      "id": "vertical-divider",
+      "name": "Vertical Divider",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_vertical_divider.scad",
+      "status": "available"
+    },
+    {
+      "id": "chess",
+      "name": "Chess Set",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_chess.scad",
+      "status": "available"
+    },
+    {
+      "id": "glue-stick",
+      "name": "Glue Stick Holder",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_glue_stick.scad",
+      "status": "available"
+    },
+    {
+      "id": "marble",
+      "name": "Marble Run",
+      "entrypoint": "vendor/gridfinity-extended/gridfinity_marble.scad",
+      "status": "available"
     }
-  ],
-  "additional_entrypoints_available": [
-    "gridfinity_drawers",
-    "gridfinity_item_holder",
-    "gridfinity_lid",
-    "gridfinity_sliding_lid",
-    "gridfinity_bin_removable_walls",
-    "gridfinity_tray",
-    "gridfinity_silverware",
-    "gridfinity_socket_holder",
-    "gridfinity_sieve",
-    "gridfinity_vertical_divider",
-    "gridfinity_chess",
-    "gridfinity_glue_stick",
-    "gridfinity_marble"
   ]
 }

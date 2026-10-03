@@ -241,6 +241,27 @@ body.show-help .field .help { display: block; }
 .about h2 { font-size: 18px; margin-top: 10px; }
 .about ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
 
+/* ---- batch dialog ------------------------------------------------------ */
+.batch { width: min(560px, calc(100vw - 32px)); border: 1px solid var(--steel-2); border-radius: var(--radius-m); padding: 0; color: var(--ink); }
+.batch::backdrop { background: rgba(24, 34, 45, .5); }
+.batch form { display: grid; gap: 12px; padding: 20px; }
+.batch h2 { font-size: 20px; font-stretch: 85%; }
+.batch .muted { font-size: 13px; }
+.batch-row { border: 1px solid var(--steel-2); border-radius: var(--radius-s); padding: 8px 12px 12px; margin: 0; display: grid; gap: 8px; }
+.batch-row legend { font-size: 12.5px; font-weight: 700; color: var(--graphite); padding: 0 4px; }
+.batch-row-head { display: flex; gap: 8px; }
+.batch-row-head select { flex: 1; }
+.batch-range { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.batch-range label, .batch-list { display: grid; gap: 3px; font-size: 12.5px; font-weight: 600; }
+.batch-choices { display: flex; flex-wrap: wrap; gap: 6px 14px; max-height: 160px; overflow: auto; font-size: 13px; }
+.batch-choices label { display: flex; gap: 6px; align-items: center; }
+.batch-count { font-size: 13.5px; font-weight: 600; }
+.batch-progress { display: grid; gap: 6px; font-size: 13px; color: var(--graphite); }
+.progress-bar { height: 6px; background: var(--steel); border-radius: 3px; overflow: hidden; }
+.progress-bar span { display: block; height: 100%; width: 0; background: var(--tool); transition: width .2s; }
+.batch-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.batch-actions .primary { padding: 10px 16px; }
+
 /* ---- part libraries --------------------------------------------------- */
 .part-list { flex: 1; overflow: auto; padding: 4px 0 20px; }
 .part-group h2 { font-size: 13px; font-weight: 700; color: var(--graphite); padding: 16px 20px 6px; }

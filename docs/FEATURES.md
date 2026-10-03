@@ -17,7 +17,7 @@
 
 | ID | Feature | What you get |
 | --- | --- | --- |
-| B1 | **Switch on vendored extras** | 13 more Gridfinity Extended generators (drawers, lids, sliding lids, item holder, silverware, socket holder, trays, sieve, dividers…) and 8 more Underware variants. Already in the repo. |
+| B1 ✅ (Extended) | **Switch on vendored extras** | Done for all 13 extra Gridfinity Extended generators. The 8 extra Underware variants stay off (license). |
 | B2 | **Drawer-fit wizard** | Enter drawer size and printer bed; get a split, interlocking baseplate set (GridFlock) plus a bin-count summary. |
 | B3 | **Your new generators** | The upload path for the generators you'll provide: drop in SCAD + manifest, CI validates, form appears. |
 | B4 | **Fill the source gaps** | Anylid, openGrid Shelf, Multiboard, openGrid Connector — once you supply sources. |
@@ -46,7 +46,7 @@
 | --- | --- | --- |
 | E1 | **3MF export** | Alongside STL (where the engine supports it), including multi-colour where models define it. |
 | E2 | **Source bundle** | ZIP with the STL, the exact SCAD, your settings and license notices — satisfies GPL/CC terms and makes renders reproducible. |
-| E3 | **Batch generate** | A list of sizes/configs rendered in one go, downloaded as a ZIP. |
+| E3 ✅ | **Batch generate** | Done: vary one or two settings (number ranges, dropdown choices or text lists), up to 200 files rendered in the browser and downloaded as one ZIP. |
 
 ## F. Planning & quality
 

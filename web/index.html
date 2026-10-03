@@ -49,6 +49,7 @@
           <span class="visually-hidden">Find a setting</span>
           <input id="param-search" type="search" placeholder="Find a setting" autocomplete="off">
         </label>
+        <button type="button" class="ghost" id="batch-open" title="Make many variations at once and download them as a ZIP">Batch</button>
         <button type="button" class="ghost" id="help-toggle" aria-pressed="false" title="Show the explanation under each setting">Help</button>
         <button type="button" class="ghost" id="reset-all">Reset all</button>
       </div>
@@ -115,6 +116,24 @@
       <div id="about-body"></div>
     </div>
   </main>
+
+  <dialog id="batch" class="batch" aria-labelledby="batch-title">
+    <form method="dialog" id="batch-form">
+      <h2 id="batch-title">Batch generate</h2>
+      <p class="muted">Every other setting stays as it is in the form. Each combination becomes its own STL, all in one ZIP.</p>
+      <div id="batch-rows"></div>
+      <button type="button" class="ghost" id="batch-add">Vary a second setting</button>
+      <p id="batch-count" class="batch-count"></p>
+      <div class="batch-progress" id="batch-progress" hidden>
+        <div class="progress-bar"><span id="batch-bar"></span></div>
+        <p id="batch-progress-text"></p>
+      </div>
+      <div class="batch-actions">
+        <button type="button" class="ghost" id="batch-close">Close</button>
+        <button type="button" class="primary" id="batch-run">Generate</button>
+      </div>
+    </form>
+  </dialog>
 
   <noscript><p class="noscript">This generator needs JavaScript to build its forms and 3D preview.</p></noscript>
   <script type="module" src="app.js"></script>

@@ -2,6 +2,7 @@
 // upstream editor metadata, in-browser OpenSCAD renders, 3D preview, parts.
 import { Viewer } from "./viewer.js";
 import { EngineClient } from "./engine-client.js";
+import { makeZip } from "./zip.js";
 
 const $ = (s, root = document) => root.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -573,6 +574,163 @@ $("#params").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.matches("input:not([type=checkbox])")) { e.preventDefault(); generate(); }
 });
 $("#cancel").addEventListener("click", () => { cancelJob(); setStatus("stale", "Render cancelled."); });
+
+// ---------------------------------------------------------------- batch
+const BATCH_MAX = 200;
+const batch = { rows: [], running: null };
+const batchable = () => state.model.parameters.filter((p) => !p.hidden && !Array.isArray(p.default) &&
+  ["number", "string", "boolean"].includes(p.type));
+
+function batchRow(p) {
+  // sensible starting values for the chosen setting
+  const v = state.values[p.name];
+  if (p.widget === "dropdown") return { name: p.name, kind: "choice", picked: [v] };
+  if (p.type === "boolean") return { name: p.name, kind: "choice", picked: [false, true] };
+  if (p.type === "number") {
+    const step = p.step && p.step > 0 ? p.step : (Number.isInteger(v) ? Math.max(1, Math.round(Math.abs(v) / 5) || 1) : 1);
+    return { name: p.name, kind: "range", from: v, to: v + step * 4, step };
+  }
+  return { name: p.name, kind: "list", text: String(v) };
+}
+
+function rowValues(row) {
+  const p = state.model.parameters.find((x) => x.name === row.name);
+  if (row.kind === "choice") return row.picked;
+  if (row.kind === "list") return row.text.split(",").map((s) => s.trim()).filter(Boolean)
+    .map((s) => (p.type === "number" ? Number(s) : s)).filter((x) => p.type !== "number" || Number.isFinite(x));
+  const out = [];
+  const { from, to, step } = row;
+  if (!(step > 0) || !Number.isFinite(from) || !Number.isFinite(to)) return out;
+  for (let x = from, i = 0; (from <= to ? x <= to + 1e-9 : x >= to - 1e-9) && i <= BATCH_MAX; x = from <= to ? x + step : x - step, i++) {
+    out.push(Math.round(x * 1e6) / 1e6);
+  }
+  return out;
+}
+
+function batchCombos() {
+  let combos = [{}];
+  for (const row of batch.rows) {
+    const vals = rowValues(row);
+    combos = combos.flatMap((c) => vals.map((v) => ({ ...c, [row.name]: v })));
+  }
+  return combos;
+}
+
+function renderBatchRows() {
+  const box = $("#batch-rows");
+  const params = batchable();
+  box.replaceChildren(...batch.rows.map((row, ri) => {
+    const p = params.find((x) => x.name === row.name);
+    const label = (x) => x.label || humanize(x.name);
+    const pick = el("select", { "aria-label": "Setting to vary", onchange: (e) => {
+      batch.rows[ri] = batchRow(params[e.target.selectedIndex]); renderBatchRows();
+    } }, params.map((x) => el("option", { text: `${label(x)}${x.group !== "Parameters" ? ` (${x.group})` : ""}` })));
+    pick.selectedIndex = params.indexOf(p);
+    let editor;
+    if (row.kind === "range") {
+      const num = (k, text) => el("label", {}, text, el("input", { type: "number", step: "any", value: row[k],
+        oninput: (e) => { row[k] = e.target.value === "" ? NaN : +e.target.value; updateBatchCount(); } }));
+      editor = el("div", { class: "batch-range" }, num("from", "From"), num("to", "To"), num("step", "Step"));
+    } else if (row.kind === "choice") {
+      const opts = p.widget === "dropdown" ? p.options : [{ value: false, label: "Off" }, { value: true, label: "On" }];
+      editor = el("div", { class: "batch-choices" }, opts.map((o) => {
+        const cb = el("input", { type: "checkbox", onchange: (e) => {
+          row.picked = e.target.checked ? [...row.picked, o.value] : row.picked.filter((x) => !same(x, o.value));
+          updateBatchCount();
+        } });
+        cb.checked = row.picked.some((x) => same(x, o.value));
+        return el("label", {}, cb, o.label);
+      }));
+    } else {
+      editor = el("label", { class: "batch-list" }, "Values, separated by commas",
+        el("input", { type: "text", value: row.text, oninput: (e) => { row.text = e.target.value; updateBatchCount(); } }));
+    }
+    const remove = batch.rows.length > 1 ? el("button", { type: "button", class: "ghost", text: "Remove",
+      onclick: () => { batch.rows.splice(ri, 1); renderBatchRows(); } }) : null;
+    return el("fieldset", { class: "batch-row" }, el("legend", { text: ri ? "And vary" : "Vary" }), el("div", { class: "batch-row-head" }, pick, remove), editor);
+  }));
+  $("#batch-add").hidden = batch.rows.length >= 2 || params.length < 2;
+  updateBatchCount();
+}
+
+function updateBatchCount() {
+  const n = batchCombos().length;
+  const run = $("#batch-run");
+  $("#batch-count").textContent = n > BATCH_MAX ? `${n} combinations: the limit is ${BATCH_MAX}. Narrow the ranges.`
+    : n ? `${n} file${n === 1 ? "" : "s"} will be made.` : "Pick at least one value.";
+  run.disabled = !n || n > BATCH_MAX || !!batch.running;
+  run.textContent = n && n <= BATCH_MAX ? `Generate ${n} and download ZIP` : "Generate";
+}
+
+$("#batch-open").addEventListener("click", () => {
+  if (!state.model) return;
+  const params = batchable();
+  if (!batch.rows.length || batch.model !== state.model.key) {
+    batch.model = state.model.key;
+    // start from the most likely thing to vary: a length/size number, else the first number
+    const guess = params.find((p) => p.type === "number" && /len|length|size|width|height|grid/i.test(p.name)) ||
+      params.find((p) => p.type === "number") || params[0];
+    batch.rows = guess ? [batchRow(guess)] : [];
+  }
+  $("#batch-progress").hidden = true;
+  renderBatchRows();
+  $("#batch").showModal();
+});
+$("#batch-add").addEventListener("click", () => {
+  const used = new Set(batch.rows.map((r) => r.name));
+  const next = batchable().find((p) => !used.has(p.name));
+  if (next) { batch.rows.push(batchRow(next)); renderBatchRows(); }
+});
+$("#batch-close").addEventListener("click", () => {
+  if (batch.running) { batch.running.cancel(); batch.running = null; }
+  $("#batch").close();
+});
+$("#batch").addEventListener("cancel", () => { if (batch.running) { batch.running.cancel(); batch.running = null; } });
+
+$("#batch-run").addEventListener("click", async () => {
+  const model = state.model;
+  const combos = batchCombos();
+  if (!combos.length || combos.length > BATCH_MAX) return;
+  cancelJob();
+  const files = [];
+  const names = new Set();
+  const bar = $("#batch-bar"), text = $("#batch-progress-text");
+  $("#batch-progress").hidden = false;
+  batch.running = { cancelled: false, job: null, cancel() { this.cancelled = true; this.job?.cancel(); } };
+  const run = batch.running;
+  updateBatchCount();
+  const started = Date.now();
+  try {
+    for (let i = 0; i < combos.length; i++) {
+      if (run.cancelled) throw Object.assign(new Error("Batch cancelled."), { cancelled: true });
+      const values = { ...structuredClone(state.values), ...combos[i] };
+      const desc = Object.entries(combos[i]).map(([k, v]) => `${humanize(k)} ${v}`).join(", ");
+      text.textContent = `Making ${i + 1} of ${combos.length}: ${desc}`;
+      bar.style.width = `${(i / combos.length) * 100}%`;
+      run.job = state.engine.render(model, values);
+      const result = await run.job.promise;
+      let name = `${model.family}-${model.id}-` + Object.entries(combos[i]).map(([k, v]) => `${k}-${v}`).join("-");
+      name = name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 140);
+      while (names.has(name)) name += "_";
+      names.add(name);
+      files.push({ name: `${name}.stl`, data: new Uint8Array(await result.blob.arrayBuffer()) });
+      if (i === combos.length - 1) { state.viewerOwner = "model"; await showResult(result, values, true); }
+    }
+    bar.style.width = "100%";
+    const zip = makeZip(files);
+    const a = el("a", { href: URL.createObjectURL(zip), download: `${model.family}-${model.id}-batch-${files.length}.zip` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    text.textContent = `Done: ${files.length} files (${bytes(zip.size)}) in ${Math.round((Date.now() - started) / 1000)} s. Your download has started.`;
+    setStatus("ok", `Batch of ${files.length} downloaded. The preview shows the last one.`);
+  } catch (e) {
+    text.textContent = e.cancelled ? "Batch cancelled. Nothing was downloaded." : `Stopped: ${e.message}`;
+  } finally {
+    batch.running = null;
+    updateBatchCount();
+  }
+});
 
 // ---------------------------------------------------------------- part libraries
 async function openLibrary(libId, itemId) {

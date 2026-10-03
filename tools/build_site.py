@@ -63,15 +63,39 @@ def collect_files(entry: str, library_paths: list[str]) -> tuple[dict[str, Path]
     """Return {virtual path: host path} for an entrypoint, plus unresolved references."""
     libs = [ROOT / p for p in library_paths]
 
+    def nocase(base: Path, rel: str) -> Path | None:
+        """Find rel under base ignoring case, as Windows/macOS do (upstream files
+        are sometimes written there with mismatched case)."""
+        cur = base
+        for part in rel.split("/"):
+            if part in ("", "."):
+                continue
+            if part == "..":
+                cur = cur.parent
+                continue
+            if (cur / part).exists():
+                cur = cur / part
+                continue
+            if not cur.is_dir():
+                return None
+            match = next((c for c in cur.iterdir() if c.name.lower() == part.lower()), None)
+            if match is None:
+                return None
+            cur = match
+        return cur if cur.is_file() else None
+
     def host(v: str) -> Path | None:
         if v.startswith("/libraries/"):
             rel = v[len("/libraries/"):]
             for lib in libs:
                 if (lib / rel).is_file():
                     return lib / rel
+            for lib in libs:
+                if (hit := nocase(lib, rel)):
+                    return hit
             return None
         p = ROOT / v.lstrip("/")
-        return p if p.is_file() else None
+        return p if p.is_file() else nocase(ROOT, v.lstrip("/"))
 
     files: dict[str, Path] = {}
     missing: list[str] = []

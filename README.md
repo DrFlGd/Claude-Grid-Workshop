@@ -66,7 +66,7 @@ Repository **Settings → Pages → Build and deployment → Source: GitHub Acti
 | Family | Models | In the browser | License / public use |
 | --- | --- | --- | --- |
 | Gridfinity Rebuilt | Bin, Baseplate, Vase Bin | ✅ | MIT · ok |
-| Gridfinity Extended | Bin, Baseplate, Connector Clips (+13 more vendored) | ✅ | GPL-3.0 · ok |
+| Gridfinity Extended | Bin, Baseplate, Connector Clips, Drawers, Item Holder, Lid, Sliding Lid, Bin with Removable Walls, Tray, Silverware Holder, Socket Holder, Sieve, Vertical Divider, Chess Set, Glue Stick Holder, Marble Run | ✅ | GPL-3.0 · ok |
 | GridFlock | Baseplate | ✅ | MIT / CC-BY-4.0 · ok |
 | Gridfinity Rugged Box | Box (12 parts) | ✅ | CC-BY-SA-4.0 + MIT · ok |
 | Gridfinity Basket | Basket | ✅ | MIT · ok |

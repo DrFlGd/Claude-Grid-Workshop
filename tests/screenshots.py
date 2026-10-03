@@ -39,7 +39,8 @@ async def main():
     failures, errors, timings = [], [], []
     async with async_playwright() as p:
         b = await p.chromium.launch(args=["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
-        pg = await b.new_page(viewport={"width": 1440, "height": 900})
+        ctx = await b.new_context(viewport={"width": 1440, "height": 900}, accept_downloads=True)
+        pg = await ctx.new_page()
         pg.on("pageerror", lambda e: errors.append(str(e)))
         await pg.goto(a.base)
         await pg.wait_for_selector(".cat-rows a")
@@ -78,6 +79,24 @@ async def main():
         await sw.check()
         await pg.wait_for_timeout(300)
         await pg.screenshot(path=f"{a.out}/92-gridflock-magnets.png")
+
+        # batch: three bin labels of different lengths, downloaded as one ZIP
+        await open_and_render(pg, a.base, "label-generator-gridfinity/bin-label", a.timeout)
+        await pg.click("#batch-open")
+        row = pg.locator(".batch-row").first
+        await row.locator("select").select_option(label="Length (mm) (Part customization)")
+        ins = row.locator(".batch-range input")
+        await ins.nth(0).fill("10"); await ins.nth(1).fill("20"); await ins.nth(2).fill("5")
+        async with pg.expect_download(timeout=a.timeout * 1000) as dl:
+            await pg.click("#batch-run")
+        import zipfile
+        z = zipfile.ZipFile(await (await dl.value).path())
+        names = [i.filename for i in z.infolist()]
+        print(f"BATCH {len(names)} files, zip ok={z.testzip() is None}: {names}")
+        if len(names) != 3 or z.testzip() is not None:
+            failures.append(f"batch: {names}")
+        await pg.screenshot(path=f"{a.out}/95-batch.png")
+        await pg.click("#batch-close")
 
         await pg.goto(f"{a.base}#/parts/opengrid-official/mounts-opengrid-wall-mount")
         await pg.wait_for_selector("#dims:not([hidden])", timeout=60000)
