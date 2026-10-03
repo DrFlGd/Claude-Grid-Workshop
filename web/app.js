@@ -37,7 +37,7 @@ const state = {
 
 // ---------------------------------------------------------------- helpers
 function humanize(name) {
-  const axis = name.match(/^([a-z]{3,})([xyz])$/);
+  const axis = name.match(/^(grid|size|offset|pos|position|count|units|scale|rotate|spacing|divisions?)([xyz])$/);
   if (axis) name = `${axis[1]}_${axis[2].toUpperCase()}`;
   const s = name.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim();
   return s.split(" ").map((w, i) => {
@@ -221,9 +221,17 @@ async function openModel(key) {
   if (detail.source?.repository) credit.append(el("a", { href: detail.source.repository, target: "_blank", rel: "noopener", text: "Source" }), ". ");
   credit.append(`License: ${detail.license?.spdx === "NOASSERTION" ? "not stated" : detail.license?.spdx}.`);
   $("#model-license").replaceChildren(...[licenseBadge(detail.license)].filter(Boolean));
-  const notes = $("#model-notes");
-  notes.replaceChildren(...(detail.description_html ? safeHTML(detail.description_html) : []));
-  notes.hidden = !detail.description_html;
+  // author notes fold away; their conditional warnings stay visible above the form
+  const notesNodes = detail.description_html ? safeHTML(detail.description_html) : [];
+  const holder = document.createElement("div");
+  holder.append(...notesNodes);
+  const alerts = [...holder.querySelectorAll("[class^=alert]")];
+  alerts.forEach((a) => a.remove());
+  $("#model-alerts").replaceChildren(...alerts);
+  const hasNotes = !!holder.textContent.trim();
+  $("#model-notes-body").replaceChildren(...holder.childNodes);
+  $("#model-notes").hidden = !hasNotes;
+  $("#model-notes").open = false;
 
   state.values = Object.fromEntries(detail.parameters.map((p) => [p.name, structuredClone(p.default)]));
   $("#param-search").value = "";
@@ -239,7 +247,7 @@ function buildForm() {
   const names = parameters.map((p) => p.name).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n));
   state.conditions = [];
   for (const p of parameters) if (p.show_if) state.conditions.push({ test: compileCondition(p.show_if, names), name: p.name });
-  for (const node of $("#model-notes").querySelectorAll("[data-display-condition]")) {
+  for (const node of document.querySelectorAll("#model-alerts [data-display-condition], #model-notes-body [data-display-condition]")) {
     state.conditions.push({ test: compileCondition(node.dataset.displayCondition, names), node });
   }
   groups.forEach((g, gi) => {
@@ -258,7 +266,7 @@ function buildForm() {
       box.checked = !!state.values[control.name];
       summary.prepend(box);
     }
-    if (tab.help_link) summary.append(el("a", { class: "help-link", href: tab.help_link, target: "_blank", rel: "noopener", text: "Help", onclick: (e) => e.stopPropagation() }));
+    if (tab.help_link) summary.append(el("a", { class: "help-link", href: tab.help_link, target: "_blank", rel: "noopener", text: "?", title: "Documentation", "aria-label": `Documentation for ${g}`, onclick: (e) => e.stopPropagation() }));
     summary.append(el("span", { class: "changed-count" }));
     const open = control ? !!state.values[control.name] : tab.collapsed ? false : gi < 2 || groups.length <= 3;
     const det = el("details", { class: "group", "data-group": g, open }, summary, body);
@@ -275,17 +283,22 @@ function buildField(p) {
   const helpNodes = [];
   if (p.description_html) helpNodes.push(el("div", { class: "help", id: `${id}-help` }, safeHTML(p.description_html)));
   else if (p.description) helpNodes.push(el("p", { class: "help", id: `${id}-help`, text: p.description }));
-  const reset = el("button", { type: "button", class: "reset", text: "Reset", hidden: true,
+  const reset = el("button", { type: "button", class: "reset", text: "↺", hidden: true, title: `Reset to ${JSON.stringify(p.default)}`,
     "aria-label": `Reset ${label}`, onclick: () => { setValue(p, structuredClone(p.default)); syncField(p); } });
-  const helpLink = p.help_link ? el("a", { class: "help-link", href: p.help_link, target: "_blank", rel: "noopener", text: "Help" }) : null;
-  const head = (labelNode) => el("div", { class: "field-head" }, labelNode, helpLink, reset);
+  const helpLink = p.help_link ? el("a", { class: "help-link", href: p.help_link, target: "_blank", rel: "noopener", text: "?",
+    title: "Documentation", "aria-label": `Documentation for ${label}` }) : null;
+  const tip = p.description || (p.description_html ? helpNodes[0].textContent : null);
+  const head = (labelNode) => {
+    if (tip) labelNode.title = tip; // short labels; full explanation on hover or with Help on
+    return el("div", { class: "field-head" }, labelNode, helpLink, reset);
+  };
   const wrap = el("div", { class: "field", "data-name": p.name, "data-search": `${p.name} ${label} ${p.description || ""}`.toLowerCase() });
   const describedby = helpNodes.length ? `${id}-help` : null;
 
   if (p.widget === "checkbox") {
     wrap.classList.add("check");
-    wrap.append(el("input", { type: "checkbox", id, "aria-describedby": describedby, onchange: (e) => setValue(p, e.target.checked) }),
-      head(el("label", { for: id, text: label })), ...helpNodes);
+    wrap.append(head(el("label", { for: id, text: label })),
+      el("input", { type: "checkbox", id, "aria-describedby": describedby, onchange: (e) => setValue(p, e.target.checked) }), ...helpNodes);
   } else if (p.widget === "dropdown") {
     const sel = el("select", { id, "aria-describedby": describedby,
       onchange: (e) => setValue(p, p.options[e.target.selectedIndex].value) },
@@ -303,7 +316,7 @@ function buildField(p) {
     const editable = p.default.every((v) => typeof v !== "object");
     const inputs = p.default.map((v, i) => {
       const t = typeof v === "boolean" ? "checkbox" : typeof v === "number" ? "number" : "text";
-      return el("label", {}, axes[i] || `${i + 1}`, el("input", { type: t, "data-i": i, step: "any", min: p.min, max: p.max, disabled: !editable,
+      return el("label", { "data-axis": axes[i] || `${i + 1}` }, axes[i] || `${i + 1}`, el("input", { type: t, "data-i": i, "aria-label": `${label} ${axes[i] || i + 1}`, step: "any", min: p.min, max: p.max, disabled: !editable,
         oninput: (e) => {
           const next = structuredClone(state.values[p.name]);
           next[i] = t === "checkbox" ? e.target.checked : t === "number" ? (e.target.value === "" ? next[i] : +e.target.value) : e.target.value;
@@ -372,6 +385,12 @@ function applyConditions() {
     if (c.node) c.node.hidden = !show, c.node.style.display = show ? "" : "none";
     else $(`.field[data-name="${CSS.escape(c.name)}"]`)?.classList.toggle("cond-hidden", !show);
   }
+  // a section whose settings are all switched off by conditions disappears too
+  document.querySelectorAll("#params .group").forEach((g) => {
+    const fields = g.querySelectorAll(".field");
+    g.classList.toggle("cond-hidden", !g.querySelector(".group-switch") && fields.length > 0 &&
+      [...fields].every((f) => f.classList.contains("cond-hidden")));
+  });
 }
 
 function refreshChanged() {
@@ -388,6 +407,15 @@ function refreshChanged() {
     $(".changed-count", g).textContent = n ? `${n} changed` : "";
   });
 }
+
+const helpBtn = $("#help-toggle");
+const setHelp = (on) => {
+  document.body.classList.toggle("show-help", on);
+  helpBtn.setAttribute("aria-pressed", String(on));
+  try { localStorage.setItem("gw-help", on ? "1" : "0"); } catch { /* private mode */ }
+};
+helpBtn.addEventListener("click", () => setHelp(!document.body.classList.contains("show-help")));
+setHelp((() => { try { return localStorage.getItem("gw-help") === "1"; } catch { return false; } })());
 
 $("#reset-all").addEventListener("click", () => {
   if (!state.model) return;

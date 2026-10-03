@@ -31,6 +31,10 @@ Everything under `vendor/` is third-party work, vendored unmodified at the commi
 | Library | Author | Source | License | Path |
 | --- | --- | --- | --- | --- |
 | openGrid parts | David D | [Printables 1214361](https://www.printables.com/model/1214361-opengrid-walldesk-mounting-framework-and-ecosystem) | CC-BY-4.0 | `libraries/opengrid-official` |
+| Label Generator for Gridfinity | Laurens Guijt | [laurensguijt/Label-Generator-Gridfinity](https://github.com/laurensguijt/Label-Generator-Gridfinity) @ `350b406` | GPL-3.0 | `vendor/label-generator-gridfinity` |
+| Gridfinity Storage Box Label | Maurice Kevenaar | owner-supplied file (2026-10-03) | CC-BY-4.0 | `vendor/kevenaar-box-label` |
+| Gridfinity Screw Label | Nadia Santalla | owner-supplied file (2026-10-03) | GPL-3.0-or-later | `vendor/santalla-screw-label` (+ `adapters/santalla-screw-label`) |
+| bosl (library, v1) | Revar Desmera | [revarbat/BOSL](https://github.com/revarbat/BOSL) @ `4ce427a` | BSD-2-Clause | `vendor/libraries/BOSL` |
 
 Notes
 - openGrid code: CC-BY-NC-SA-4.0 (non-commercial); file headers license generated parts CC-BY-4.0.

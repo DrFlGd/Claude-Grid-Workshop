@@ -246,6 +246,11 @@ def apply_metadata(params: list[dict], groups: list[str], fam: dict, model: dict
         for k in ("label", "unit", "advanced"):
             if k in m:
                 p[k] = m[k]
+        if isinstance(m.get("options"), list):  # site override, e.g. fonts the browser engine has
+            p["widget"] = "dropdown"
+            p["options"] = [o if isinstance(o, dict) else {"value": o, "label": str(o)} for o in m["options"]]
+            if p["default"] not in [o["value"] for o in p["options"]]:
+                p["default"] = p["options"][0]["value"]
         out.append(p)
     tabs = {}
     for tab, tm in meta.get("tab-metadata", {}).items():
@@ -358,7 +363,10 @@ def main():
             files, missing = collect_files(m["entrypoint"], lib_paths)
             if missing:
                 problems.append(f"{key}: unresolved {missing}")
-            fmap = {v: store.put(h.read_bytes()) for v, h in sorted(files.items())}
+            # CRLF line endings stop OpenSCAD's Customizer from reading dropdown lists;
+            # normalise SCAD text when packaging (vendored files stay untouched)
+            fmap = {v: store.put(h.read_bytes().replace(b"\r\n", b"\n") if h.suffix.lower() == ".scad" else h.read_bytes())
+                    for v, h in sorted(files.items())}
             models.append({"key": key, "fam": fam, "meta": m, "files": fmap, "entry": "/" + m["entrypoint"],
                            "editor": editor_model_meta(editor_cfg, m.get("editor_model") or Path(m["entrypoint"]).name)})
 

@@ -31,6 +31,9 @@ Checked 2026-10-03. Carried forward from Grid-Storage-Workshop and re-verified h
 | Underware (Monokini) | Collected; license conflict | AGPL-3.0 vs CC-BY-NC-SA-4.0 declarations |
 | Gridfinity Anylid | Collected (owner-supplied) | Rendered from `adapters/anylid/anylid.scad`, which fixes magnet/screw holes; license unstated |
 | openGrid Shelf | Collected (owner-supplied) | License unstated |
+| Label Generator for Gridfinity | Collected | laurensguijt/Label-Generator-Gridfinity @ 350b406; bin and box labels |
+| Gridfinity Storage Box Label (Kevenaar) | Collected (owner-supplied) | CC-BY-4.0 per file header |
+| Gridfinity Screw Label (Santalla) | Collected (owner-supplied) | GPL-3.0+ per file header; adapter points BOSL includes at bundled BOSL v1 |
 | Multiboard | **Missing** | Site names `multiboard/multiboard.scad`, no source link |
 
 ## Closing the gaps

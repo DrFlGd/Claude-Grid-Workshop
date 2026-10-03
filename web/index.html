@@ -49,9 +49,11 @@
           <span class="visually-hidden">Find a setting</span>
           <input id="param-search" type="search" placeholder="Find a setting" autocomplete="off">
         </label>
+        <button type="button" class="ghost" id="help-toggle" aria-pressed="false" title="Show the explanation under each setting">Help</button>
         <button type="button" class="ghost" id="reset-all">Reset all</button>
       </div>
-      <div id="model-notes" class="model-notes"></div>
+      <details id="model-notes" class="model-notes" hidden><summary>About this model</summary><div id="model-notes-body"></div></details>
+      <div id="model-alerts" class="model-alerts" aria-live="polite"></div>
       <form id="params" class="params" novalidate></form>
       <div class="actionbar">
         <div id="status" class="status" role="status" aria-live="polite"></div>

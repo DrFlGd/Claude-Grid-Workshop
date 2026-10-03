@@ -141,6 +141,46 @@
    "files": 2,
    "scad_files": 1,
    "note": "Supplied by repository owner 2026-10-03; unmodified"
+  },
+  {
+   "id": "bosl",
+   "repository": "https://github.com/revarbat/BOSL.git",
+   "commit": "4ce427a8a38786e5f74b728c1e33d9fe7d4904d2",
+   "directory": "vendor/libraries/BOSL",
+   "license_summary": "BSD-2-Clause",
+   "files": 25,
+   "scad_files": 23,
+   "note": "BOSL v1, needed by the Santalla screw label"
+  },
+  {
+   "id": "label-generator-gridfinity",
+   "repository": "https://github.com/laurensguijt/Label-Generator-Gridfinity.git",
+   "commit": "350b406dde4471e8be0a34b0147422db8a60226f",
+   "directory": "vendor/label-generator-gridfinity",
+   "license_summary": "GPL-3.0",
+   "files": 4,
+   "scad_files": 2,
+   "note": ""
+  },
+  {
+   "id": "kevenaar-box-label",
+   "repository": null,
+   "commit": null,
+   "directory": "vendor/kevenaar-box-label",
+   "license_summary": "CC-BY-4.0 (file header)",
+   "files": 2,
+   "scad_files": 1,
+   "note": "Supplied by repository owner 2026-10-03; unmodified"
+  },
+  {
+   "id": "santalla-screw-label",
+   "repository": null,
+   "commit": null,
+   "directory": "vendor/santalla-screw-label",
+   "license_summary": "GPL-3.0-or-later (file header)",
+   "files": 2,
+   "scad_files": 1,
+   "note": "Supplied by repository owner 2026-10-03; unmodified; rendered via adapters/santalla-screw-label"
   }
  ]
 }
