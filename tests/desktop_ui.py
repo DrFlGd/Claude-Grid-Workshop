@@ -33,12 +33,23 @@ workspace = Path(a.workspace) if a.workspace else Path.home() / "Claude Grid Wor
 opts = ArgOptions()
 opts.set_capability("browserName", "wry")
 opts.set_capability("tauri:options", {"application": str(Path(a.app).resolve())})
+print("starting a session…", flush=True)
 d = webdriver.Remote(command_executor=a.driver, options=opts)
-d.set_window_size(1400, 900)
+print("session started", flush=True)
+d.set_script_timeout(30)
+try:
+    d.set_window_size(1400, 900)
+except Exception as e:  # some drivers can't resize
+    print("resize:", e, flush=True)
 failures, report = [], {}
 
 
+def shot(name):
+    d.save_screenshot(str(out / f"{name}.png"))
+
+
 def wait(js, timeout=180, what=""):
+    print(f"waiting for {what or js[:60]}…", flush=True)
     end = time.time() + timeout
     while time.time() < end:
         try:
@@ -48,11 +59,13 @@ def wait(js, timeout=180, what=""):
             pass
         time.sleep(0.25)
     failures.append(f"timed out waiting for {what or js}")
+    try:
+        shot(f"timeout-{len(failures):02d}")
+        print("page says:", d.execute_script("return document.body.innerText.slice(0, 400)"), flush=True)
+        print("errors:", d.execute_script("return window.__errors || []"), flush=True)
+    except Exception as e:
+        print("couldn't inspect the page:", e, flush=True)
     return False
-
-
-def shot(name):
-    d.save_screenshot(str(out / f"{name}.png"))
 
 
 def text(sel):
@@ -74,7 +87,8 @@ def open_model(key, timeout=300):
 
 
 try:
-    wait("document.querySelector('.project .chip')", 120, "the catalog")
+    if not wait("document.querySelector('.project .chip')", 90, "the catalog"):
+        raise SystemExit("the catalog never appeared; skipping the rest")
     time.sleep(0.5)
     shot("00-catalog")
     report["engine"] = text("#engine")

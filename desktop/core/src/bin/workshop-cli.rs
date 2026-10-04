@@ -120,9 +120,12 @@ async fn bench(engine: NativeEngine, mut a: Args) -> Result<()> {
             let t0 = Instant::now();
             let job = format!("bench-{}", key.replace('/', "-"));
             let r = tokio::time::timeout(timeout, renderer.render(&job, &req, |_| {})).await;
-            let secs = (t0.elapsed().as_secs_f64() * 100.0).round() / 100.0;
+            let mut secs = (t0.elapsed().as_secs_f64() * 100.0).round() / 100.0; // includes queueing
             let (status, stl, logs, error) = match r {
-                Ok(Ok(o)) => ("pass", o.stl, o.logs, None),
+                Ok(Ok(o)) => {
+                    secs = (o.ms as f64 / 10.0).round() / 100.0; // the render itself
+                    ("pass", o.stl, o.logs, None)
+                }
                 Ok(Err(e)) => ("fail", vec![], e.logs, Some(e.message)),
                 Err(_) => {
                     renderer.cancel(&job);

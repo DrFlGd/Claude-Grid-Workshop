@@ -227,7 +227,6 @@ impl Renderer {
     where
         F: Fn(RenderEvent) + Send + Sync,
     {
-        let started = Instant::now();
         // wait for a free engine slot (batches queue here)
         let _permit = match self.slots.clone().try_acquire_owned() {
             Ok(p) => p,
@@ -240,6 +239,7 @@ impl Renderer {
             }
         };
 
+        let started = Instant::now(); // render time, not counting the wait for a slot
         on_event(RenderEvent::Stage { stage: "Preparing model files…".into() });
         let tree = {
             let files = req.files.clone();
