@@ -39,7 +39,10 @@ pub enum RenderEvent {
 #[derive(Debug)]
 pub struct RenderOutput {
     pub stl: Vec<u8>,
+    /// Total time for this render (preparing files + OpenSCAD), not counting queueing.
     pub ms: u64,
+    /// Part of `ms` spent laying out the model's files (only on a model's first render).
+    pub prepare_ms: u64,
     pub cached: bool,
     pub logs: Vec<String>,
 }
@@ -85,6 +88,8 @@ pub struct Renderer {
     jobs: Mutex<HashMap<String, Arc<Notify>>>,
     /// Render cache size limit in bytes; oldest results are removed beyond it.
     pub cache_limit: u64,
+    /// Reuse and store finished renders (off for benchmarks).
+    pub use_cache: bool,
 }
 
 /// Default number of renders at once: all cores but one, at least one.
@@ -158,6 +163,7 @@ impl Renderer {
             concurrency,
             jobs: Mutex::new(HashMap::new()),
             cache_limit: 1 << 30,
+            use_cache: true,
         })
     }
 
@@ -206,15 +212,17 @@ impl Renderer {
         let meta: Option<CacheMeta> = std::fs::read(self.cache_dir.join("renders").join(format!("{key}.json")))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok());
-        Some(RenderOutput { stl, ms: meta.map(|m| m.ms).unwrap_or(0), cached: true, logs: vec![] })
+        Some(RenderOutput { stl, ms: meta.map(|m| m.ms).unwrap_or(0), prepare_ms: 0, cached: true, logs: vec![] })
     }
 
     pub async fn render<F>(&self, job: &str, req: &RenderRequest, on_event: F) -> Result<RenderOutput, RenderFailure>
     where
         F: Fn(RenderEvent) + Send + Sync,
     {
-        if let Some(hit) = self.cached(req) {
-            return Ok(hit);
+        if self.use_cache {
+            if let Some(hit) = self.cached(req) {
+                return Ok(hit);
+            }
         }
         let cancel = Arc::new(Notify::new());
         self.jobs.lock().unwrap().insert(job.to_string(), cancel.clone());
@@ -250,6 +258,7 @@ impl Renderer {
                 .map_err(|e| RenderFailure::failed(format!("Couldn't prepare the model files: {e}"), vec![]))?
                 .map_err(|e| RenderFailure::failed(format!("Couldn't prepare the model files: {e:#}"), vec![]))?
         };
+        let prepare_ms = started.elapsed().as_millis() as u64;
         let entry = rel_path(&req.entry).map_err(|e| RenderFailure::failed(e.to_string(), vec![]))?;
 
         let safe_job: String = job.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(40).collect();
@@ -345,6 +354,9 @@ impl Renderer {
             return Err(RenderFailure::failed(msg, logs));
         }
 
+        if !self.use_cache {
+            return Ok(RenderOutput { stl, ms, prepare_ms, cached: false, logs });
+        }
         let key = self.cache_key(req);
         let renders = self.cache_dir.join("renders");
         let tmp = renders.join(format!("{key}.tmp-{safe_job}"));
@@ -355,7 +367,7 @@ impl Renderer {
         } else {
             let _ = std::fs::remove_file(&tmp);
         }
-        Ok(RenderOutput { stl, ms, cached: false, logs })
+        Ok(RenderOutput { stl, ms, prepare_ms, cached: false, logs })
     }
 
     /// Total size of cached renders in bytes.

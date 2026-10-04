@@ -99,6 +99,9 @@ async fn bench(engine: NativeEngine, mut a: Args) -> Result<()> {
     let out = a.flag("--out");
     let jobs: usize = a.flag("--jobs").map(|j| j.parse()).transpose()?.unwrap_or(1);
     let timeout = Duration::from_secs(a.flag("--timeout").map(|t| t.parse()).transpose()?.unwrap_or(900));
+    // pass 1 is a first render (model files laid out fresh); pass 2 repeats it with the
+    // files already prepared, like any later render in the app (the result cache is off)
+    let passes: usize = a.flag("--passes").map(|t| t.parse()).transpose()?.unwrap_or(2).max(1);
     let cache = std::env::temp_dir().join(format!("workshop-bench-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&cache);
     let catalog = site.catalog()?;
@@ -107,63 +110,89 @@ async fn bench(engine: NativeEngine, mut a: Args) -> Result<()> {
         keys = catalog["models"].as_array().into_iter().flatten().filter_map(|m| m["key"].as_str().map(String::from)).collect();
     }
     let version = engine.version.clone();
-    let renderer = Arc::new(Renderer::new(engine, site.clone(), cache.clone(), jobs)?);
+    let mut r = Renderer::new(engine, site.clone(), cache.clone(), jobs)?;
+    r.use_cache = false;
+    let renderer = Arc::new(r);
     let common = catalog["common_files"].clone();
 
-    let mut handles = vec![];
-    for key in keys {
-        let renderer = renderer.clone();
-        let model = site.model(&key)?;
-        let req = default_request(&model, &common)?;
-        let desktop_only = model["browser"].as_bool() == Some(false);
-        handles.push(tokio::spawn(async move {
-            let t0 = Instant::now();
-            let job = format!("bench-{}", key.replace('/', "-"));
-            let r = tokio::time::timeout(timeout, renderer.render(&job, &req, |_| {})).await;
-            let mut secs = (t0.elapsed().as_secs_f64() * 100.0).round() / 100.0; // includes queueing
-            let (status, stl, logs, error) = match r {
-                Ok(Ok(o)) => {
-                    secs = (o.ms as f64 / 10.0).round() / 100.0; // the render itself
-                    ("pass", o.stl, o.logs, None)
+    let mut results: Vec<Value> = vec![];
+    for pass in 0..passes {
+        let mut handles = vec![];
+        for key in &keys {
+            let key = key.clone();
+            let renderer = renderer.clone();
+            let model = site.model(&key)?;
+            let req = default_request(&model, &common)?;
+            let desktop_only = model["browser"].as_bool() == Some(false);
+            handles.push(tokio::spawn(async move {
+                let t0 = Instant::now();
+                let job = format!("bench-{pass}-{}", key.replace('/', "-"));
+                let r = tokio::time::timeout(timeout, renderer.render(&job, &req, |_| {})).await;
+                let secs = |ms: f64| (ms / 10.0).round() / 100.0;
+                let (status, stl, logs, error, seconds, prepare) = match r {
+                    Ok(Ok(o)) => ("pass", o.stl, o.logs, None, secs(o.ms as f64), secs(o.prepare_ms as f64)),
+                    Ok(Err(e)) => ("fail", vec![], e.logs, Some(e.message), secs(t0.elapsed().as_millis() as f64), 0.0),
+                    Err(_) => {
+                        renderer.cancel(&job);
+                        ("fail", vec![], vec![], Some(format!("timed out after {} s", timeout.as_secs())), timeout.as_secs_f64(), 0.0)
+                    }
+                };
+                let warnings = logs.iter().filter(|l| l.starts_with("WARNING:")).count();
+                let res = json!({
+                    "id": key, "key": key, "status": status, "seconds": seconds, "prepare_seconds": prepare,
+                    "bytes": stl.len(), "triangles": stl_triangles(&stl).unwrap_or(0), "warnings": warnings,
+                    "desktop_only": desktop_only,
+                    "error": error, "log_tail": if status == "pass" { Value::Null } else { json!(logs.iter().rev().take(15).rev().collect::<Vec<_>>()) },
+                });
+                eprintln!(
+                    "{:<5} pass {} {:<44} {:>7}s (files {:>5}s)  {} tris{}",
+                    status,
+                    pass + 1,
+                    key,
+                    seconds,
+                    prepare,
+                    res["triangles"],
+                    if desktop_only { "  (desktop only)" } else { "" }
+                );
+                res
+            }));
+        }
+        let mut this_pass = vec![];
+        for h in handles {
+            this_pass.push(h.await?);
+        }
+        if pass == 0 {
+            results = this_pass;
+        } else {
+            for (res, again) in results.iter_mut().zip(this_pass) {
+                res["repeat_seconds"] = again["seconds"].clone();
+                if again["status"] != "pass" {
+                    res["status"] = again["status"].clone();
+                    res["error"] = again["error"].clone();
                 }
-                Ok(Err(e)) => ("fail", vec![], e.logs, Some(e.message)),
-                Err(_) => {
-                    renderer.cancel(&job);
-                    ("fail", vec![], vec![], Some(format!("timed out after {} s", timeout.as_secs())))
-                }
-            };
-            let warnings = logs.iter().filter(|l| l.starts_with("WARNING:")).count();
-            let res = json!({
-                "id": key, "key": key, "status": status, "seconds": secs,
-                "bytes": stl.len(), "triangles": stl_triangles(&stl).unwrap_or(0), "warnings": warnings,
-                "desktop_only": desktop_only,
-                "error": error, "log_tail": if status == "pass" { Value::Null } else { json!(logs.iter().rev().take(15).rev().collect::<Vec<_>>()) },
-            });
-            eprintln!(
-                "{:<5} {:<44} {:>7}s  {} tris{}",
-                status,
-                key,
-                secs,
-                res["triangles"],
-                if desktop_only { "  (desktop only)" } else { "" }
-            );
-            res
-        }));
-    }
-    let mut results = vec![];
-    for h in handles {
-        results.push(h.await?);
+            }
+        }
     }
     let failed = results.iter().filter(|r| r["status"] != "pass").count();
+    let total = |k: &str| results.iter().filter_map(|r| r[k].as_f64()).sum::<f64>();
     let report = json!({
         "engine": version, "native": true, "os": std::env::consts::OS, "arch": std::env::consts::ARCH,
-        "jobs": jobs, "results": results,
+        "jobs": jobs, "passes": passes,
+        "total_seconds": (total("seconds") * 100.0).round() / 100.0,
+        "total_repeat_seconds": (total("repeat_seconds") * 100.0).round() / 100.0,
+        "results": results,
     });
     if let Some(out) = out {
         std::fs::write(&out, serde_json::to_string_pretty(&report)? + "\n")?;
     }
     let _ = std::fs::remove_dir_all(&cache);
-    eprintln!("{} of {} passed", report["results"].as_array().map(|r| r.len()).unwrap_or(0) - failed, report["results"].as_array().map(|r| r.len()).unwrap_or(0));
+    eprintln!(
+        "{} of {} passed; total {} s first render, {} s repeated",
+        results.len() - failed,
+        results.len(),
+        report["total_seconds"],
+        report["total_repeat_seconds"]
+    );
     if failed > 0 {
         std::process::exit(1);
     }

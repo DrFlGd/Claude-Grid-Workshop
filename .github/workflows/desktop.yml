@@ -32,6 +32,8 @@ jobs:
     name: Build site data
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    defaults:
+      run: { shell: bash }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,6 +63,8 @@ jobs:
     needs: site
     runs-on: ubuntu-22.04   # oldest supported: the AppImage then runs on newer systems too
     timeout-minutes: 90
+    defaults:
+      run: { shell: bash }   # -o pipefail, so "cmd | tee log" fails when cmd fails
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -86,6 +90,7 @@ jobs:
           mkdir -p ../ci-out
           cargo build --release -p workshop-core 2>&1 | tee ../ci-out/core-build.log
           cargo test --release -p workshop-core 2>&1 | tee ../ci-out/core-test.log
+          cp Cargo.lock ../ci-out/Cargo.lock
       - name: Render every model natively (workshop-cli)
         run: |
           desktop/target/release/workshop-cli bench --site build/desktop/site --engine build/native/squashfs-root \
@@ -181,6 +186,17 @@ jobs:
           gh release view desktop-latest >/dev/null 2>&1 || gh release create desktop-latest --prerelease \
             --title "Desktop app (latest build)" --notes "Built automatically from main. Linux: AppImage or .deb. Windows: setup .exe." || true
           gh release upload desktop-latest dist/* --clobber
+      - name: Drive the app (WebDriver)
+        run: |
+          pip install selenium
+          cargo install tauri-driver --locked 2>&1 | tail -3
+          cargo install --git https://github.com/chippers/msedgedriver-tool 2>&1 | tail -3
+          msedgedriver-tool 2>&1 | tail -3
+          ls -la msedgedriver.exe
+          tauri-driver --native-driver "$PWD/msedgedriver.exe" > ci-out/tauri-driver.log 2>&1 &
+          sleep 3
+          timeout 1200 python tests/desktop_ui.py --app desktop/target/release/claude-grid-workshop.exe \
+            --out ci-out/shots 2>&1 | tee ci-out/desktop-ui.log
       - name: Publish reports to desktop-ci-windows
         if: always()
         run: |

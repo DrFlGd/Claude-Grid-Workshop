@@ -52,6 +52,8 @@ impl NativeEngine {
                 .find(|p| p.is_file())
                 .with_context(|| format!("no OpenSCAD executable found in {}", path.display()))?
         };
+        // renders run with the model's folder as working directory, so the path must not be relative
+        let exe = std::path::absolute(&exe).unwrap_or(exe);
         let version = Self::query_version(&exe).await?;
         Ok(Self { exe, version })
     }
