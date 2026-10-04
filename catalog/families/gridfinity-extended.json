@@ -21,7 +21,8 @@
   "source": {
     "repository": "https://github.com/ostat/gridfinity_extended_openscad",
     "commit": "94d5a3e2d39e0b90894c042a255fc487cfcc9197",
-    "vendor_path": "vendor/gridfinity-extended"
+    "vendor_path": "vendor/gridfinity-extended",
+    "commit_date": "2026-09-23T11:25:04+00:00"
   },
   "license": {
     "spdx": "GPL-3.0-only",

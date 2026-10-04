@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Claude Grid Workshop</title>
+  <title>SCAD Workshop</title>
   <meta name="description" content="Generate printable Gridfinity, openGrid and wall-storage parts from open-source OpenSCAD models.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,24 +18,18 @@
   <header class="topbar">
     <a class="brand" href="#/">
       <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="9" height="9" rx="2"/><rect x="13" y="2" width="9" height="9" rx="2"/><rect x="2" y="13" width="9" height="9" rx="2"/><rect x="13" y="13" width="9" height="9" rx="2" class="filled"/></svg>
-      <span>Claude Grid Workshop</span>
+      <span>SCAD Workshop</span>
     </a>
-    <nav class="crumbs" id="crumbs" aria-label="Location"></nav>
+    <div id="topsearch" class="topsearch-wrap"></div>
     <a class="engine" id="engine" href="#/licenses" title="Licenses and credits"></a>
-    <a class="topnav" href="#/settings" title="Printer profile and app settings">Settings</a>
+    <div id="topbuttons" class="topbuttons"></div>
   </header>
 
-  <main id="view-catalog" class="catalog" hidden>
-    <div class="catalog-head">
-      <h1>Make storage that fits</h1>
-      <p>Pick a generator, set the sizes, and download a print-ready STL. Parts are made right here in your browser with OpenSCAD, and every model is open source and credited to its author.</p>
-      <label class="search">
-        <span class="visually-hidden">Search generators</span>
-        <input id="catalog-search" type="search" placeholder="Search: bin, baseplate, label, shelf…" autocomplete="off">
-      </label>
-    </div>
-    <div id="catalog-list"></div>
-  </main>
+  <div class="app">
+  <div id="sidebar-root" class="sidebar-root"></div>
+  <div class="app-main">
+  <div id="tabs-root"></div>
+  <div id="view-browse" class="view-browse" hidden></div>
 
   <main id="view-model" class="workbench" hidden>
     <aside class="rail" aria-label="Model settings">
@@ -110,12 +104,17 @@
     </aside>
   </main>
 
-  <main id="view-about" class="catalog" hidden>
+  <main id="view-about" class="pages" hidden>
     <div class="about">
       <h1 id="about-title">Licenses &amp; credits</h1>
       <div id="about-body"></div>
     </div>
   </main>
+  </div>
+  </div>
+  <footer id="statusbar" class="statusbar"></footer>
+  <div id="palette-root"></div>
+  <div id="quicklook-root"></div>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 

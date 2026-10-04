@@ -1,6 +1,6 @@
 [package]
 name = "workshop-core"
-description = "Native rendering, cache, workspace and storage for the Claude Grid Workshop desktop app"
+description = "Native rendering, cache, workspace and storage for the SCAD Workshop desktop app"
 version.workspace = true
 edition.workspace = true
 

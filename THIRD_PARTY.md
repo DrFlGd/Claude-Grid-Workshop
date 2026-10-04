@@ -25,6 +25,8 @@ Everything under `vendor/` is third-party work, vendored unmodified at the commi
 | --- | --- | --- |
 | [OpenSCAD](https://github.com/openscad/openscad) 2026.10.02 WebAssembly build | Renders every model in the browser; unmodified official snapshot (`engine.json`) | GPL-2.0-or-later (`assets/engine/COPYING`) |
 | [three.js](https://github.com/mrdoob/three.js) r186 | 3D preview (`web/vendor/three`) | MIT |
+| [Preact](https://github.com/preactjs/preact) 10.27.2 @ `0dbe636` | Interface components (`web/vendor/preact`; copied by `tools/vendor_preact.py`, only import paths changed) | MIT |
+| [htm](https://github.com/developit/htm) @ `d62dcfd` | JSX-like templates without a build step (`web/vendor/htm`) | Apache-2.0 |
 | Liberation Sans / Mono | Fonts for text() in the browser engine (`assets/fonts`) | SIL OFL 1.1 |
 | [web-openscad-editor](https://github.com/yawkat/web-openscad-editor) | Its `editor.toml` format is read for form metadata; its build approach (dependency discovery, content-addressed files, fonts) informed `tools/build_site.py`. No code copied. | MIT |
 

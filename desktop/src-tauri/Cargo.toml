@@ -1,9 +1,9 @@
 [package]
-name = "claude-grid-workshop"
-description = "Claude Grid Workshop desktop app"
+name = "scad-workshop"
+description = "SCAD Workshop desktop app"
 version.workspace = true
 edition.workspace = true
-default-run = "claude-grid-workshop"
+default-run = "scad-workshop"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

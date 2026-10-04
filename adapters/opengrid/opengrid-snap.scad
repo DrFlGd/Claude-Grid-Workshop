@@ -1,4 +1,4 @@
-// Claude Grid Workshop adapter for the openGrid Snap.
+// SCAD Workshop adapter for the openGrid Snap.
 //
 // The upstream file (vendor/quackworks/openGrid/opengrid-snap.scad) defines the
 // openGridSnap() module and ends with a hard-coded call. `use` imports the

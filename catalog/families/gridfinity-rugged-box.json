@@ -19,7 +19,8 @@
   "source": {
     "repository": "https://github.com/smkent/monoscad",
     "commit": "069891b93f8b70765560ba07a67aa1970a88cb82",
-    "vendor_path": "vendor/monoscad"
+    "vendor_path": "vendor/monoscad",
+    "commit_date": "2026-09-10T23:48:18-07:00"
   },
   "license": {
     "spdx": "CC-BY-SA-4.0 AND MIT",

@@ -2,12 +2,13 @@
 """Drive the built desktop app through tauri-driver (WebDriver) and save screenshots.
 
     tauri-driver &                     # needs WebKitWebDriver (Linux) or msedgedriver (Windows)
-    python3 tests/desktop_ui.py --app desktop/target/release/claude-grid-workshop --out shots
+    python3 tests/desktop_ui.py --app desktop/target/release/scad-workshop --out shots
 
-Checks: the catalog loads (including desktop-only models), native renders work
-(one model the browser engine can't render), saved settings land in the
-workspace folder, the settings page shows the workspace and engine, and a
-ready-made part previews. Exits non-zero on any failure.
+Checks: the library interface loads (including desktop-only models, with
+thumbnails), search answers quickly, native renders work (one model the browser
+engine can't render), opened models become tabs, saved settings land in the
+workspace folder, the settings page shows the workspace and engine, a
+ready-made part previews, and the night theme applies. Exits non-zero on any failure.
 """
 import argparse
 import json
@@ -23,12 +24,12 @@ from selenium.webdriver.common.options import ArgOptions
 ap = argparse.ArgumentParser()
 ap.add_argument("--app", required=True)
 ap.add_argument("--out", default="shots")
-ap.add_argument("--workspace", help="expected workspace folder (default: ~/Claude Grid Workshop)")
+ap.add_argument("--workspace", help="expected workspace folder (default: ~/SCAD Workshop)")
 ap.add_argument("--driver", default="http://127.0.0.1:4444")
 a = ap.parse_args()
 out = Path(a.out)
 out.mkdir(parents=True, exist_ok=True)
-workspace = Path(a.workspace) if a.workspace else Path.home() / "Claude Grid Workshop"
+workspace = Path(a.workspace) if a.workspace else Path.home() / "SCAD Workshop"
 
 opts = ArgOptions()
 opts.set_capability("browserName", "wry")
@@ -87,17 +88,48 @@ def open_model(key, timeout=300):
 
 
 try:
-    if not wait("document.querySelector('.project .chip')", 90, "the catalog"):
-        raise SystemExit("the catalog never appeared; skipping the rest")
+    if not wait("document.querySelector('.home .tile')", 90, "the home page"):
+        raise SystemExit("the interface never appeared; skipping the rest")
     time.sleep(0.5)
-    shot("00-catalog")
+    shot("00-home")
     report["engine"] = text("#engine")
     report["platform"] = d.execute_script("return document.body.dataset.platform || ''")
     print("engine:", report["engine"], "| platform:", report["platform"])
     if "native" not in report["engine"]:
         failures.append(f"engine label: {report['engine']}")
-    if not d.execute_script("return !!document.querySelector('a.chip[href=\"#/m/underware/t-channel\"]')"):
-        failures.append("desktop-only model missing from the catalog")
+
+    # the library: every generator (desktop-only ones too) with a thumbnail, in all four views
+    d.execute_script("location.hash = '#/browse/all'")
+    wait("document.querySelector('.results [data-item]')", 30, "the generator list")
+    shown = d.execute_script("return document.querySelectorAll('.results [data-item]').length")
+    thumbs = d.execute_script("return document.querySelectorAll('.results .card img').length")
+    # thumbnails load lazily: the first row must actually have loaded
+    loaded = wait("[...document.querySelectorAll('.results .card img')].slice(0, 3).every(i => i.complete && i.naturalWidth > 0)", 15, "thumbnails to load")
+    report["library"] = {"generators": shown, "thumbnails": thumbs, "first_row_loaded": loaded}
+    print("library:", report["library"], flush=True)
+    if not d.execute_script("return !!document.querySelector('.results [data-item=\"gen:underware/t-channel\"]')"):
+        failures.append("desktop-only model missing from the library")
+    if thumbs < shown:
+        failures.append(f"thumbnails: {thumbs} of {shown}")
+    shot("00-library-grid")
+    for layout in ("list", "table", "grouped"):
+        d.execute_script(f"document.querySelector('button[data-layout=\"{layout}\"]').click()")
+        if wait(f"document.querySelector('.results[data-layout=\"{layout}\"] [data-item]')", 10, f"{layout} view"):
+            n = d.execute_script("return document.querySelectorAll('.results [data-item]').length")
+            if n != shown:
+                failures.append(f"{layout} view shows {n} of {shown}")
+    shot("00-library-table")
+    d.execute_script("document.querySelector('button[data-layout=\"grid\"]').click()")
+
+    # search: typed into the top box, answered from the index
+    d.execute_script("""const i = document.querySelector('#global-search'); i.value = 'channel';
+      i.dispatchEvent(new Event('input', {bubbles: true}));""")
+    wait("/ms$/.test(document.querySelector('.browse-count')?.textContent || '')", 10, "search results")
+    report["search_channel"] = text(".browse-count")
+    print("search 'channel':", report["search_channel"], flush=True)
+    ms = report["search_channel"].split("·")[-1].strip().split()[0] if "·" in report["search_channel"] else "999"
+    if float(ms.lstrip("<")) >= 100:
+        failures.append(f"search took {report['search_channel']}")
 
     open_model("gridfinity-rebuilt/bin")
     time.sleep(1)
@@ -146,6 +178,27 @@ try:
         report["part_dims"] = text("#dims")
     time.sleep(0.5)
     shot("04-part")
+
+    # every generator opened above stays open as a tab
+    tabs = d.execute_script("return [...document.querySelectorAll('.tabstrip [data-tab]')].map(t => t.dataset.tab)")
+    report["tabs"] = tabs
+    print("tabs:", tabs, flush=True)
+    for key in ("gridfinity-rebuilt/bin", "underware/t-channel", "gridfinity-extended/bin"):
+        if key not in tabs:
+            failures.append(f"no tab for {key}")
+
+    # night theme, on the library
+    d.execute_script("location.hash = '#/browse/all'")
+    wait("document.querySelector('.results [data-item]')", 20, "the library again")
+    for _ in range(3):
+        if d.execute_script("return document.documentElement.dataset.theme") == "night":
+            break
+        d.execute_script("document.querySelector('#theme-toggle').click()")
+    report["theme"] = d.execute_script("return document.documentElement.dataset.theme")
+    if report["theme"] != "night":
+        failures.append(f"theme button never reached night: {report['theme']}")
+    time.sleep(0.5)
+    shot("05-night")
     errors = d.execute_script("return (window.__errors || []).slice(0, 20)")
     if errors:
         failures.extend(errors)

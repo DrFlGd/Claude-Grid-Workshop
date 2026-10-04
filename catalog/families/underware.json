@@ -21,7 +21,8 @@
   "source": {
     "repository": "https://github.com/pleite/Monokini",
     "commit": "fa601de311e34fcbd238a7b3be4f8ac5b6e59986",
-    "vendor_path": "vendor/monokini"
+    "vendor_path": "vendor/monokini",
+    "commit_date": "2026-03-17T21:51:32+01:00"
   },
   "license": {
     "spdx": "NOASSERTION",

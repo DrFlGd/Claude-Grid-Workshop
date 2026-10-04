@@ -2,7 +2,7 @@
 // settings in IndexedDB. The desktop app provides the same interface backed by
 // files in the workspace folder (see platform.js for the contract).
 
-const DB_NAME = "claude-grid-workshop";
+const DB_NAME = "claude-grid-workshop"; // the name from before the rename to SCAD Workshop; kept so saved settings stay
 const DB_VERSION = 1;
 
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);

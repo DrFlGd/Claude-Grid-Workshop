@@ -1,4 +1,4 @@
-// Claude Grid Workshop adapter for vendor/santalla-screw-label/Pred_GridfinityLabel.scad
+// SCAD Workshop adapter for vendor/santalla-screw-label/Pred_GridfinityLabel.scad
 // (Nadia Santalla, GPL-3.0-or-later). Changes, nothing else:
 //  - BOSL includes point at the bundled library instead of /usr/share/openscad/...
 //  - Customizer groups and dropdowns for the icon settings

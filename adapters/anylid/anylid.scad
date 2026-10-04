@@ -1,4 +1,4 @@
-// Claude Grid Workshop: copy of vendor/anylid/anylid.scad with one fix.
+// SCAD Workshop: copy of vendor/anylid/anylid.scad with one fix.
 // Lines 154 and 159 called the variables Magnet_Thickness_mm and Screw_Length_mm
 // as functions, which leaves magnet/screw holes with undefined height. Nothing else changed.
 

@@ -44,8 +44,8 @@ async def main():
         pg = await ctx.new_page()
         pg.on("pageerror", lambda e: errors.append(str(e)))
         await pg.goto(a.base)
-        await pg.wait_for_selector(".project .chip")
-        await pg.screenshot(path=f"{a.out}/00-catalog.png")
+        await pg.wait_for_selector(".home .tile")  # the interface is up (tests/interface.py checks it in detail)
+        await pg.screenshot(path=f"{a.out}/00-home.png")
         for i, key in enumerate(models, 1):
             await pg.goto(f"{a.base}#/m/{key}")
             try:

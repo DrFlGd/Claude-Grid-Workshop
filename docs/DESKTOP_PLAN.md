@@ -1,10 +1,13 @@
-# Desktop app plan
+# SCAD Workshop: desktop app plan
+
+The project was called Claude Grid Workshop until Phase 1.5. The repository and website addresses keep the old name for now.
 
 Status (2026-10-04):
 
 - **Phase 0 done:** engine and storage seams, saved settings, share links, OpenSCAD parameter-file import/export.
 - **Phase 1 done:** see "Phase 1 notes" at the end.
-- **Next:** Phase 1.5, the new interface (section 5), so ingested projects and libraries have somewhere to live.
+- **Phase 1.5 done:** the library interface (section 5); see "Phase 1.5 notes" at the end.
+- **Next:** Phase 2, ingest and the SQLite index.
 
 ## Goal
 
@@ -61,7 +64,7 @@ The page detects Tauri at start-up and picks the implementation. Everything abov
 
 ### Workspace folder
 
-You choose it on first run (default `~/Claude Grid Workshop`). It's plain files so it can be synced or put in git:
+You choose it on first run (default `~/SCAD Workshop`; a `~/Claude Grid Workshop` folder from before the rename keeps being used). It's plain files so it can be synced or put in git:
 
 ```
 workspace/
@@ -89,6 +92,15 @@ workspace/
 - Other git hosts (GitLab, Codeberg) follow later.
 
 **From a file, ZIP or folder:** copied into `sources/`, with a form for name, author, origin URL and license.
+
+**From a model-site download (Printables first):** a Printables ZIP holds the model files plus PDFs carrying the page's details: creator, license, published and updated dates, description, tags and print settings. Ingest reads the PDF text and fills the form from it, so nothing has to be typed:
+
+- fields are picked out by their labels; the exact layout gets confirmed against sample ZIPs when this is built;
+- every value records where it came from ("from the Printables PDF"), so the inspector's provenance and "Revert to source" work as for any other source;
+- the origin URL lets the app check the page later for a newer upload, as GitHub sources are checked for new commits;
+- other sites follow the same pattern with their own extractor (Thingiverse ZIPs carry a README and LICENSE text file; MakerWorld to check).
+
+Items with STL/3MF only go into the model library (section 4); ZIPs that include `.scad` files also become sources with generators.
 
 **Ingest steps** (generalising today's `tools/build_site.py`):
 
@@ -144,7 +156,10 @@ Most mechanical parts (gears, threads, hinges, bearings) are modules inside libr
 - a category path;
 - settings (names and descriptions, so "tooth count" finds gears);
 - source and version, and license;
-- thumbnail and size.
+- creator and origin URL;
+- dates: updated upstream (the pinned commit, or the date on a downloaded page), added to the workspace, last used;
+- thumbnail and size;
+- any further fields a source supplies (print settings, material, a model site's own category), kept as open key/value metadata so new filters don't need a schema change.
 
 **Categories:** a starting taxonomy you can edit:
 
@@ -254,7 +269,8 @@ All views share selection, sorting and grouping. The app remembers the view per 
 ### Search
 
 - **One search box** for everything: generators, modules, parts, collections, sources, saved settings and setting names ("tooth count" finds gears). Results are grouped by kind with counts.
-- **Filters** appear as chips with counts: kind, category, tags, source, license, desktop-only, has thumbnail, recently used. Tags can also be typed: `tag:gear source:BOSL2 kind:module`.
+- **Filters** appear as chips with counts: kind, category, tags, source, license, updated (last month / 3 months / year / older), desktop-only, has thumbnail, recently used. Tags can also be typed: `tag:gear source:BOSL2 kind:module updated:month`.
+- **More metadata filters as sources supply them:** creator, license family (CC BY, CC BY-NC, GPL…), date added, and any open metadata field (section 3). A filter menu lists the fields present in the current results, so a field arriving from a new kind of source (a Printables PDF, say) becomes filterable, sortable and a table column without a code change.
 - **Forgiving matching:** prefix matching, typo tolerance (SQLite FTS5 plus trigram), and the synonym list from section 3.
 - **Size search** for parts and generators that report dimensions: "fits within 84 × 42 mm", or for Gridfinity "2 × 1 units".
 - **Saved searches** become smart lists in the sidebar. Recent searches are kept.
@@ -311,7 +327,7 @@ These are saved as overlays in the same form as `catalog/families` `ui`. A good 
 - **Drag and drop:**
   - drop a `.scad` file, a ZIP, a folder or an STL/3MF on the window to import it;
   - drag a finished part out to the file manager or a slicer.
-- **Theme:** light and dark, following the system by default.
+- **Theme:** light, dark and night (dim and warm, for a dark workshop), following the system by default.
 - **Accessibility:** everything reachable by keyboard, with visible focus, labelled controls and enough contrast. The layout works down to a 900 px wide window.
 - **Website:** gets the browser views and search, in read-only form over the built-in catalog. Editing, sources and collections stay desktop-only.
 
@@ -335,10 +351,10 @@ Each phase ends with something usable and with checks in CI.
 | --- | --- | --- |
 | **0. Seams** | Engine and store interfaces in `web/`; saved settings and share links on the website (browser storage) | Website unchanged for users, plus saved settings; all 55 models still pass in Chromium |
 | **1. Desktop shell** | Tauri app (Windows + Linux) with native engine, render queue, cache, workspace folder, built-in catalog offline, saved settings as files, workspace profile (bed size, tolerances, font) | Installers built in CI; all 55 models render natively (including the 3 Underware channels the browser can't); native vs WebAssembly benchmark published |
-| **1.5 Interface** | Mockup first. Then: front end split into modules (Preact + htm); app layout with sidebar, browser, inspector, workbench tabs, status bar; grid, list, table and grouped views; search with filters and command palette; `index` seam (in-memory over `catalog.json` for now); thumbnails for the 58 models; favourites, recent; light/dark | All 58 models and the parts library browsable in all four views; search and filters answer in under 100 ms; the website keeps working with the new browser views; WebDriver tests updated |
-| **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; SQLite index behind the `index` seam; source pages; "Needs attention"; metadata editing (inspector, overlays, bulk edit, undo, provenance) | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update |
+| **1.5 Interface** | Mockup first. Then: front end split into modules (Preact + htm); app layout with sidebar, browser, inspector, workbench tabs, status bar; grid, list, table and grouped views; search with filters and command palette; `index` seam (in-memory over `catalog.json` for now); thumbnails for the 58 models; favourites, recent; light/dark/night themes; "Updated" filter and sort from source dates | All 58 models and the parts library browsable in all four views; search and filters answer in under 100 ms; the website keeps working with the new browser views; WebDriver tests updated |
+| **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; SQLite index behind the `index` seam, with open metadata fields that become filters, sorts and columns; source pages; "Needs attention"; metadata editing (inspector, overlays, bulk edit, undo, provenance) | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update |
 | **3. Libraries + modules** | Bundled libraries; BOSL2 doc parser; signature parser; module → form; pinned generators; form editor (labels, box names, conditions, presets as overlays); category editor | The bevel-gear acceptance test passes; every BOSL2 module with geometry gets a form that renders its first doc example; a form edit made in the app matches what a family manifest `ui` block produces |
-| **4. Model library** | Collections; premade import (STL/3MF/OBJ/STEP); recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection |
+| **4. Model library** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection |
 | **5. Productivity** | Batch from CSV, multi-setting sweeps, arranged multi-colour 3MF, send to slicer (open the file in Bambu Studio / OrcaSlicer / PrusaSlicer), live reload when a watched .scad file is saved | As listed |
 
 ## Testing
@@ -385,3 +401,19 @@ What was built, and where it differs from the plan above.
 - **Not yet:**
   - code signing;
   - auto-update (the release is rebuilt from `main`; download it again to update).
+
+## Phase 1.5 notes
+
+What was built, and where it differs from section 5.
+
+- **Mockup first:** a clickable mockup of the layout and the four views settled the look before code.
+- **Front end:** `web/ui/` holds the new interface as Preact + htm islands (sidebar, browser, inspector, tabs, status bar, command palette, quick look) sharing one small store (`web/lib/store.js`); about 1,300 lines. `web/app.js` keeps routing, the model workbench (form, preview, batch, saved settings) and the settings and license pages. Preact and htm are vendored as ES modules (`tools/vendor_preact.py`), so the website still deploys as static files with no build step.
+- **`index` seam:** `web/ui/index-local.js`, in memory over `catalog.json` and the parts libraries: weighted fields (name, project, tags, category, description, setting names), prefix matching, one-typo tolerance, synonyms, typed filters (`kind:`, `tag:`, `project:`, `cat:`, `license:`, `updated:`), facet counts and sorting. Searches take under 15 ms in CI's Chromium. SQLite replaces it behind the same `query()` in Phase 2.
+- **Updated date:** `tools/source_dates.py` records when each pinned upstream commit was made (`source.commit_date` in the family manifests); owner-supplied files use their supply date. The browser can filter (last month / 3 months / year / older), sort and show a column by it. This is the first of the "more metadata" filters (section 5, Search); creator, license family and fields from model-site downloads follow with the Phase 2 index.
+- **Thumbnails:** `tools/thumbnails.py` draws every generator's default render and every part preview with the site's own viewer in headless Chromium (480 × 360 WebP, transparent, about 0.8 MB for all). CI makes them from the benchmark's STLs on the website and with native OpenSCAD for the app. Parts that come only as CAD files show their initials.
+- **Workbench tabs:** each opened generator keeps its form, unsaved changes and last render while you switch tabs; the open tabs are remembered (browser storage, or the workspace in the app).
+- **Themes:** light, dark and night (near-black and warm, with dimmed thumbnails, for a dark workshop), following the system by default. The top-bar button cycles them; Settings has all four choices.
+- **Render on demand:** the 3D view now draws only when something changes, so a preview in a hidden tab or a closed quick look uses no GPU time.
+- **Rename:** SCAD Workshop. The app's identifier stays the same, so settings carry over; the workspace default is `~/SCAD Workshop`, with an existing `~/Claude Grid Workshop` folder kept in use.
+- **Not yet (later phases):** metadata editing (the inspector's "Edit details" is a placeholder), saved searches as smart lists, drag-select, and resizable table columns.
+- **Testing:** `tests/interface.py` (33 checks in Chromium: views, parts, filters, search speed and relevance, inspector, quick look, favourites, palette, tabs, themes, phone width) runs in the Site workflow; `tests/desktop_ui.py` gained the library, thumbnails, search, tabs and night-theme checks for both app builds.

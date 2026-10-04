@@ -39,15 +39,21 @@ export class Viewer {
     this.bbox = null;
     this._buildGrid(new THREE.Box3(new THREE.Vector3(-63, -63, 0), new THREE.Vector3(63, 63, 0)));
 
+    // Draw only when something changed (orbiting, damping, a new part, a resize),
+    // so a preview in a hidden tab or a closed quick look costs nothing.
+    this._raf = 0;
+    const tick = () => {
+      this._raf = 0;
+      this.controls.update(); // fires "change" (and so another frame) while damping settles
+      this.renderer.render(this.scene, this.camera);
+    };
+    this.redraw = () => { if (!this._raf) this._raf = requestAnimationFrame(tick); };
+    this.controls.addEventListener("change", this.redraw);
+    this.controls.addEventListener("start", this.redraw);
+
     this._resize = () => this.resize();
     new ResizeObserver(this._resize).observe(canvas.parentElement);
     this.resize();
-    const loop = () => {
-      this.controls.update();
-      this.renderer.render(this.scene, this.camera);
-      this._raf = requestAnimationFrame(loop);
-    };
-    loop();
   }
 
   resize() {
@@ -57,18 +63,29 @@ export class Viewer {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.redraw();
   }
 
-  setColor(hex) { this.material.color.set(hex); }
+  setColor(hex) { this.material.color.set(hex); this.redraw(); }
 
   setEdges(on) {
     this.showEdges = on;
     if (this.edges) this.edges.visible = on;
+    this.redraw();
+  }
+
+  /** Grid and plate colours for a dark or light page. */
+  setTheme(dark) {
+    if (this.dark === !!dark) return;
+    this.dark = !!dark;
+    this._buildGrid(this.bbox || new THREE.Box3(new THREE.Vector3(-63, -63, 0), new THREE.Vector3(63, 63, 0)));
+    this.redraw();
   }
 
   setGrid(on) {
     this.showGrid = on;
     this.gridGroup.visible = on;
+    this.redraw();
   }
 
   async load(url) {
@@ -99,6 +116,7 @@ export class Viewer {
     const size = this.bbox.getSize(new THREE.Vector3());
     // keep the user's camera if the part barely changed size; otherwise re-frame
     if (!prevSize || prevSize.distanceTo(size) > 0.15 * Math.max(prevSize.length(), 1)) this.view("iso");
+    this.redraw();
     return { x: size.x, y: size.y, z: size.z, triangles };
   }
 
@@ -107,6 +125,7 @@ export class Viewer {
       if (o) { this.scene.remove(o); o.geometry.dispose(); }
     }
     this.mesh = this.edges = null;
+    this.redraw();
   }
 
   _buildGrid(bb) {
@@ -122,10 +141,10 @@ export class Viewer {
     for (let y = -hy + oy; y <= hy + oy + 0.01; y += GRID) pts.push(-hx + ox, y, 0, hx + ox, y, 0);
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
-    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x8693a0, transparent: true, opacity: 0.55 }));
+    const lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: this.dark ? 0x5b6976 : 0x8693a0, transparent: true, opacity: this.dark ? 0.7 : 0.55 }));
     const plate = new THREE.Mesh(
       new THREE.PlaneGeometry(hx * 2, hy * 2),
-      new THREE.MeshBasicMaterial({ color: 0xeef1f4, transparent: true, opacity: 0.7, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: this.dark ? 0x26313c : 0xeef1f4, transparent: true, opacity: this.dark ? 0.85 : 0.7, depthWrite: false })
     );
     plate.position.set(ox, oy, -0.05);
     this.gridGroup.add(plate, lines);
@@ -150,5 +169,6 @@ export class Viewer {
     this.camera.far = dist * 50;
     this.camera.updateProjectionMatrix();
     this.controls.update();
+    this.redraw();
   }
 }

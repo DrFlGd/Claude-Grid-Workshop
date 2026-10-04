@@ -25,7 +25,8 @@
   "source": {
     "repository": "https://github.com/geru/3d-scad-hsw-customizable",
     "commit": "b606f2e8427e7648748fdc9833f6621884e78d2e",
-    "vendor_path": "vendor/hsw"
+    "vendor_path": "vendor/hsw",
+    "commit_date": "2024-12-14T13:15:00-08:00"
   },
   "license": {
     "spdx": "CC-BY-4.0",

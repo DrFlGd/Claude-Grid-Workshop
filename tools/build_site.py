@@ -461,6 +461,22 @@ def main():
         }
         if m.get("browser") is False:
             summary["browser"] = False
+        # when the pinned upstream version was made, or when supplied files were added
+        src = fam.get("source") or {}
+        supplied = re.search(r"\d{4}-\d{2}-\d{2}", src.get("supplied_by") or "")
+        if src.get("commit_date"):
+            summary["updated"], summary["updated_from"] = src["commit_date"][:10], "upstream"
+        elif supplied:
+            summary["updated"], summary["updated_from"] = supplied.group(0), "supplied"
+        # for the interface's search ("tooth count" finds the generator that has it) and table view
+        visible = [p for p in params if not p.get("hidden")]
+        summary["settings"] = len(visible)
+        terms = []
+        for p in visible:
+            for t in (p.get("label"), p["name"].replace("_", " ")):
+                if t and t.lower() not in terms:
+                    terms.append(t.lower())
+        summary["terms"] = " | ".join(terms)[:4000]
         detail = {
             **summary,
             "authors": fam.get("authors", []), "links": fam.get("links", {}), "source": fam.get("source"),
@@ -485,7 +501,7 @@ def main():
         "engine": engine_version,
         "common_files": common,
         "models": listing,
-        "categories": [{"id": c, "label": CATEGORY_LABELS.get(c, c), "models": cats[c]}
+        "categories": [{"id": c, "label": CATEGORY_LABELS.get(c, c), "models": [m["key"] for m in cats[c]]}
                        for c in sorted(cats, key=lambda c: order.index(c) if c in order else 99)],
         "families": families,
         "libraries": libraries,

@@ -22,7 +22,8 @@
   "source": {
     "repository": "https://github.com/laurensguijt/Label-Generator-Gridfinity",
     "commit": "350b406dde4471e8be0a34b0147422db8a60226f",
-    "vendor_path": "vendor/label-generator-gridfinity"
+    "vendor_path": "vendor/label-generator-gridfinity",
+    "commit_date": "2026-02-18T16:56:13+01:00"
   },
   "license": {
     "spdx": "GPL-3.0-only",

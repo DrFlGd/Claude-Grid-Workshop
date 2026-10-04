@@ -1,9 +1,15 @@
-// Claude Grid Workshop front end (static): catalog, settings forms with
+// SCAD Workshop front end (static): catalog, settings forms with
 // upstream editor metadata, in-browser OpenSCAD renders, 3D preview, parts.
 import { Viewer } from "./viewer.js";
 import { createPlatform } from "./platform.js";
 import { makeZip } from "./zip.js";
 import { changedValues, withChanges, encodeShare, decodeShare, toOpenSCAD, fromOpenSCAD } from "./settings-codec.js";
+import { $, el, humanize, fmt, same, bytes, plural, safeHTML, compileCondition, STATUS_TEXT, spdx, FORMAT_LABEL } from "./lib/util.js";
+import { LocalIndex } from "./ui/index-local.js";
+import { mountShell } from "./ui/shell.js";
+import { ui, recordRecent, setTabs, layoutFor, isDark, setTheme, THEMES } from "./ui/state.js";
+import { scopeFromPath } from "./ui/context.js";
+import { scopeInfo } from "./ui/sidebar.js";
 
 // page errors, for the desktop UI test (tests/desktop_ui.py)
 window.addEventListener("error", (e) => { (window.__errors ||= []).push(String(e.message)); });
@@ -12,19 +18,6 @@ window.addEventListener("unhandledrejection", (e) => { (window.__errors ||= []).
 const platform = await createPlatform();
 const store = platform.store;
 
-const $ = (s, root = document) => root.querySelector(s);
-const el = (tag, attrs = {}, ...kids) => {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v == null || v === false) continue;
-    if (k === "class") n.className = v;
-    else if (k === "text") n.textContent = v;
-    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
-    else n.setAttribute(k, v === true ? "" : v);
-  }
-  for (const c of kids.flat()) if (c != null && c !== false) n.append(c.nodeType ? c : document.createTextNode(c));
-  return n;
-};
 const getJSON = async (path) => {
   const r = await platform.fetch(path);
   if (!r.ok) throw Object.assign(new Error(`Couldn't load ${path} (${r.status})`), { status: r.status });
@@ -36,7 +29,6 @@ const FILAMENTS = [
   ["Orange", "#ee6a1f"], ["Green", "#3c9a5f"], ["White", "#f4f4f2"], ["Black", "#26292c"],
 ];
 const GRID_CATEGORIES = new Set(["gridfinity"]);
-const FORMAT_LABEL = { "3mf": "3MF", stl: "STL", step: "STEP", shapr: "Shapr3D", pdf: "PDF", obj: "OBJ" };
 
 const state = {
   catalog: null, engine: null, viewer: null, viewerOwner: null,
@@ -45,237 +37,104 @@ const state = {
 };
 
 // ---------------------------------------------------------------- helpers
-function humanize(name) {
-  const axis = name.match(/^(grid|size|offset|pos|position|count|units|scale|rotate|spacing|divisions?)([xyz])$/);
-  if (axis) name = `${axis[1]}_${axis[2].toUpperCase()}`;
-  const s = name.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim();
-  return s.split(" ").map((w, i) => {
-    if (/^(mm|deg)$/i.test(w)) return `(${w.toLowerCase()})`;
-    if (/^[A-Z0-9]{2,}$/.test(w) || /^[XYZ]$/.test(w)) return w;
-    return i === 0 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase();
-  }).join(" ");
-}
-const fmt = (n) => (Math.round(n * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 });
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const bytes = (n) => (n > 1048576 ? `${fmt(n / 1048576)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const savedColor = store.prefs.get("gw-filament") || FILAMENTS[0][1];
-
-/** Keep simple formatting from third-party descriptions; drop anything active. */
-const SAFE_TAGS = new Set(["A", "B", "STRONG", "I", "EM", "BR", "P", "SPAN", "CODE", "UL", "OL", "LI", "DIV", "SMALL"]);
-function safeHTML(html) {
-  const doc = new DOMParser().parseFromString(`<div>${html || ""}</div>`, "text/html");
-  const walk = (node) => {
-    for (const child of [...node.childNodes]) {
-      if (child.nodeType === Node.ELEMENT_NODE) {
-        if (!SAFE_TAGS.has(child.tagName)) { child.replaceWith(...child.childNodes); continue; }
-        for (const attr of [...child.attributes]) {
-          const keep = (attr.name === "href" && /^https?:\/\//i.test(attr.value)) ||
-            attr.name === "data-display-condition" || (attr.name === "class" && /^alert/.test(attr.value));
-          if (!keep) child.removeAttribute(attr.name);
-        }
-        if (child.tagName === "A") { child.target = "_blank"; child.rel = "noopener"; }
-        walk(child);
-      } else if (child.nodeType !== Node.TEXT_NODE) child.remove();
-    }
-  };
-  const root = doc.body.firstChild;
-  walk(root);
-  return [...root.childNodes];
-}
-
-/** Upstream display conditions are small JS expressions over parameter names. */
-function compileCondition(expr, names) {
-  try {
-    const fn = new Function(...names, `"use strict"; return (${expr});`);
-    return (values) => { try { return !!fn(...names.map((n) => values[n])); } catch { return true; } };
-  } catch { return () => true; }
-}
 
 // ---------------------------------------------------------------- routing
 function route() {
   const h = location.hash.replace(/^#\/?/, "");
-  const m = h.match(/^m\/([a-z0-9-]+)\/([a-z0-9-]+)\/?(?:\?(.*))?$/);
-  const p = h.match(/^parts\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/);
-  if (m) openModel(`${m[1]}/${m[2]}`, new URLSearchParams(m[3] || "").get("s"));
+  const [path, query = ""] = h.split("?");
+  const params = new URLSearchParams(query);
+  const m = path.match(/^m\/([a-z0-9-]+)\/([a-z0-9-]+)\/?$/);
+  const p = path.match(/^parts\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/);
+  if (m) openModel(`${m[1]}/${m[2]}`, params.get("s"), params.get("saved"));
   else if (p) openLibrary(p[1], p[2]);
-  else if (h === "about" || h.startsWith("licenses")) showLicenses(h.split("/")[1]);
-  else if (h === "settings") showSettings();
-  else showCatalog();
+  else if (path === "about" || path.startsWith("licenses")) showLicenses(path.split("/")[1]);
+  else if (path === "settings") showSettings();
+  else if (path === "search") showBrowse("search", params.get("q") || "");
+  else if (path.startsWith("browse")) showBrowse(scopeFromPath(path), params.get("q") || "");
+  else showBrowse("home", "");
 }
 window.addEventListener("hashchange", route);
 
 function showView(name) {
-  for (const v of ["catalog", "model", "library", "about"]) $(`#view-${v}`).hidden = v !== name;
+  for (const v of ["browse", "model", "library", "about"]) $(`#view-${v}`).hidden = v !== name;
+  ui.set({ view: name, navOpen: false });
   const stage = $(".stage");
   if (name === "model" && stage.parentElement.id !== "view-model") $("#view-model").append(stage);
   if (name === "library" && stage.parentElement.id !== "view-library") $("#view-library").append(stage);
   if ((name === "model" || name === "library") && !state.viewer) {
     state.viewer = new Viewer($("#viewer"));
     state.viewer.setColor(savedColor);
+    state.viewer.setTheme(isDark());
+    window.addEventListener("gw-theme", () => state.viewer.setTheme(isDark()));
   }
   state.viewer?.resize();
   if (name !== "model") cancelJob();
 }
 
-function setCrumbs(parts) {
-  const c = $("#crumbs");
-  c.replaceChildren();
-  parts.forEach((p, i) => {
-    if (i) c.append(el("span", { class: "sep", "aria-hidden": "true", text: "/" }));
-    c.append(p.href ? el("a", { href: p.href, text: p.text }) : el("span", { text: p.text }));
+function showBrowse(scope, q) {
+  if (!state.catalog) return;
+  showView("browse");
+  const st = ui.get();
+  const place = st.scope !== scope;
+  ui.set({ scope, q, layout: layoutFor(scope), lastBrowse: location.hash || "#/", ...(place ? { selection: [], anchor: null, filters: {} } : {}) });
+  const label = scope === "home" ? "" : q ? `“${q}”` : scopeInfo(scope).label;
+  document.title = label ? `${label} | SCAD Workshop` : "SCAD Workshop";
+  if (place) document.querySelector(".browse-scroll")?.scrollTo(0, 0);
+}
+
+// ---------------------------------------------------------------- model page
+// Open generators are tabs; each keeps its settings and last result while you work in another.
+const tabStates = new Map();
+const details = new Map();
+
+function addTab(key) {
+  const tabs = ui.get().tabs.includes(key) ? ui.get().tabs : [...ui.get().tabs, key];
+  setTabs(tabs, key);
+}
+
+function stashTab() {
+  if (!state.model) return;
+  const st = $("#status");
+  tabStates.set(state.model.key, {
+    model: state.model, values: state.values, rendered: state.rendered, lastResult: state.lastResult,
+    lastResultValues: state.lastResultValues, savedActive: saved.active, status: [st.className.replace("status", "").trim(), st.textContent],
   });
 }
 
-// ---------------------------------------------------------------- catalog
-function showCatalog() {
-  showView("catalog");
-  document.title = "Claude Grid Workshop";
-  setCrumbs([]);
-  renderCatalog($("#catalog-search").value);
+function closeModelTab(key) {
+  const tabs = ui.get().tabs;
+  const i = tabs.indexOf(key);
+  const rest = tabs.filter((k) => k !== key);
+  tabStates.delete(key);
+  const showing = ui.get().view === "model" && state.model?.key === key;
+  if (state.model?.key === key) { cancelJob(); state.model = null; }
+  setTabs(rest, showing ? null : ui.get().activeTab);
+  if (showing) location.hash = rest.length ? `#/m/${rest[Math.min(i, rest.length - 1)]}` : ui.get().lastBrowse || "#/";
 }
 
-// Collapsed/expanded state of home-page sections, remembered per browser
-const openState = store.prefs.get("gw-open", {}) || {};
-const saveOpen = (id, open) => { openState[id] = open; store.prefs.set("gw-open", openState); };
-
-function foldable(id, defaultOpen, cls, summary, ...body) {
-  const d = el("details", { class: cls, "data-fold": id }, el("summary", {}, summary), ...body);
-  d.open = id in openState ? openState[id] : defaultOpen;
-  d.addEventListener("toggle", () => { if (!d.dataset.searching) saveOpen(id, d.open); });
-  return d;
+function openTabs(keys) {
+  setTabs([...new Set([...ui.get().tabs, ...keys])]);
+  if (keys.length) location.hash = `#/m/${keys[0]}`;
 }
 
-/** Home page: type -> project -> generators. Each project is one compact block. */
-function renderCatalog(query = "") {
-  const list = $("#catalog-list");
-  list.replaceChildren();
-  if (!state.catalog) return;
-  const q = query.trim().toLowerCase();
-  const famById = Object.fromEntries(state.catalog.families.map((f) => [f.id, f]));
-  const hit = (...words) => !q || words.join(" ").toLowerCase().includes(q);
-  const sections = [];
-  let shown = 0;
-
-  for (const cat of state.catalog.categories) {
-    const projects = new Map();
-    for (const m of cat.models) {
-      if (!projects.has(m.family)) projects.set(m.family, { fam: famById[m.family] || {}, name: m.family_name, summary: m.summary, tags: m.tags || [], models: [] });
-      projects.get(m.family).models.push(m);
-    }
-    // a search shows the generators whose own name matches; if none do, a match on the
-    // project's name, author, tags or description shows the whole project
-    for (const [id, p] of projects) {
-      if (!q) continue;
-      const named = p.models.filter((m) => hit(m.name));
-      if (named.length) p.models = named;
-      else if (!hit(p.name, p.summary, ...p.tags, ...(p.fam.authors || []).map((a) => a.name))) projects.delete(id);
-    }
-    if (!projects.size) continue;
-    const blocks = [...projects.values()].sort((a, b) => a.name.localeCompare(b.name)).map((p) => {
-      shown += p.models.length;
-      const authors = (p.fam.authors || []).map((a) => a.name).join(", ");
-      return el("div", { class: "project" },
-        el("div", { class: "project-head" },
-          el("h3", { text: p.name }),
-          el("p", { class: "project-meta" }, `${p.models.length} generator${p.models.length > 1 ? "s" : ""}${authors ? `, by ${authors}` : ""}`)),
-        el("ul", { class: "chips" }, p.models.map((m) => el("li", {},
-          el("a", { href: `#/m/${m.key}`, class: "chip", title: m.summary, text: p.models.length === 1 && m.name === p.name ? "Open" : m.name })))));
-    });
-    const count = [...projects.values()].reduce((n, p) => n + p.models.length, 0);
-    sections.push(foldable(`type:${cat.id}`, true, "type-section",
-      [el("h2", { text: cat.label }), el("small", { text: `${projects.size} project${projects.size > 1 ? "s" : ""}, ${count} generator${count > 1 ? "s" : ""}` })],
-      el("div", { class: "projects" }, blocks)));
+async function loadDetail(key) {
+  if (!details.has(key)) {
+    const d = await getJSON(`data/models/${key.replace("/", "--")}.json`);
+    applyProfile(d);
+    details.set(key, d);
   }
-
-  // ready-made parts: libraries as projects, their categories as chips
-  const libBlocks = [];
-  for (const lib of state.libraries) {
-    const items = lib.items.filter((it) => hit(it.name, it.category, lib.name, ...(it.tags || [])));
-    if (!items.length) continue;
-    shown += q ? items.length : 1;
-    const chips = q
-      ? items.slice(0, 40).map((it) => el("li", {}, el("a", { class: "chip", href: `#/parts/${lib.id}/${it.id}`, text: it.name })))
-      : [...new Set(lib.items.map((i) => i.category))].map((c) => {
-          const first = lib.items.find((i) => i.category === c);
-          const n = lib.items.filter((i) => i.category === c).length;
-          return el("li", {}, el("a", { class: "chip", href: `#/parts/${lib.id}/${first.id}`, text: `${c} (${n})` }));
-        });
-    libBlocks.push(el("div", { class: "project" },
-      el("div", { class: "project-head" }, el("h3", { text: lib.name }),
-        el("p", { class: "project-meta" }, `${lib.item_count} parts, by ${(lib.authors || []).map((a) => a.name).join(", ")}`)),
-      el("ul", { class: "chips" }, chips)));
-  }
-  if (libBlocks.length) {
-    sections.push(foldable("type:parts", true, "type-section",
-      [el("h2", { text: "Ready-made parts" }), el("small", { text: `${libBlocks.length} collection${libBlocks.length > 1 ? "s" : ""}` })],
-      el("div", { class: "projects" }, libBlocks)));
-  }
-
-  if (q) for (const s of sections) { s.dataset.searching = "1"; s.open = true; }
-  // jump bar: one link per type, so a long page stays easy to move around
-  if (!q && sections.length > 2) {
-    list.append(el("nav", { class: "type-nav", "aria-label": "Jump to a type" },
-      sections.map((s) => el("a", { href: "#", text: s.querySelector("h2").textContent,
-        onclick: (e) => { e.preventDefault(); s.open = true; s.scrollIntoView({ behavior: "smooth", block: "start" }); } }))));
-  }
-  list.append(...sections);
-  if (!shown) list.append(el("p", { class: "empty", text: `Nothing matches “${query}”. Try “bin”, “baseplate”, “label” or “connector”.` }));
-  const missing = state.catalog.families.filter((f) => f.status === "missing-source");
-  if (!q && missing.length) {
-    list.append(el("p", { class: "missing", text: `Coming once their source files are added: ${missing.map((f) => f.name).join(", ")}.` }));
-  }
-  list.append(el("footer", { class: "site-footer" },
-    el("a", { href: "#/licenses", text: "Licenses & credits" }),
-    el("span", { text: "Every model is open work by its author. See each project's license before sharing or selling prints." })));
+  return details.get(key);
 }
-$("#catalog-search").addEventListener("input", (e) => renderCatalog(e.target.value));
 
-// ---------------------------------------------------------------- model page
-async function openModel(key, shareCode = null) {
-  showView("model");
-  if (shareCode) history.replaceState(null, "", `#/m/${key}`); // the link has done its job; edits shouldn't look shared
-  if (state.model?.key === key && shareCode) {
-    const shared = await readShare(shareCode);
-    if (shared && !shared.error) { setAllValues(shared.values); generate(); }
-    if (shared) noteShared(shared);
-    return;
-  }
-  if (state.model?.key === key) {
-    if (state.viewerOwner !== "model") {
-      state.viewerOwner = "model";
-      $("#stage-empty").hidden = true;
-      if (state.lastResult) showResult(state.lastResult, state.lastResultValues, true);
-      else { state.viewer.clear(); $("#dims").hidden = true; }
-    }
-    return;
-  }
-  state.viewerOwner = "model";
-  let detail;
-  try {
-    detail = await getJSON(`data/models/${key.replace("/", "--")}.json`);
-  } catch (e) {
-    setStatus("error", e.status === 404 ? "This generator doesn't exist. Pick one from the catalog." : e.message);
-    return;
-  }
-  if (detail.browser === false && platform.kind === "browser") {
-    showView("catalog");
-    renderCatalog();
-    setCrumbs([{ text: "Generators", href: "#/" }]);
-    $("#catalog-list").prepend(el("p", { class: "missing", text: `${detail.family_name} ${detail.name} is too complex for the browser engine. It works in the desktop app.` }));
-    return;
-  }
-  applyProfile(detail);
-  state.model = detail;
-  state.rendered = null;
-  state.lastResult = null;
-  state.viewer.clear();
-  $("#stage-empty").hidden = true;
-  $("#dims").hidden = true;
-  $("#log").hidden = true;
-  setDownload(null);
-  document.title = `${detail.name}, ${detail.family_name} | Claude Grid Workshop`;
-  setCrumbs([{ text: "Generators", href: "#/" }, { text: detail.family_name }]);
+/** For quick look: a model's built JSON and its default settings (profile applied). */
+async function loadModel(key) {
+  const detail = await loadDetail(key);
+  return { detail, values: Object.fromEntries(detail.parameters.map((p) => [p.name, structuredClone(p.default)])) };
+}
 
+function renderModelHeader(detail) {
+  document.title = `${detail.name}, ${detail.family_name} | SCAD Workshop`;
   const fam = detail.family_name, nm = detail.name;
   // "Gridfinity Rebuilt basic bin", but keep single letters and acronyms: "Underware X channel"
   const soft = nm.split(" ").map((w) => (/^[A-Z][a-z]/.test(w) ? w.toLowerCase() : w)).join(" ");
@@ -304,16 +163,81 @@ async function openModel(key, shareCode = null) {
   $("#model-notes-body").replaceChildren(...holder.childNodes);
   $("#model-notes").hidden = !hasNotes;
   $("#model-notes").open = false;
+}
 
+async function openModel(key, shareCode = null, savedId = null) {
+  if (!state.catalog) return;
+  showView("model");
+  if (shareCode || savedId) history.replaceState(null, "", `#/m/${key}`); // the link has done its job; edits shouldn't look shared
+  if (state.model?.key === key) {
+    addTab(key);
+    if (shareCode) {
+      const shared = await readShare(shareCode);
+      if (shared && !shared.error) { setAllValues(shared.values); generate(); }
+      if (shared) noteShared(shared);
+    } else if (savedId) {
+      await loadSaved();
+      chooseSettings(`saved:${savedId}`);
+    } else if (state.viewerOwner !== "model") {
+      state.viewerOwner = "model";
+      $("#stage-empty").hidden = true;
+      if (state.lastResult) showResult(state.lastResult, state.lastResultValues, true);
+      else { state.viewer.clear(); $("#dims").hidden = true; }
+    }
+    return;
+  }
+  let detail;
+  try {
+    detail = await loadDetail(key);
+  } catch (e) {
+    showView("model");
+    setStatus("error", e.status === 404 ? (platform.kind === "browser" && state.desktopOnly?.has(key)
+      ? "This generator is too complex for the browser engine. It works in the desktop app."
+      : "This generator doesn't exist. Pick one from the library.") : e.message);
+    return;
+  }
+  if (detail.browser === false && platform.kind === "browser") {
+    setStatus("error", `${detail.family_name} ${detail.name} is too complex for the browser engine. It works in the desktop app.`);
+    return;
+  }
+  if (state.model) { cancelJob(); stashTab(); }
+  addTab(key);
+  recordRecent(`gen:${key}`);
+  state.viewerOwner = "model";
+  $("#stage-empty").hidden = true;
+  $("#log").hidden = true;
+  $("#param-search").value = "";
+  renderModelHeader(detail);
+  const kept = !shareCode && tabStates.get(key);
+  if (kept) {
+    // back to an open tab: its settings and last result, no new render
+    Object.assign(state, { model: kept.model, values: kept.values, rendered: kept.rendered, lastResult: kept.lastResult, lastResultValues: kept.lastResultValues });
+    saved.active = kept.savedActive;
+    buildForm();
+    await loadSaved();
+    if (savedId) chooseSettings(`saved:${savedId}`);
+    else if (kept.lastResult) {
+      await showResult(kept.lastResult, kept.lastResultValues, true);
+      setStatus(kept.status[0], kept.status[1]);
+      updateStatusForEdits();
+    } else generate();
+    document.body.dataset.model = key;
+    return;
+  }
+  state.model = detail;
+  state.rendered = null;
+  state.lastResult = null;
+  state.viewer.clear();
+  $("#dims").hidden = true;
+  setDownload(null);
   state.values = Object.fromEntries(detail.parameters.map((p) => [p.name, structuredClone(p.default)]));
   saved.active = null;
   const shared = shareCode ? await readShare(shareCode) : null;
   if (shared && !shared.error) state.values = shared.values;
-  $("#param-search").value = "";
   buildForm();
   if (shared) noteShared(shared);
-  loadSaved();
-  generate(); // show the default part straight away
+  if (savedId) { await loadSaved(); chooseSettings(`saved:${savedId}`); }
+  else { loadSaved(); generate(); } // show the default part straight away
   document.body.dataset.model = key; // lets tests know which model's render is on screen
 }
 
@@ -598,7 +522,6 @@ function note(text, kind = "") {
   noteTimer = setTimeout(() => { n.hidden = true; }, 9000);
 }
 
-const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const skippedText = (n) => (n ? ` ${plural(n, "setting")} didn't match this version of the model and stayed at the default.` : "");
 
 function chooseSettings(value) {
@@ -1105,8 +1028,7 @@ $("#part-search").addEventListener("input", (e) => {
 
 async function showPart(lib, item) {
   if (!item) return;
-  document.title = `${item.name}, ${lib.name} | Claude Grid Workshop`;
-  setCrumbs([{ text: "Generators", href: "#/" }, { text: lib.name, href: `#/parts/${lib.id}` }, { text: item.name }]);
+  document.title = `${item.name}, ${lib.name} | SCAD Workshop`;
   document.querySelectorAll("#part-list a").forEach((a) => a.toggleAttribute("aria-current", a.dataset.id === item.id));
   const nav = $("#part-list"), cur = $(`#part-list a[data-id="${CSS.escape(item.id)}"]`);
   if (cur && nav.scrollHeight > nav.clientHeight + 1) {
@@ -1147,14 +1069,11 @@ async function showPart(lib, item) {
 }
 
 // ---------------------------------------------------------------- licenses & credits
-const STATUS_TEXT = { ok: "OK to share", review: "Check license", blocked: "License unclear" };
-const spdx = (l) => (!l?.spdx || l.spdx === "NOASSERTION" ? "Not stated" : l.spdx);
 
 function showLicenses(focus) {
   showView("about");
   $("#about-title").textContent = "Licenses & credits";
-  document.title = "Licenses & credits | Claude Grid Workshop";
-  setCrumbs([{ text: "Generators", href: "#/" }, { text: "Licenses & credits" }]);
+  document.title = "Licenses & credits | SCAD Workshop";
   const c = state.catalog;
   const fams = (c?.families || []).filter((f) => f.status !== "missing-source").sort((a, b) => a.name.localeCompare(b.name));
   const row = (id, name, what, authors, lic, source) => el("tr", { id: `lic-${id}`, class: id === focus ? "focus" : null },
@@ -1179,10 +1098,10 @@ function showLicenses(focus) {
     table(state.libraries.map((l) => row(l.id, l.name, `${l.item_count} parts`, (l.authors || []).map((a) => a.name).join(", "), l.license, l.source_url))),
     el("h2", { text: "This site" }),
     el("ul", {},
-      el("li", {}, `OpenSCAD ${c?.engine || ""} (WebAssembly build) makes every part in your browser. GNU GPL version 2 or later: `,
+      el("li", {}, platform.kind === "desktop" ? `OpenSCAD ${c?.engine || ""} (native, plus the WebAssembly build on Windows) makes every part on this computer. GNU GPL version 2 or later: ` : `OpenSCAD ${c?.engine || ""} (WebAssembly build) makes every part in your browser. GNU GPL version 2 or later: `,
         el("a", { href: "https://github.com/openscad/openscad", target: "_blank", rel: "noopener", text: "source code" }), ", ",
         el("a", { href: "engine/COPYING", target: "_blank", text: "license text" }), "."),
-      el("li", { text: "3D preview: three.js (MIT)." }),
+      el("li", { text: "3D preview: three.js (MIT). Interface: Preact (MIT) and htm (Apache-2.0)." }),
       el("li", { text: "Fonts for text on parts: Liberation Sans and Liberation Mono (SIL Open Font License 1.1)." }),
       el("li", { text: "Nothing you configure is sent to a server; once loaded, the site keeps working offline." })));
   const target = focus && document.getElementById(`lic-${focus}`);
@@ -1287,8 +1206,7 @@ function applyProfile(detail) {
 
 function showSettings() {
   showView("about");
-  document.title = "Settings | Claude Grid Workshop";
-  setCrumbs([{ text: "Generators", href: "#/" }, { text: "Settings" }]);
+  document.title = "Settings | SCAD Workshop";
   $("#about-title").textContent = "Settings";
   const profile = getProfile();
   const uses = state.catalog?.profile_uses || {};
@@ -1321,6 +1239,9 @@ function showSettings() {
       el("p", { class: "help-inline" }, used.length ? ["Used by ", ...used.flatMap((a, i) => [i ? ", " : "", a]), "."] : "No generator uses this yet."));
   });
   const body = [
+    el("h2", { text: "Appearance" }),
+    el("div", { class: "theme-pick", role: "radiogroup", "aria-label": "Theme" }, THEMES.map(([id, label]) => el("label", {},
+      el("input", { type: "radio", name: "theme", value: id, checked: ui.get().theme === id, onchange: () => setTheme(id) }), " ", label))),
     el("h2", { text: "Printer profile" }),
     el("p", { text: "Generators that ask for these start with your values instead of the author's. Leave a value empty to keep the defaults. Magnet and tolerance settings aren't linked: each project measures them differently." }),
     el("div", { class: "profile-grid" }, fields),
@@ -1369,19 +1290,24 @@ function desktopSettings() {
     state.catalog = await getJSON("data/catalog.json");
     if (platform.kind === "browser") {
       // models that need native OpenSCAD only appear in the desktop app
+      state.desktopOnly = new Set(state.catalog.models.filter((m) => m.browser === false).map((m) => m.key));
       state.catalog.models = state.catalog.models.filter((m) => m.browser !== false);
-      for (const c of state.catalog.categories) c.models = c.models.filter((m) => m.browser !== false);
+      for (const c of state.catalog.categories) c.models = c.models.filter((k) => !state.desktopOnly.has(k));
     } else {
       document.body.dataset.platform = platform.kind;
-      const intro = $(".catalog-head p");
-      if (intro) intro.textContent = intro.textContent.replace("right here in your browser", "on this computer");
     }
     state.engine = platform.makeEngine(state.catalog);
     $("#engine").textContent = state.engine.label;
     state.libraries = await Promise.all((state.catalog.libraries || []).map((l) => getJSON(`data/libraries/${l.id}.json`)));
     for (const l of state.libraries) state.libDetail[l.id] = l;
+    state.index = new LocalIndex(state.catalog, state.libraries);
+    mountShell({ platform, catalog: state.catalog, libraries: state.libraries, index: state.index, engine: state.engine,
+      loadModel, closeModelTab, openTabs, deliver });
+    ui.set({ ready: true });
   } catch (e) {
-    $("#catalog-list").replaceChildren(el("p", { class: "empty", text: `Couldn't load the generator list: ${e.message}. Reload to try again.` }));
+    $("#view-browse").hidden = false;
+    $("#view-browse").replaceChildren(el("p", { class: "empty", text: `Couldn't load the generator list: ${e.message}. Reload to try again.` }));
+    return;
   }
   route();
 })();

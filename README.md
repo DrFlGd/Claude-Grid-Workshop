@@ -1,6 +1,6 @@
-# Claude Grid Workshop
+# SCAD Workshop
 
-Generate 3D-printable storage (Gridfinity, openGrid, Honeycomb Storage Wall and friends) from open-source OpenSCAD models, and download ready-made parts. Two ways to run it, sharing one front end:
+Generate 3D-printable parts (Gridfinity, openGrid, Honeycomb Storage Wall and friends, with more OpenSCAD projects and libraries to come) from open-source OpenSCAD models, and download ready-made parts. Formerly Claude Grid Workshop; the repository and site addresses keep that name for now. Two ways to run it, sharing one front end:
 
 - **Website:** a static site where OpenSCAD runs in the visitor's browser as WebAssembly, hosted free on GitHub Pages.
 - **Desktop app** (Windows, Linux): the same pages in a window, rendering with native OpenSCAD on your computer, several times faster, with your work kept as files in a workspace folder.
@@ -23,10 +23,12 @@ the model's files + OpenSCAD -> STL -> three.js preview -> download
 - **Engine:** the official OpenSCAD WebAssembly snapshot pinned in `engine.json` (2026.10.02), downloaded and checksum-verified by `tools/fetch_engine.py`. Each render runs in its own web worker (cancel = stop the worker); the page compiles the engine once and reuses it.
 - **Files per model:** `build_site.py` follows `include`/`use`/`import` from each entrypoint (next to the file first, then the family's library folders, mounted at `/libraries` in the engine) and stores each file once by content hash. The browser fetches only what a model needs and caches it.
 - **Settings forms:** OpenSCAD's own Customizer export (`--export-format=param`), run on the same engine at build time. On top of that the site applies the upstream project's `editor.toml` when it has one (the [web-openscad-editor](https://github.com/yawkat/web-openscad-editor) format used by GridFlock and Gridfinity Extended): show-when conditions, presets (e.g. printer bed sizes), help links, collapsed sections, section on/off switches and warnings. Family manifests can add the same metadata (`ui`) for projects without one.
-- **Home page:** grouped by type, then by project (each project one block with its generators as chips). Sections fold and remember their state; search shows generators whose name matches, or whole projects whose name, author or description does.
+- **Interface:** a library-style layout. The sidebar lists Home, Recent, Favourites, generator categories (each opening into its projects), the parts libraries and "Needs attention". The browser shows any of these as a grid of thumbnails (three sizes), a list, a sortable table with columns you choose, or grouped by project, category, kind or license; the view is remembered per place. An inspector beside it shows the selected item: license, settings count, last upstream update, your saved settings, more from the same project. Opened generators stay open as tabs, with their settings and preview kept. Space opens a quick look (a 3D preview at default settings), Ctrl+K a command palette, `/` the search. Themes: light, dark and night, following the system by default.
+- **Search:** one box for generators and parts, matching names, projects, tags, descriptions and setting names ("tooth count" finds the generator that has one), with prefix matching, one-typo tolerance and synonyms (cog → gear, box → case). Filter chips with counts for kind, category, project, license and when the source was last updated; the same filters can be typed (`tag:label project:underware updated:year`). The search sits behind an `index` interface (`web/ui/index-local.js`) so the desktop app can later swap in SQLite.
+- **Thumbnails:** `tools/thumbnails.py` renders every generator at its default settings (and every previewable part) in headless Chromium with the site's own viewer, saved as small WebP images.
 - **Presets and extra settings:** a model can list whole-model presets (shown as "Start from") and extra settings for values a file computes with an expression, which OpenSCAD's Customizer can't expose; those are passed with `-D`. Gridfinity Kitchen uses both: its 12 size files became presets, verified to render identically to the originals.
 - **Saved settings and share links:** each model has a settings picker (defaults, author presets, your saved settings). Saving keeps only what you changed from the defaults, in the browser (IndexedDB). **Share** copies a link that opens the model with your changes (compressed into the URL; nothing is uploaded). Settings can be exported as, and imported from, OpenSCAD Customizer parameter files (`<model>.json`), so they move between the site and native OpenSCAD.
-- **Platform layer:** `web/platform.js` picks the render engine and storage. The site uses the WebAssembly engine and browser storage; the planned desktop app swaps in native OpenSCAD and the workspace folder without changing the rest of the front end.
+- **Platform layer:** `web/platform.js` picks the render engine and storage. The site uses the WebAssembly engine and browser storage; the desktop app swaps in native OpenSCAD and the workspace folder without changing the rest of the front end.
 - **Printer profile:** Settings → print bed size and nozzle. Generators that ask for these (GridFlock, Just Fit, Gridfinity Extended baseplate and connector clips, Gridfinity Rebuilt vase bin) open with your values, marked "profile". Bindings live in the family manifests (`ui` → `"profile"`).
 - **Text on parts:** Liberation Sans/Mono are bundled (`assets/fonts`, SIL OFL), since the browser engine has no system fonts. Font menus on label models are limited to these so every choice really changes the result.
 - **Line endings:** SCAD files with Windows (CRLF) line endings are normalised when packaged; otherwise OpenSCAD's Customizer can't read their dropdown lists.
@@ -38,8 +40,12 @@ Needs Python 3.11+ (with numpy for part previews) and Node 20+.
 ```sh
 python3 tools/fetch_engine.py --out build/engine        # or --zip <downloaded zip>
 python3 tools/build_site.py --engine build/engine --out _site
+node tools/engine/cli.mjs bench _site --out bench.json --stl-dir build/stl   # renders every model once
+python3 tools/thumbnails.py --site _site --stl-dir build/stl                 # thumbnails (needs Playwright)
 python3 -m http.server -d _site 8000                     # open http://localhost:8000/
 ```
+
+The thumbnail step is optional: without it the browser shows a placeholder. `thumbnails.py` can also render the STLs itself with `--native-engine <openscad>`.
 
 Checks (all run in CI, `.github/workflows/site.yml`):
 
@@ -62,7 +68,7 @@ Repository **Settings → Pages → Build and deployment → Source: GitHub Acti
 
 | Path | What it holds |
 | --- | --- |
-| `web/` | The front end (no build step): catalog, forms, render worker, three.js preview, parts pages. `platform.js` picks browser or desktop behaviour. |
+| `web/` | The front end (no build step): `app.js` (routing, model pages, forms), `ui/` (sidebar, browser views, inspector, tabs, status bar, palette, quick look, the search index), `lib/` (Preact + htm helpers, a small state store), render worker, three.js preview. `platform.js` picks browser or desktop behaviour. |
 | `desktop/` | The desktop app: `core/` (Rust: native renders, cache, workspace, `workshop-cli`) and `src-tauri/` (window and commands). |
 | `vendor/` | Unmodified upstream SCAD projects, pinned to exact commits. |
 | `adapters/` | Small SCAD wrappers/fixes where an upstream file can't be used directly (openGrid Snap, Anylid fix). |
@@ -71,7 +77,7 @@ Repository **Settings → Pages → Build and deployment → Source: GitHub Acti
 | `engine.json`, `assets/` | Pinned engine version and checksum; GPL text; bundled fonts. |
 | `schema/` | JSON Schemas for families, libraries and built parameters. |
 | `sources/` | Provenance: upstream commit lock, SHA-256 of every vendored file, reference-site inventory, parity specs. |
-| `tools/` | Build (`build_site.py`, `fetch_engine.py`, `engine/`), checks (`validate_sources.py`, `parity.py`, `mesh_stats.py`), `import_library.py`. |
+| `tools/` | Build (`build_site.py`, `fetch_engine.py`, `engine/`, `thumbnails.py`, `build_desktop.py`), checks (`validate_sources.py`, `parity.py`, `mesh_stats.py`), `import_library.py`, `source_dates.py` (records when each pinned upstream commit was made), `vendor_preact.py`. |
 
 ## Generators
 
@@ -116,7 +122,7 @@ Files with the same name (`part.3mf`, `part.step`) become one item with several 
 
 ## Desktop app
 
-Plan and phases: [docs/DESKTOP_PLAN.md](docs/DESKTOP_PLAN.md). Phase 1 (this) is the app shell with native rendering; adding projects from GitHub, the search index, library modules and the model library come next.
+Plan and phases: [docs/DESKTOP_PLAN.md](docs/DESKTOP_PLAN.md). Done so far: the app shell with native rendering (Phase 1) and the library-style interface (Phase 1.5). Adding projects from GitHub and model-site downloads, the SQLite index with metadata editing, library modules and the model library come next.
 
 ```
 web/ (shared UI) --platform.js--> platform-desktop.js --Tauri IPC--> desktop/src-tauri (commands)
@@ -127,7 +133,7 @@ web/ (shared UI) --platform.js--> platform-desktop.js --Tauri IPC--> desktop/src
 
 - **Install:** download from the [desktop-latest pre-release](https://github.com/DrFlGd/Claude-Grid-Workshop/releases/tag/desktop-latest). Windows: the `-setup.exe` (unsigned, so SmartScreen asks once: More info → Run anyway). Linux: the `.deb` (pulls in the OpenGL libraries OpenSCAD needs) or the `.AppImage` (needs `libopengl0 libegl1 libglx0`, present on most desktops).
 - **Engine:** the official OpenSCAD snapshot of the same version as the website's (pinned in `engine.json` → `native`). On Linux the app unpacks OpenSCAD's AppImage on first start (a few seconds, once).
-- **Workspace:** `~/Claude Grid Workshop` by default (change it under Settings). Saved settings and preferences are plain files there; `cache/` holds finished renders and can be deleted.
+- **Workspace:** `~/SCAD Workshop` by default (change it under Settings; an existing `~/Claude Grid Workshop` folder keeps being used). Saved settings and preferences are plain files there; `cache/` holds finished renders and can be deleted.
 - **Desktop-only models:** Underware T, I-bridge and Mitre channels, which crash the browser engine, work in the app.
 - **Speed:** CI renders every model with default settings on both systems (`bench-native-*.json` on the `desktop-ci-linux` / `desktop-ci-windows` branches). On Linux the 55 website models take 28 s natively against 188 s in WebAssembly; the slowest browser models gain most (Minimalist Kitchen bin 25 s → 0.1 s, Pred-label bin 11 s → 0.1 s, Underware wood-texture channel 36 s → 4 s).
 - **Windows:** native OpenSCAD on Windows is unusually slow with projects split into many `use`d files: Gridfinity Extended models take 10–15 s natively there, against about 1 s in WebAssembly (it isn't antivirus scanning or the library path; parsing the same code as one file takes 0.2 s). So on Windows the app also carries the website's WebAssembly engine: the first render of each model runs both, keeps the faster result and remembers the winner (Settings shows the count and can forget it). Heavy geometry such as the Underware channels still goes native.
@@ -156,7 +162,7 @@ The earlier version rendered on a server (Starlette + native OpenSCAD in Docker,
 
 ## Licensing
 
-The site's **Licenses & credits** page (linked at the bottom of the home page) lists every project's authors, license, status and source, plus the engine, fonts and three.js. Model pages only credit the author and link there.
+The site's **Licenses & credits** page (in the sidebar) lists every project's authors, license, status and source, plus the engine, fonts, three.js, Preact and htm. Model pages only credit the author and link there.
 
 
 No repository-wide license overrides third-party terms. Each `vendor/` project keeps its own notices; see [THIRD_PARTY.md](THIRD_PARTY.md). The OpenSCAD engine is GPL-2.0-or-later (source: https://github.com/openscad/openscad; text in `assets/engine/COPYING`). Original code in `web/`, `tools/`, `adapters/`, `catalog/` and `schema/` is the repository owner's.

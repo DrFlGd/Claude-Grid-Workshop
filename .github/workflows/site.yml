@@ -1,8 +1,9 @@
 name: Site
 
 # Builds the static site with the pinned OpenSCAD WebAssembly engine, checks
-# every model renders (in Node and in a real browser), compares generators with
-# published parts, and deploys to GitHub Pages from main.
+# every model renders (in Node and in a real browser), draws thumbnails, checks
+# the library interface, compares generators with published parts, and deploys
+# to GitHub Pages from main.
 on:
   push:
     branches: [main]
@@ -47,20 +48,26 @@ jobs:
 
       - name: Render every model with the browser engine (Node)
         run: |
-          node tools/engine/cli.mjs bench _site --out bench.json
+          node tools/engine/cli.mjs bench _site --out bench.json --stl-dir build/stl
           node -e '
             const r = require("./bench.json");
             const lines = r.results.map(x => `${x.status} ${x.id} ${x.seconds}s ${x.heap_mb}MB ${x.triangles} tris`);
             console.log(`::notice title=Benchmark (OpenSCAD ${r.engine})::` + lines.join("%0A"));'
 
+      - name: Thumbnails (from the renders above, drawn with the site's viewer)
+        run: python tools/thumbnails.py --site _site --stl-dir build/stl
+
       - name: Compare generators with published parts
         run: python tools/parity.py --site _site --output parity.json
 
-      - name: Render every model in Chromium
+      - name: Check the interface and render every model in Chromium
         run: |
           python -m http.server -d _site 8000 > /dev/null 2>&1 &
           sleep 2
+          ui=0
+          python tests/interface.py --base http://localhost:8000/ --out shots || ui=1
           python tests/screenshots.py --base http://localhost:8000/ --out shots
+          exit $ui
 
       - name: Publish screenshots and reports to ci-screenshots branch
         if: always() && github.event_name != 'pull_request'

@@ -17,9 +17,9 @@ use std::path::{Path, PathBuf};
 
 pub const SUBDIRS: [&str; 5] = ["sources", "libraries", "collections", "settings", "cache"];
 
-const README: &str = "Claude Grid Workshop workspace\n\
+const README: &str = "SCAD Workshop workspace\n\
 \n\
-This folder holds what you make and keep in the Claude Grid Workshop desktop app:\n\
+This folder holds what you make and keep in the SCAD Workshop desktop app:\n\
   settings/     saved settings (one file each) and app preferences\n\
   cache/        finished renders and prepared model files; safe to delete\n\
   sources/      projects you add from GitHub or files (coming)\n\
@@ -42,8 +42,14 @@ pub fn home_dir() -> PathBuf {
 }
 
 impl Workspace {
+    /// `~/SCAD Workshop`; a folder from before the rename (`~/Claude Grid Workshop`) keeps being used.
     pub fn default_path() -> PathBuf {
-        home_dir().join("Claude Grid Workshop")
+        let new = home_dir().join("SCAD Workshop");
+        let old = home_dir().join("Claude Grid Workshop");
+        if !new.exists() && old.join("settings").is_dir() {
+            return old;
+        }
+        new
     }
 
     /// Open (creating if needed) a workspace folder.

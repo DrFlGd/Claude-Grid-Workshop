@@ -1,4 +1,4 @@
-// Claude Grid Workshop desktop app: the website's front end in a window, with
+// SCAD Workshop desktop app: the website's front end in a window, with
 // native OpenSCAD and the workspace folder behind web/platform-desktop.js.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -272,5 +272,5 @@ fn main() {
             cache_clear,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Claude Grid Workshop");
+        .expect("error while running SCAD Workshop");
 }

@@ -473,7 +473,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "claude-grid-workshop"
+name = "scad-workshop"
 version = "0.1.0"
 dependencies = [
  "serde_json",

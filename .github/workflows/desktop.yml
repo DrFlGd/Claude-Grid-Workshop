@@ -42,15 +42,17 @@ jobs:
         with: { python-version: "3.12" }
       - name: Install tools
         run: |
-          pip install numpy
+          pip install numpy playwright
+          python -m playwright install --with-deps chromium
           sudo apt-get update -q && sudo apt-get install -yq libopengl0 libegl1 libglx0
       - name: Engines
         run: |
           python tools/fetch_engine.py --out build/engine
           python tools/fetch_native_engine.py --out build/native-dl --extract build/native
-      - name: Build site (including desktop-only models)
+      - name: Build site (including desktop-only models) and thumbnails
         run: |
           python tools/build_site.py --engine build/engine --out _site --native-engine build/native/squashfs-root/AppRun
+          python tools/thumbnails.py --site _site --native-engine build/native/squashfs-root/AppRun
           python tools/build_desktop.py --site _site --out build/desktop --fetch-fonts
       - uses: actions/upload-artifact@v4
         with:
@@ -115,9 +117,9 @@ jobs:
         if: always()
         run: |
           export HOME="$RUNNER_TEMP/home" && mkdir -p "$HOME"
-          (timeout 25 xvfb-run -a desktop/target/release/claude-grid-workshop > ci-out/app-start.log 2>&1; echo "exit $?" >> ci-out/app-start.log) || true
+          (timeout 25 xvfb-run -a desktop/target/release/scad-workshop > ci-out/app-start.log 2>&1; echo "exit $?" >> ci-out/app-start.log) || true
           ls -la desktop/target/release | head -40 > ci-out/release-dir.txt
-          ls -la "$HOME/.local/share" "$HOME/Claude Grid Workshop" >> ci-out/release-dir.txt 2>&1 || true
+          ls -la "$HOME/.local/share" "$HOME/SCAD Workshop" >> ci-out/release-dir.txt 2>&1 || true
       - name: Drive the app (WebDriver)
         run: |
           cargo install tauri-driver --locked 2>&1 | tail -3
@@ -129,7 +131,7 @@ jobs:
           tauri-driver > ci-out/tauri-driver.log 2>&1 &
           sleep 2
           timeout 1200 python tests/desktop_ui.py \
-            --app desktop/target/release/claude-grid-workshop --out ci-out/shots 2>&1 | tee ci-out/desktop-ui.log
+            --app desktop/target/release/scad-workshop --out ci-out/shots 2>&1 | tee ci-out/desktop-ui.log
       - name: Publish reports to desktop-ci-linux
         if: always()
         run: |
@@ -195,7 +197,7 @@ jobs:
           ls -la msedgedriver.exe
           tauri-driver --native-driver "$PWD/msedgedriver.exe" > ci-out/tauri-driver.log 2>&1 &
           sleep 3
-          timeout 1200 python tests/desktop_ui.py --app desktop/target/release/claude-grid-workshop.exe \
+          timeout 1200 python tests/desktop_ui.py --app desktop/target/release/scad-workshop.exe \
             --out ci-out/shots 2>&1 | tee ci-out/desktop-ui.log
       - name: Publish reports to desktop-ci-windows
         if: always()
