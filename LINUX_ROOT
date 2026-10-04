@@ -1,0 +1,10 @@
+AppRun
+openscad-nightly.png
+openscad.desktop
+usr
+squashfs-root/usr/share/openscad
+squashfs-root/usr/bin/openscad-python
+squashfs-root/usr/bin/openscad
+squashfs-root/openscad-nightly.png
+squashfs-root/openscad.desktop
+296M	squashfs-root
