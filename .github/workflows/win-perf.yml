@@ -20,10 +20,11 @@ jobs:
         run: python tools/fetch_native_engine.py --out eng
       - name: Time variants
         run: |
+          set +e
           EXE=$(ls eng/*/openscad.exe)
           export OPENSCADPATH="$PWD/vendor/libraries"
           F=vendor/gridfinity-extended/gridfinity_basic_cup.scad
-          t() { local name=$1; shift; local s=$(date +%s.%N); "$@" > "log-$name.txt" 2>&1; local e=$(date +%s.%N); echo "$name $(python -c "print(round($e-$s,2))")s exit=$?" | tee -a times.txt; }
+          t() { local name=$1; shift; local s=$(date +%s.%N); "$@" > "log-$name.txt" 2>&1; local rc=$?; local e=$(date +%s.%N); echo "$name $(python -c "print(round($e-$s,2))")s rc=$rc" | tee -a times.txt; }
           t stl        "$EXE" --backend=Manifold -o a.stl "$F"
           t stl-again  "$EXE" --backend=Manifold -o a.stl "$F"
           t echo       "$EXE" -o a.echo "$F"
