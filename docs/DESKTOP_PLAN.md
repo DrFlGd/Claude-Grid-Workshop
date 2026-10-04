@@ -3,7 +3,8 @@
 Status (2026-10-04):
 
 - **Phase 0 done:** engine and storage seams, saved settings, share links, OpenSCAD parameter-file import/export.
-- **Phase 1 done:** see "Phase 1 notes" at the end. Phase 2 next.
+- **Phase 1 done:** see "Phase 1 notes" at the end.
+- **Next:** Phase 1.5, the new interface (section 5), so ingested projects and libraries have somewhere to live.
 
 ## Goal
 
@@ -13,6 +14,7 @@ A desktop "Swiss Army knife" for parametric 3D design on **Windows and Linux**:
 2. **Ingest**: add new projects from a GitHub link (with update checks) or from a file, ZIP or folder, stored locally.
 3. **Index**: one searchable, browsable index of everything available, organised by what it makes.
 4. **Library**: keep models, both ones you generated and premade ones you imported, in collections for a use case (a rugged case, the parts for one RC car).
+5. **Browse**: a library-style interface (grid, list and table views, search with filters, an inspector that edits metadata) that stays quick with thousands of items.
 
 The website stays as the **light version**: the built-in catalog in the browser, with the same UI. Ingest and the model library are desktop-only.
 
@@ -41,10 +43,11 @@ desktop/src-tauri (Rust) ├── jobs: run openscad, N in parallel, cancel, ca
                          └── library: collections, imports, recipes, export
 ```
 
-**Two seams in the front end** make one UI work in both places:
+**Seams in the front end** make one UI work in both places:
 
 - `engine`: `render(model, files, settings) -> STL/3MF` plus progress and cancel. Today's `engine-client.js` becomes the browser implementation; the desktop one calls a Tauri command.
 - `store`: saved settings, projects and library. Browser: IndexedDB. Desktop: files in the workspace folder.
+- `index` (added for the new interface, section 5): `query({ text, filters, sort, group, offset, limit }) -> { total, items, facets }`, `get(id)`, `update(id, patch)`. Browser: in memory over `catalog.json`, read-only. Desktop: SQLite in Rust, so the page never loads the whole catalog.
 
 The page detects Tauri at start-up and picks the implementation. Everything above the seams is shared.
 
@@ -66,8 +69,9 @@ workspace/
   sources/<id>/source.json      origin, license, pinned version, update state
   libraries/                    bundled libraries (read-only) + your own
   collections/<name>/           collection.json + premade files + generated outputs
-  settings/                     saved settings, workspace profile
-  cache/                        render cache (safe to delete)
+  settings/                     saved settings, printer profile, preferences
+  metadata/<item id>.json       your edits: names, tags, categories, form overlays (section 5)
+  cache/                        render cache and thumbnails (safe to delete)
   index.sqlite                  search index (rebuilt from the above if deleted)
 ```
 
@@ -160,7 +164,7 @@ Ingest suggests a category from keywords, BOSL2 topics, file and module names, a
 - filters by category, kind, source, license, "in my library", and "runs fast";
 - results ranked by match, then by how often you use them.
 
-**Browse:** the home page becomes category tiles, recent and favourites; the current family/project grouping becomes one view of it.
+**Browse:** see section 5. The home page becomes recent, favourites and category tiles; the current family/project grouping becomes one of the browser's views.
 
 **Target flow (acceptance test for the bevel-gear case):** search "bevel gear" → BOSL2 `bevel_gear()` is the first result → form opens with a preset from the docs → change teeth and module → preview → download STL. All in under a minute on a normal laptop.
 
@@ -179,6 +183,150 @@ Ingest suggests a category from keywords, BOSL2 topics, file and module names, a
 
 **Search:** library items are in the same index as generators, so "case latch" finds your saved latch and the generator that made it.
 
+## 5. Interface
+
+Today's home page is one long scrolling page grouped by type and project. It works for 58 models from 20 projects. It won't work for hundreds of generators, thousands of library modules, and collections of imported parts. The desktop app moves to a workspace layout like a file manager or photo library. The model page (form + 3D view) stays, as the "workbench".
+
+### App layout
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ [≡]  Search everything (Ctrl+K)                          jobs ◔   ⚙       │
+├─────────────┬──────────────────────────────────────────┬─────────────────┤
+│ Home        │  Gridfinity › Bins            ⊞ ☰ ▤  Sort ▾ │ Inspector       │
+│ Recent      │  ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐        │ [thumbnail]     │
+│ Favourites  │  │    │ │    │ │    │ │    │ │    │        │ Basic Bin       │
+│ ─────────   │  └────┘ └────┘ └────┘ └────┘ └────┘        │ Gridfinity Ext. │
+│ Generators ▸│  Basic  Drawer Tray   Sieve  Lid           │ tags, category, │
+│ Modules    ▸│                                            │ license, source │
+│ Parts      ▸│  ┌────┐ ┌────┐ ...                         │ [Open] [★] [⋯]  │
+│ Collections▸│                                            │                 │
+│ Sources    ▸│                                            │ saved settings: │
+│ Smart lists▸│                                            │ ▢ ▢ ▢           │
+├─────────────┴──────────────────────────────────────────┴─────────────────┤
+│ 3 renders running · update available for 2 sources                        │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Sidebar** (collapsible):
+
+- Home, Recent and Favourites.
+- Generators, library modules, ready-made parts, collections and sources, each as a category tree with counts.
+- Smart lists (saved searches).
+- "Needs attention": sources with missing includes, failed thumbnails, unknown licenses or updates waiting. Today that list lives only in SOURCE_AUDIT.md.
+
+**Browser** (centre) shows whatever is selected in the sidebar or searched.
+
+**Inspector** (right, toggleable) shows the selected item's details and edits them.
+
+**Workbench:** opening an item opens it in tabs, so several models can stay open with their settings and preview.
+
+**Status bar:** background jobs (renders, batch queue, ingest, thumbnails, update checks) with a drawer to see or cancel them.
+
+### Browser views
+
+All views share selection, sorting and grouping. The app remembers the view per place, so parts can default to large thumbnails and modules to a table.
+
+| View | For | Shows |
+| --- | --- | --- |
+| **Grid** | Looking for a shape | Thumbnails at three sizes (slider), name, small kind badge |
+| **List** | Scanning names | One row each: small thumbnail, name, project, category, tags |
+| **Table** | Managing metadata | Sortable, resizable columns you choose: kind, source, license, version, added, last used, size, triangle count, render time |
+| **Grouped** | Today's look | Sections by category, project or source, with items as chips or thumbnails |
+
+**Sort:** name, recently used, recently added, most used, source, size.
+
+**Group by:** category, project/source, kind, license or none.
+
+**Quick look:** Space opens a large preview that you can spin, without leaving the list. For a generator it shows its default render; for a part, the part.
+
+**Multi-select:** Shift/Ctrl-click, or drag a box, then act on all of them:
+
+- tag, set category, favourite;
+- add to collection;
+- batch render;
+- export, or hide.
+
+**Keyboard:** arrows move, Enter opens, Space for quick look, `/` searches, Ctrl+K opens the command palette.
+
+**Scale:** lists are virtualised and thumbnails load lazily, so browsing stays fast with thousands of items.
+
+### Search
+
+- **One search box** for everything: generators, modules, parts, collections, sources, saved settings and setting names ("tooth count" finds gears). Results are grouped by kind with counts.
+- **Filters** appear as chips with counts: kind, category, tags, source, license, desktop-only, has thumbnail, recently used. Tags can also be typed: `tag:gear source:BOSL2 kind:module`.
+- **Forgiving matching:** prefix matching, typo tolerance (SQLite FTS5 plus trigram), and the synonym list from section 3.
+- **Size search** for parts and generators that report dimensions: "fits within 84 × 42 mm", or for Gridfinity "2 × 1 units".
+- **Saved searches** become smart lists in the sidebar. Recent searches are kept.
+- **Command palette** (Ctrl+K): the same box also runs actions such as "Add GitHub source…", "New collection", "Clear render cache" or "Open settings".
+
+### Metadata editing
+
+Everything from a source can be adjusted without touching the source files. Edits are stored as small override files in the workspace (`metadata/<item id>.json`), so they survive upstream updates and sync with the rest of the workspace.
+
+**In the inspector** (one item or many at once):
+
+- **Item details:**
+  - display name, description (Markdown), category (tree picker), tags (autocomplete), favourite, personal notes;
+  - author, origin URL and license, with a note of where the information came from.
+- **Thumbnail:** re-render from the current or a saved setting, choose the camera angle and colour, or use an image.
+- **Provenance:** each field shows whether it came from the source or from you, with "Revert to source".
+- **Undo:** for every edit.
+
+**Form editor** (on the workbench, "Edit form"): what the family manifests' `ui` blocks do today, without editing JSON:
+
+- rename settings;
+- set box names for list values (narrow/wide/length/position);
+- hide, reorder or group settings;
+- add show-when conditions ("only when utensil count ≥ N");
+- mark settings as linked to the printer profile;
+- add presets.
+
+These are saved as overlays in the same form as `catalog/families` `ui`. A good one can be copied into the repo for everyone.
+
+**Category editor:** rename, move and merge categories, and drag items between them.
+
+**After a source update**, overlays that no longer apply (a renamed or removed setting) show up under "Needs attention" instead of failing silently.
+
+**Exchange:** metadata can be exported and imported, to share a curated catalog or move it between machines.
+
+### Thumbnails
+
+- Rendered automatically at ingest and import, with the same viewer camera and colour for every item, so the grid looks consistent.
+- Saved settings and recipes get their own thumbnails, so the inspector shows the variants you've made.
+- Premade STL/3MF files are rendered directly; STEP files go through OpenCascade (section 4).
+- Thumbnails are stored in `cache/thumbs/` and rebuilt when the source or the engine changes.
+
+### Other parts of the interface
+
+- **Source page:**
+  - the README, rendered;
+  - license, files, generators and modules found;
+  - pinned version, available update with a summary of what changed, and ingest problems.
+- **Collection page:**
+  - items with quantities and printed/to-print checkboxes, plus a progress bar ("12 of 30 printed");
+  - drag in from the browser;
+  - export.
+- **Compare variants:** two saved settings side by side, or overlaid in the 3D view, with the differing settings highlighted.
+- **Drag and drop:**
+  - drop a `.scad` file, a ZIP, a folder or an STL/3MF on the window to import it;
+  - drag a finished part out to the file manager or a slicer.
+- **Theme:** light and dark, following the system by default.
+- **Accessibility:** everything reachable by keyboard, with visible focus, labelled controls and enough contrast. The layout works down to a 900 px wide window.
+- **Website:** gets the browser views and search, in read-only form over the built-in catalog. Editing, sources and collections stay desktop-only.
+
+### Front-end structure
+
+`web/app.js` is already about 1,400 lines of hand-built DOM. The new interface (virtual lists, multi-select, an inspector, tabs) needs structure, so before building it:
+
+- Split the front end into modules: shell, browser, inspector, search, workbench, settings.
+- Add a small shared state store.
+- Use **Preact + htm** for the new views. Both are vendored ES modules of a few KB each and need no build step, so the website still deploys as static files.
+
+Plain web components would also work. Preact makes list virtualisation and editable inspectors much less code.
+
+**Before building:** a clickable mockup of the layout and the four views, to settle the look before code.
+
 ## Phases
 
 Each phase ends with something usable and with checks in CI.
@@ -187,14 +335,15 @@ Each phase ends with something usable and with checks in CI.
 | --- | --- | --- |
 | **0. Seams** | Engine and store interfaces in `web/`; saved settings and share links on the website (browser storage) | Website unchanged for users, plus saved settings; all 55 models still pass in Chromium |
 | **1. Desktop shell** | Tauri app (Windows + Linux) with native engine, render queue, cache, workspace folder, built-in catalog offline, saved settings as files, workspace profile (bed size, tolerances, font) | Installers built in CI; all 55 models render natively (including the 3 Underware channels the browser can't); native vs WebAssembly benchmark published |
-| **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; SQLite index; search and category browse | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised |
-| **3. Libraries + modules** | Bundled libraries; BOSL2 doc parser; signature parser; module → form; pinned generators | The bevel-gear acceptance test passes; every BOSL2 module with geometry gets a form that renders its first doc example |
-| **4. Model library** | Collections; premade import (STL/3MF/OBJ/STEP); recipes; quantities, notes, status; ZIP export | Import a pack, save 3 recipes, re-render them after a source update, export the collection |
+| **1.5 Interface** | Mockup first. Then: front end split into modules (Preact + htm); app layout with sidebar, browser, inspector, workbench tabs, status bar; grid, list, table and grouped views; search with filters and command palette; `index` seam (in-memory over `catalog.json` for now); thumbnails for the 58 models; favourites, recent; light/dark | All 58 models and the parts library browsable in all four views; search and filters answer in under 100 ms; the website keeps working with the new browser views; WebDriver tests updated |
+| **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; SQLite index behind the `index` seam; source pages; "Needs attention"; metadata editing (inspector, overlays, bulk edit, undo, provenance) | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update |
+| **3. Libraries + modules** | Bundled libraries; BOSL2 doc parser; signature parser; module → form; pinned generators; form editor (labels, box names, conditions, presets as overlays); category editor | The bevel-gear acceptance test passes; every BOSL2 module with geometry gets a form that renders its first doc example; a form edit made in the app matches what a family manifest `ui` block produces |
+| **4. Model library** | Collections; premade import (STL/3MF/OBJ/STEP); recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection |
 | **5. Productivity** | Batch from CSV, multi-setting sweeps, arranged multi-colour 3MF, send to slicer (open the file in Bambu Studio / OrcaSlicer / PrusaSlicer), live reload when a watched .scad file is saved | As listed |
 
 ## Testing
 
-- **Linux:** build and run in this environment; automated UI tests through `tauri-driver` (WebDriver), reusing the screenshot test's steps.
+- **Linux:** automated UI tests through `tauri-driver` (WebDriver) in CI (this environment can't build the app; see Phase 1 notes).
 - **Windows:** CI builds the installer and runs the same WebDriver tests on a Windows runner. The owner does hands-on testing.
 - The existing website checks stay as they are.
 
