@@ -49,7 +49,7 @@ jobs:
       - name: Build site (including desktop-only models)
         run: |
           python tools/build_site.py --engine build/engine --out _site --native-engine build/native/squashfs-root/AppRun
-          python tools/build_desktop.py --site _site --out build/desktop
+          python tools/build_desktop.py --site _site --out build/desktop --fetch-fonts
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-site
@@ -117,9 +117,13 @@ jobs:
         run: |
           cargo install tauri-driver --locked 2>&1 | tail -3
           export HOME="$RUNNER_TEMP/home" && mkdir -p "$HOME"
+          # one X server for tauri-driver, WebKitWebDriver and the app it launches
+          Xvfb :99 -screen 0 1600x1000x24 > /dev/null 2>&1 &
+          export DISPLAY=:99
+          sleep 1
           tauri-driver > ci-out/tauri-driver.log 2>&1 &
           sleep 2
-          timeout 1200 xvfb-run -a -s "-screen 0 1600x1000x24" python tests/desktop_ui.py \
+          timeout 1200 python tests/desktop_ui.py \
             --app desktop/target/release/claude-grid-workshop --out ci-out/shots 2>&1 | tee ci-out/desktop-ui.log
       - name: Publish reports to desktop-ci-linux
         if: always()

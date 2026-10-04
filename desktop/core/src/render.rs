@@ -304,7 +304,7 @@ impl Renderer {
         drop(tx);
 
         let mut logs: Vec<String> = vec![];
-        let mut push = |line: String, logs: &mut Vec<String>| {
+        let push = |line: String, logs: &mut Vec<String>| {
             if let Some(s) = stage_for(&line) {
                 on_event(RenderEvent::Stage { stage: s.into() });
             }
