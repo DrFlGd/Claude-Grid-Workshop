@@ -41,5 +41,14 @@ jobs:
           t text-again "$EXE" -o tx.stl tx.scad
           printf 'function f(n) = n <= 0 ? 0 : 1 + f(n - 1);\nx = [for (i = [0:20000]) f(200)];\necho(len(x));\ncube(1);\n' > ev.scad
           t evaluate "$EXE" -o ev.stl ev.scad
+          # one big file with the same amount of code, no includes
+          cat vendor/gridfinity-extended/modules/*.scad | grep -v '^\s*\(include\|use\)\s*<' > big.scad
+          t ast-bigfile "$EXE" -o big.ast big.scad
+          # Windows Defender real-time scanning off (runner is admin)
+          powershell -Command "Set-MpPreference -DisableRealtimeMonitoring \$true" ; powershell -Command "(Get-MpPreference).DisableRealtimeMonitoring" >> times.txt
+          t ast-nodefender "$EXE" -o a.ast "$F"
+          t stl-nodefender "$EXE" --backend=Manifold -o a.stl "$F"
+          # library search path empty
+          OPENSCADPATH= t ast-nolibpath "$EXE" -o a.ast "$F"
           echo "::notice title=times::$(tr '\n' ' ' < times.txt)"
           for f in log-stl.txt log-echo.txt log-text.txt; do echo "::notice title=$f::$(tail -c 900 $f | tr '\n' ' ')"; done
