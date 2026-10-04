@@ -107,6 +107,17 @@ try:
     shot("02-underware-t-channel")
     open_model("minimalist-kitchen-gridfinity/bin")  # ~25 s in the browser
     report["kitchen_status"] = text("#status")
+    # many `use`d files: slow with native OpenSCAD on Windows, where the app races both engines
+    for i, w in enumerate(("2", "3")):
+        if i == 0:
+            open_model("gridfinity-extended/bin")
+        else:
+            d.execute_script(f"""const i = document.querySelector('[data-name="width"] input'); i.value = '{w}';
+              i.dispatchEvent(new Event('input', {{bubbles: true}})); document.querySelector('#generate').click();""")
+            time.sleep(0.5)
+            wait(DONE, 120, "extended bin re-render")
+        report[f"extended_bin_{i + 1}"] = {"status": text("#status"), "engine": d.execute_script("return document.body.dataset.engine || 'native'")}
+        print("extended bin:", report[f"extended_bin_{i + 1}"], flush=True)
 
     # saved settings go to the workspace as files
     open_model("gridfinity-rebuilt/bin")

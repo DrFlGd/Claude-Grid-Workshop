@@ -2,7 +2,7 @@
 // fresh worker per render: terminating it is the only way to stop a running
 // WASM render, and the engine can't be reused after a run anyway.
 //
-// Message in:  { engineUrl, module?, files: {virtualPath: url}, entry, values }
+// Message in:  { engineUrl, module?, files: {virtualPath: url | Uint8Array}, entry, values }
 // Messages out: { type: "log", line } ... then { type: "done", stl, ms, logs } or { type: "error", error, logs }
 import OpenSCAD from "./engine/openscad.js";
 
@@ -17,6 +17,7 @@ const log = (line) => {
 
 // Source files are content-addressed (URL = hash), so a cached copy never goes stale.
 async function getFile(url) {
+  if (typeof url !== "string") return url; // bytes handed over by the page (desktop app)
   let cache = null;
   try { cache = await caches.open(CACHE); } catch { /* no Cache Storage (e.g. private mode) */ }
   const hit = cache && (await cache.match(url));

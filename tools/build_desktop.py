@@ -3,10 +3,10 @@
 
     python3 tools/build_desktop.py --site _site --out build/desktop
 
-  ui/    the front end loaded in the app window (HTML, JS, CSS, three.js)
-  site/  data/, fs/ and parts/, shipped as app resources and read through the
-         app (the WebAssembly engine in _site/engine is not needed: the app
-         renders with native OpenSCAD)
+  ui/    the front end loaded in the app window (HTML, JS, CSS, three.js, and
+         the WebAssembly engine, which the Windows app races against native
+         OpenSCAD because it is faster for some projects there)
+  site/  data/, fs/ and parts/, shipped as app resources and read through the app
 The native engine goes in build/desktop/engine (tools/fetch_native_engine.py).
 """
 import argparse
@@ -21,7 +21,7 @@ ap.add_argument("--fetch-fonts", action="store_true",
 a = ap.parse_args()
 
 DATA = {"data", "fs", "parts"}
-SKIP = {"engine"}  # the WebAssembly engine; the app renders natively
+SKIP: set = set()  # engine/ stays: on Windows the app also uses the WebAssembly engine (faster for some models)
 if not (a.site / "data/catalog.json").exists():
     raise SystemExit(f"{a.site} is not a built site; run tools/build_site.py first")
 for sub in ("ui", "site"):

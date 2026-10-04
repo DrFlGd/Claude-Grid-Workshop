@@ -1,6 +1,9 @@
 # Desktop app plan
 
-Status: **Phase 0 done** (2026-10-03): engine and storage seams, saved settings, share links, OpenSCAD parameter-file import/export. Phase 1 next.
+Status (2026-10-04):
+
+- **Phase 0 done:** engine and storage seams, saved settings, share links, OpenSCAD parameter-file import/export.
+- **Phase 1 done:** see "Phase 1 notes" at the end. Phase 2 next.
 
 ## Goal
 
@@ -210,3 +213,23 @@ Each phase ends with something usable and with checks in CI.
 - Licenses and authors for Anylid, openGrid Shelf, Just Fit and Minimalist Kitchen (owner to supply).
 - Multiboard and openGrid Connector sources (owner to supply).
 - STEP/Shapr3D files for openGrid tiles: on hold.
+
+## Phase 1 notes
+
+What was built, and where it differs from the plan above.
+
+- **App:** `desktop/src-tauri` (window and commands) over `desktop/core` (Rust with no GUI: native renders, queue, cache, workspace, saved settings as files). The website's front end runs unchanged except for `web/platform-desktop.js`. Data and model files go through the app's commands rather than URLs.
+- **Engine bundling:** Windows ships the snapshot folder. Linux ships OpenSCAD's AppImage as one file and unpacks it on first start into the app's data folder, which avoids FUSE and symlinks in the package. The Linux AppImage expects `libOpenGL`, `libEGL` and `libGLX` from the system; the `.deb` declares them.
+- **Desktop-only models:** `build_site.py --native-engine` reads the settings of the three Underware channels that crash the WebAssembly engine. The desktop build includes them (58 models); the website build leaves them out (55).
+- **Printer profile:** limited to print bed size and nozzle. Magnet and tolerance settings are left unlinked: projects define them differently (hole size with or without clearance), so one value can't safely feed them all. The profile works on the website too.
+- **Windows engine race:** native OpenSCAD on Windows spends 4–5 s handling `use`/`include` for Gridfinity Extended. CI experiments ruled out Defender, the library path and font setup; the same code parsed as one file takes 0.2 s. So the Windows app races native against the WebAssembly engine on each model's first render and remembers the faster one. It might be worth reporting upstream to OpenSCAD.
+- **Fonts:** on Windows the app writes a fontconfig file (system fonts, OpenSCAD's bundled fonts, a cache in the workspace), because the snapshot ships none. The UI font (Archivo) is bundled, so the app makes no web requests.
+- **Testing:** this development environment can't reach crates.io, npm's Tauri packages or Ubuntu's package mirrors. All Rust builds and app tests therefore run in CI (`desktop.yml`):
+  - unit tests;
+  - `workshop-cli bench` (all 58 models, first and repeated renders) on Linux and Windows;
+  - a WebDriver test of the built app on both systems: catalog, native and desktop-only renders, saved settings in the workspace, Settings, a part preview;
+  - installers on the `desktop-latest` pre-release.
+- **Not yet:**
+  - code signing;
+  - auto-update (the release is rebuilt from `main`; download it again to update);
+  - batch rendering in parallel on Windows (races already use two engines per model).

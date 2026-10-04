@@ -4,8 +4,14 @@
 const resolve = (p) => new URL(p, document.baseURI).href;
 
 export class EngineClient {
-  constructor({ commonFiles }) {
+  /**
+   * readFile(sha) -> Promise<Uint8Array>: optional; where model files come from when
+   * they can't be fetched by URL (the desktop app reads them from its bundle).
+   */
+  constructor({ commonFiles, readFile = null }) {
     this.commonFiles = commonFiles || {};
+    this.readFile = readFile;
+    this.fileCache = new Map(); // sha -> bytes (desktop only; files are content-addressed)
     this.results = new Map(); // settings key -> { blob, ms }
     this.module = null;
     this.ready = (WebAssembly.compileStreaming
@@ -30,14 +36,19 @@ export class EngineClient {
     const cached = this.results.get(key);
     if (cached) return { promise: Promise.resolve({ ...cached, cached: true }), cancel() {} };
 
-    const files = {};
-    for (const [p, sha] of Object.entries({ ...this.commonFiles, ...model.files })) files[p] = resolve(`fs/${sha}`);
+    const entries = Object.entries({ ...this.commonFiles, ...model.files });
+    const filesReady = this.readFile
+      ? Promise.all(entries.map(async ([p, sha]) => {
+          if (!this.fileCache.has(sha)) this.fileCache.set(sha, await this.readFile(sha));
+          return [p, this.fileCache.get(sha).slice()];
+        })).then(Object.fromEntries)
+      : Promise.resolve(Object.fromEntries(entries.map(([p, sha]) => [p, resolve(`fs/${sha}`)])));
     let worker = null;
     let cancelled = false;
     let rejectRun;
     const promise = new Promise((resolveRun, reject) => {
       rejectRun = reject;
-      this.ready.then((module) => {
+      Promise.all([this.ready, filesReady]).then(([module, files]) => {
         if (cancelled) return;
         worker = new Worker(resolve("render-worker.js"), { type: "module" });
         worker.onmessage = ({ data }) => {
@@ -69,7 +80,7 @@ export class EngineClient {
           }
         }
         worker.postMessage(msg);
-      });
+      }, (e) => reject(Object.assign(new Error(`Couldn't load the model files: ${e?.message || e}`), { logs: [] })));
     });
     return {
       promise,

@@ -832,6 +832,7 @@ function cancelJob() {
 }
 
 async function showResult(result, values, restoring = false) {
+  document.body.dataset.engine = result.engine || ""; // which engine made it (desktop on Windows races two)
   try {
     const url = URL.createObjectURL(result.blob);
     const dims = await state.viewer.load(url);
@@ -1348,6 +1349,13 @@ function desktopSettings() {
     info.engine
       ? el("p", {}, `OpenSCAD ${info.engine}, native, up to ${info.concurrency || 1} render${info.concurrency > 1 ? "s" : ""} at once. `, el("br"), el("code", { text: info.engine_path || "" }))
       : el("p", { class: "lic-summary", text: info.engine_error || "OpenSCAD isn't available." }),
+    info.os === "windows" ? (() => {
+      const picks = store.prefs.get("gw-engine-pick", {}) || {};
+      const wasm = Object.values(picks).filter((v) => v === "wasm").length;
+      const line = el("p", {}, `On Windows, OpenSCAD is slow with projects made of many files, where the WebAssembly engine (the website's) is faster. The first time you make a model, both run and the faster one is remembered: ${wasm} of ${Object.keys(picks).length} models so far use WebAssembly. `,
+        el("button", { type: "button", class: "ghost", text: "Forget", onclick: () => { store.prefs.set("gw-engine-pick", {}); line.firstChild.textContent = "Forgotten: the next render of each model tries both engines again. "; } }));
+      return line;
+    })() : null,
     el("p", {}, "Finished renders are kept so repeating one is instant: ", cacheLine, ". ",
       el("button", { type: "button", class: "ghost", text: "Clear", onclick: async () => {
         try { await platform.workspace.clearCache(); const i = await platform.refreshInfo(); cacheLine.textContent = gb(i.cache_bytes); } catch (e) { toast(String(e)); }

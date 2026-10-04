@@ -90,6 +90,8 @@ pub struct Renderer {
     pub cache_limit: u64,
     /// Reuse and store finished renders (off for benchmarks).
     pub use_cache: bool,
+    /// Extra environment for OpenSCAD (Windows: a fontconfig setup with a persistent cache).
+    env: Vec<(String, std::ffi::OsString)>,
 }
 
 /// Default number of renders at once: all cores but one, at least one.
@@ -155,6 +157,7 @@ impl Renderer {
                 .with_context(|| format!("couldn't create {}", cache_dir.join(d).display()))?;
         }
         let concurrency = concurrency.max(1);
+        let env = font_env(&engine, &cache_dir);
         Ok(Self {
             engine,
             site,
@@ -164,6 +167,7 @@ impl Renderer {
             jobs: Mutex::new(HashMap::new()),
             cache_limit: 1 << 30,
             use_cache: true,
+            env,
         })
     }
 
@@ -285,6 +289,7 @@ impl Renderer {
             .current_dir(&tree)
             .env("OPENSCADPATH", tree.join("libraries"))
             .env("OPENSCAD_FONT_PATH", tree.join("fonts"))
+            .envs(self.env.iter().map(|(k, v)| (k.as_str(), v.as_os_str())))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -416,6 +421,31 @@ impl Renderer {
         }
         Ok(before)
     }
+}
+
+/// The Windows OpenSCAD snapshot ships no fontconfig setup, so only the fonts we
+/// pass in are found and nothing is cached. Give it one: Windows' fonts, its own
+/// bundled fonts, and a cache folder in the workspace (scanned once, then reused).
+fn font_env(engine: &NativeEngine, cache_dir: &Path) -> Vec<(String, std::ffi::OsString)> {
+    if !cfg!(windows) {
+        return vec![]; // Linux: the system's fontconfig setup and cache
+    }
+    let fc = cache_dir.join("fontconfig");
+    if std::fs::create_dir_all(&fc).is_err() {
+        return vec![];
+    }
+    let esc = |p: &Path| p.display().to_string().replace('&', "&amp;").replace('<', "&lt;");
+    let bundled = engine.exe.parent().map(|d| d.join("fonts"));
+    let conf = format!(
+        "<?xml version=\"1.0\"?>\n<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n<fontconfig>\n  <dir>WINDOWSFONTDIR</dir>\n{}  <cachedir>{}</cachedir>\n</fontconfig>\n",
+        bundled.filter(|d| d.is_dir()).map(|d| format!("  <dir>{}</dir>\n", esc(&d))).unwrap_or_default(),
+        esc(&fc.join("cache")),
+    );
+    let file = fc.join("fonts.conf");
+    if std::fs::read_to_string(&file).ok().as_deref() != Some(conf.as_str()) && std::fs::write(&file, &conf).is_err() {
+        return vec![];
+    }
+    vec![("FONTCONFIG_FILE".into(), file.into_os_string())]
 }
 
 struct RemoveOnDrop(PathBuf);

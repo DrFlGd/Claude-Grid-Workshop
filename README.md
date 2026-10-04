@@ -1,8 +1,12 @@
 # Claude Grid Workshop
 
-Generate 3D-printable storage (Gridfinity, openGrid, Honeycomb Storage Wall and friends) from open-source OpenSCAD models, right in the browser, and download ready-made parts. It's a static website: OpenSCAD runs in each visitor's browser as WebAssembly, so it can be hosted free on GitHub Pages.
+Generate 3D-printable storage (Gridfinity, openGrid, Honeycomb Storage Wall and friends) from open-source OpenSCAD models, and download ready-made parts. Two ways to run it, sharing one front end:
 
-**Live site:** https://drflgd.github.io/Claude-Grid-Workshop/ (once Pages is enabled; see below)
+- **Website:** a static site where OpenSCAD runs in the visitor's browser as WebAssembly, hosted free on GitHub Pages.
+- **Desktop app** (Windows, Linux): the same pages in a window, rendering with native OpenSCAD on your computer, several times faster, with your work kept as files in a workspace folder.
+
+**Live site:** https://drflgd.github.io/Claude-Grid-Workshop/
+**Desktop app:** installers on the [desktop-latest pre-release](https://github.com/DrFlGd/Claude-Grid-Workshop/releases/tag/desktop-latest) (built from `main` by CI)
 
 ## How it works
 
@@ -23,6 +27,7 @@ the model's files + OpenSCAD -> STL -> three.js preview -> download
 - **Presets and extra settings:** a model can list whole-model presets (shown as "Start from") and extra settings for values a file computes with an expression, which OpenSCAD's Customizer can't expose; those are passed with `-D`. Gridfinity Kitchen uses both: its 12 size files became presets, verified to render identically to the originals.
 - **Saved settings and share links:** each model has a settings picker (defaults, author presets, your saved settings). Saving keeps only what you changed from the defaults, in the browser (IndexedDB). **Share** copies a link that opens the model with your changes (compressed into the URL; nothing is uploaded). Settings can be exported as, and imported from, OpenSCAD Customizer parameter files (`<model>.json`), so they move between the site and native OpenSCAD.
 - **Platform layer:** `web/platform.js` picks the render engine and storage. The site uses the WebAssembly engine and browser storage; the planned desktop app swaps in native OpenSCAD and the workspace folder without changing the rest of the front end.
+- **Printer profile:** Settings → print bed size and nozzle. Generators that ask for these (GridFlock, Just Fit, Gridfinity Extended baseplate and connector clips, Gridfinity Rebuilt vase bin) open with your values, marked "profile". Bindings live in the family manifests (`ui` → `"profile"`).
 - **Text on parts:** Liberation Sans/Mono are bundled (`assets/fonts`, SIL OFL), since the browser engine has no system fonts. Font menus on label models are limited to these so every choice really changes the result.
 - **Line endings:** SCAD files with Windows (CRLF) line endings are normalised when packaged; otherwise OpenSCAD's Customizer can't read their dropdown lists.
 
@@ -45,6 +50,8 @@ python3 tools/parity.py --site _site                # generators vs published pa
 python3 tests/screenshots.py --base http://localhost:8000/   # every model in Chromium
 ```
 
+The desktop workflow (`.github/workflows/desktop.yml`) also renders all 58 models natively on Linux and Windows with `workshop-cli bench`, drives the built app through WebDriver (`tests/desktop_ui.py`) and publishes installers.
+
 CI publishes the benchmark, parity report and screenshots to the `ci-screenshots` branch, and deploys `_site` to GitHub Pages from `main`.
 
 ## Enabling GitHub Pages (one time)
@@ -55,7 +62,8 @@ Repository **Settings → Pages → Build and deployment → Source: GitHub Acti
 
 | Path | What it holds |
 | --- | --- |
-| `web/` | The front end (no build step): catalog, forms, render worker, three.js preview, parts pages. |
+| `web/` | The front end (no build step): catalog, forms, render worker, three.js preview, parts pages. `platform.js` picks browser or desktop behaviour. |
+| `desktop/` | The desktop app: `core/` (Rust: native renders, cache, workspace, `workshop-cli`) and `src-tauri/` (window and commands). |
 | `vendor/` | Unmodified upstream SCAD projects, pinned to exact commits. |
 | `adapters/` | Small SCAD wrappers/fixes where an upstream file can't be used directly (openGrid Snap, Anylid fix). |
 | `catalog/families/` | **Generator registry.** One JSON manifest per project. Adding a file here adds a generator. |
@@ -86,7 +94,7 @@ Repository **Settings → Pages → Build and deployment → Source: GitHub Acti
 | Gridfinity Kitchen | Full Cutout Bin, Edge Cutout Bin (12 size presets from the original files), Spacer, Spacer with Walls | ✅ | MIT |
 | Gridfinity Anylid | Lid | ✅ | Unstated · review |
 | openGrid Shelf | Shelf | ✅ | Unstated · review |
-| Underware (Monokini) | 14 channels, labels and textured variants | ⚠️ T, I-bridge and Mitre channels crash the WASM engine | Conflict · private use only |
+| Underware (Monokini) | 17 channels, labels and textured variants | ✅ 14 in the browser; T, I-bridge and Mitre channels in the desktop app only | Conflict · private use only |
 | Multiboard | — | ❌ source needed | — |
 
 GRIPS and GridPlates are intentionally excluded (superseded). Details: [docs/SOURCE_AUDIT.md](docs/SOURCE_AUDIT.md).
@@ -106,9 +114,41 @@ python3 tools/import_library.py path/to/unzipped-pack --id my-parts --name "My p
 
 Files with the same name (`part.3mf`, `part.step`) become one item with several downloads; 3MF/STL items get a 3D preview and measured size. Rename items or categories in the JSON afterwards: re-running keeps those edits. Keep single files under 100 MB (GitHub's limit). If a generator might already make some of the parts, add a spec in `sources/parity/` and CI reports which published files it reproduces.
 
-## Desktop app (planned)
+## Desktop app
 
-A Windows/Linux desktop version (Tauri, native OpenSCAD, ingest from GitHub or files, a searchable index of generators and library modules, and a model library) is planned in [docs/DESKTOP_PLAN.md](docs/DESKTOP_PLAN.md).
+Plan and phases: [docs/DESKTOP_PLAN.md](docs/DESKTOP_PLAN.md). Phase 1 (this) is the app shell with native rendering; adding projects from GitHub, the search index, library modules and the model library come next.
+
+```
+web/ (shared UI) --platform.js--> platform-desktop.js --Tauri IPC--> desktop/src-tauri (commands)
+                                                                       └─> desktop/core (Rust, no GUI)
+                                                                           native OpenSCAD, render queue + cache,
+                                                                           workspace folder, saved settings as files
+```
+
+- **Install:** download from the [desktop-latest pre-release](https://github.com/DrFlGd/Claude-Grid-Workshop/releases/tag/desktop-latest). Windows: the `-setup.exe` (unsigned, so SmartScreen asks once: More info → Run anyway). Linux: the `.deb` (pulls in the OpenGL libraries OpenSCAD needs) or the `.AppImage` (needs `libopengl0 libegl1 libglx0`, present on most desktops).
+- **Engine:** the official OpenSCAD snapshot of the same version as the website's (pinned in `engine.json` → `native`). On Linux the app unpacks OpenSCAD's AppImage on first start (a few seconds, once).
+- **Workspace:** `~/Claude Grid Workshop` by default (change it under Settings). Saved settings and preferences are plain files there; `cache/` holds finished renders and can be deleted.
+- **Desktop-only models:** Underware T, I-bridge and Mitre channels, which crash the browser engine, work in the app.
+- **Speed:** CI renders every model with default settings on both systems (`bench-native-*.json` on the `desktop-ci-linux` / `desktop-ci-windows` branches). On Linux the 55 website models take 28 s natively against 188 s in WebAssembly; the slowest browser models gain most (Minimalist Kitchen bin 25 s → 0.1 s, Pred-label bin 11 s → 0.1 s, Underware wood-texture channel 36 s → 4 s).
+- **Windows:** native OpenSCAD on Windows is unusually slow with projects split into many `use`d files: Gridfinity Extended models take 10–15 s natively there, against about 1 s in WebAssembly (it isn't antivirus scanning or the library path; parsing the same code as one file takes 0.2 s). So on Windows the app also carries the website's WebAssembly engine: the first render of each model runs both, keeps the faster result and remembers the winner (Settings shows the count and can forget it). Heavy geometry such as the Underware channels still goes native.
+
+Build it yourself (needs Rust, Node, Python and on Linux the WebKitGTK development packages; see the Linux job in `.github/workflows/desktop.yml` for the exact list):
+
+```sh
+python3 tools/fetch_engine.py --out build/engine
+python3 tools/fetch_native_engine.py --out build/desktop/engine --extract build/native
+python3 tools/build_site.py --engine build/engine --out _site --native-engine build/native/squashfs-root/AppRun
+python3 tools/build_desktop.py --site _site --out build/desktop --fetch-fonts
+cd desktop && npx @tauri-apps/cli@2 build          # installers in desktop/target/release/bundle/
+```
+
+`workshop-cli` renders with the app's own code from the command line (`cargo build --release -p workshop-core`):
+
+```sh
+desktop/target/release/workshop-cli bench  --site build/desktop/site --engine build/native/squashfs-root
+desktop/target/release/workshop-cli render --site build/desktop/site --engine build/native/squashfs-root \
+    --model gridfinity-rebuilt/bin --set gridx=3 --out bin.stl
+```
 
 ## Server version (on hold)
 
