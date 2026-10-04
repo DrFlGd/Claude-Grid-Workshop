@@ -50,5 +50,5 @@ jobs:
           t stl-nodefender "$EXE" --backend=Manifold -o a.stl "$F"
           # library search path empty
           OPENSCADPATH= t ast-nolibpath "$EXE" -o a.ast "$F"
-          echo "::notice title=times::$(tr '\n' ' ' < times.txt)"
+          echo "::notice title=times::$(tr -d '\r' < times.txt | tr '\n' ' ')"
           for f in log-stl.txt log-echo.txt log-text.txt; do echo "::notice title=$f::$(tail -c 900 $f | tr '\n' ' ')"; done
