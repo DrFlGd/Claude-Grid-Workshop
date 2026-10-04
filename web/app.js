@@ -1,8 +1,12 @@
 // Claude Grid Workshop front end (static): catalog, settings forms with
 // upstream editor metadata, in-browser OpenSCAD renders, 3D preview, parts.
 import { Viewer } from "./viewer.js";
-import { EngineClient } from "./engine-client.js";
+import { createPlatform } from "./platform.js";
 import { makeZip } from "./zip.js";
+import { changedValues, withChanges, encodeShare, decodeShare, toOpenSCAD, fromOpenSCAD } from "./settings-codec.js";
+
+const platform = await createPlatform();
+const store = platform.store;
 
 const $ = (s, root = document) => root.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -50,7 +54,7 @@ function humanize(name) {
 const fmt = (n) => (Math.round(n * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const bytes = (n) => (n > 1048576 ? `${fmt(n / 1048576)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-const savedColor = (() => { try { return localStorage.getItem("gw-filament"); } catch { return null; } })() || FILAMENTS[0][1];
+const savedColor = store.prefs.get("gw-filament") || FILAMENTS[0][1];
 
 /** Keep simple formatting from third-party descriptions; drop anything active. */
 const SAFE_TAGS = new Set(["A", "B", "STRONG", "I", "EM", "BR", "P", "SPAN", "CODE", "UL", "OL", "LI", "DIV", "SMALL"]);
@@ -86,9 +90,9 @@ function compileCondition(expr, names) {
 // ---------------------------------------------------------------- routing
 function route() {
   const h = location.hash.replace(/^#\/?/, "");
-  const m = h.match(/^m\/([a-z0-9-]+)\/([a-z0-9-]+)\/?$/);
+  const m = h.match(/^m\/([a-z0-9-]+)\/([a-z0-9-]+)\/?(?:\?(.*))?$/);
   const p = h.match(/^parts\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/);
-  if (m) openModel(`${m[1]}/${m[2]}`);
+  if (m) openModel(`${m[1]}/${m[2]}`, new URLSearchParams(m[3] || "").get("s"));
   else if (p) openLibrary(p[1], p[2]);
   else if (h === "about" || h.startsWith("licenses")) showLicenses(h.split("/")[1]);
   else showCatalog();
@@ -126,8 +130,8 @@ function showCatalog() {
 }
 
 // Collapsed/expanded state of home-page sections, remembered per browser
-const openState = (() => { try { return JSON.parse(localStorage.getItem("gw-open") || "{}"); } catch { return {}; } })();
-const saveOpen = (id, open) => { openState[id] = open; try { localStorage.setItem("gw-open", JSON.stringify(openState)); } catch { /* private mode */ } };
+const openState = store.prefs.get("gw-open", {}) || {};
+const saveOpen = (id, open) => { openState[id] = open; store.prefs.set("gw-open", openState); };
 
 function foldable(id, defaultOpen, cls, summary, ...body) {
   const d = el("details", { class: cls, "data-fold": id }, el("summary", {}, summary), ...body);
@@ -222,8 +226,15 @@ function renderCatalog(query = "") {
 $("#catalog-search").addEventListener("input", (e) => renderCatalog(e.target.value));
 
 // ---------------------------------------------------------------- model page
-async function openModel(key) {
+async function openModel(key, shareCode = null) {
   showView("model");
+  if (shareCode) history.replaceState(null, "", `#/m/${key}`); // the link has done its job; edits shouldn't look shared
+  if (state.model?.key === key && shareCode) {
+    const shared = await readShare(shareCode);
+    if (shared && !shared.error) { setAllValues(shared.values); generate(); }
+    if (shared) noteShared(shared);
+    return;
+  }
   if (state.model?.key === key) {
     if (state.viewerOwner !== "model") {
       state.viewerOwner = "model";
@@ -282,8 +293,13 @@ async function openModel(key) {
   $("#model-notes").open = false;
 
   state.values = Object.fromEntries(detail.parameters.map((p) => [p.name, structuredClone(p.default)]));
+  saved.active = null;
+  const shared = shareCode ? await readShare(shareCode) : null;
+  if (shared && !shared.error) state.values = shared.values;
   $("#param-search").value = "";
   buildForm();
+  if (shared) noteShared(shared);
+  loadSaved();
   generate(); // show the default part straight away
   document.body.dataset.model = key; // lets tests know which model's render is on screen
 }
@@ -293,21 +309,7 @@ function buildForm() {
   const form = $("#params");
   form.replaceChildren();
   const { parameters, groups, tabs = {}, presets = [] } = state.model;
-  if (presets.length) {
-    // whole-model starting points, e.g. the size variants an author shipped as separate files
-    const pick = el("select", { id: "preset-pick", "aria-label": "Start from a preset",
-      onchange: (e) => {
-        const ps = presets[e.target.selectedIndex - 1];
-        if (!ps) return;
-        for (const p of state.model.parameters) {
-          if (p.name in ps.values) { state.values[p.name] = structuredClone(ps.values[p.name]); syncField(p); }
-        }
-        applyConditions();
-        generate();
-      } },
-      el("option", { text: "Choose…" }), presets.map((ps) => el("option", { text: ps.label })));
-    form.append(el("div", { class: "preset-bar" }, el("label", { for: "preset-pick", text: "Start from" }), pick));
-  }
+  form.append(settingsBar(presets));
   const names = parameters.map((p) => p.name).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n));
   state.conditions = [];
   for (const p of parameters) if (p.show_if) state.conditions.push({ test: compileCondition(p.show_if, names), name: p.name });
@@ -477,20 +479,30 @@ const helpBtn = $("#help-toggle");
 const setHelp = (on) => {
   document.body.classList.toggle("show-help", on);
   helpBtn.setAttribute("aria-pressed", String(on));
-  try { localStorage.setItem("gw-help", on ? "1" : "0"); } catch { /* private mode */ }
+  store.prefs.set("gw-help", on);
 };
 helpBtn.addEventListener("click", () => setHelp(!document.body.classList.contains("show-help")));
-setHelp((() => { try { return localStorage.getItem("gw-help") === "1"; } catch { return false; } })());
+setHelp(!!store.prefs.get("gw-help", false));
 
-$("#reset-all").addEventListener("click", () => {
-  if (!state.model) return;
-  for (const p of state.model.parameters) { state.values[p.name] = structuredClone(p.default); syncField(p); }
+/** Replace every setting (missing names fall back to defaults) and update the form. */
+function setAllValues(values) {
+  for (const p of state.model.parameters) {
+    state.values[p.name] = structuredClone(p.name in values ? values[p.name] : p.default);
+    syncField(p);
+  }
   document.querySelectorAll(".group-switch").forEach((b) => {
     const g = b.closest(".group"); const tab = state.model.tabs?.[g.dataset.group];
     if (tab?.control) { b.checked = !!state.values[tab.control]; g.open = b.checked; }
   });
   applyConditions();
   updateStatusForEdits();
+}
+
+$("#reset-all").addEventListener("click", () => {
+  if (!state.model) return;
+  setAllValues({});
+  saved.active = null;
+  renderSettingsPick();
 });
 
 $("#param-search").addEventListener("input", (e) => {
@@ -506,6 +518,217 @@ $("#param-search").addEventListener("input", (e) => {
     if (q && any) g.open = true;
   });
 });
+
+// ---------------------------------------------------------------- saved settings and share links
+// saved.active: "default" | "preset:<i>" | "saved:<id>" (what the picker shows)
+const saved = { list: [], active: null };
+
+function settingsBar(presets) {
+  const pick = el("select", { id: "settings-pick", "aria-label": "Start from defaults, a preset or your saved settings",
+    onchange: (e) => chooseSettings(e.target.value) });
+  const more = el("details", { class: "menu", id: "settings-more" },
+    el("summary", { class: "ghost", "aria-label": "More settings actions", title: "More", text: "⋯" }),
+    el("div", { class: "menu-panel", role: "menu" },
+      el("button", { type: "button", role: "menuitem", id: "settings-rename", text: "Rename…", onclick: () => { closeMenu(); openSaveDialog("rename"); } }),
+      el("button", { type: "button", role: "menuitem", id: "settings-delete", text: "Delete", onclick: () => { closeMenu(); deleteSaved(); } }),
+      el("hr"),
+      el("button", { type: "button", role: "menuitem", id: "settings-export", text: "Export for OpenSCAD", title: "All saved settings for this model, as an OpenSCAD Customizer file", onclick: () => { closeMenu(); exportSettings(); } }),
+      el("button", { type: "button", role: "menuitem", id: "settings-import-btn", text: "Import OpenSCAD file…", onclick: () => { closeMenu(); $("#settings-import").click(); } })));
+  const bar = el("div", { class: "preset-bar" },
+    el("label", { for: "settings-pick", class: "visually-hidden", text: "Start from" }), pick,
+    el("button", { type: "button", class: "ghost", id: "settings-save", text: "Save", title: "Save these settings in this browser", onclick: () => openSaveDialog("save") }),
+    el("button", { type: "button", class: "ghost", id: "settings-share", text: "Share", title: "Copy a link that opens this model with these settings", onclick: shareSettings }),
+    more);
+  const note = el("p", { id: "settings-note", class: "settings-note", role: "status", hidden: true });
+  saved.presets = presets;
+  queueMicrotask(renderSettingsPick);
+  return el("div", { class: "settings-bar" }, bar, note);
+}
+
+const closeMenu = () => { const m = $("#settings-more"); if (m) m.open = false; };
+document.addEventListener("click", (e) => { if (!e.target.closest?.("#settings-more")) closeMenu(); });
+
+function renderSettingsPick() {
+  const pick = $("#settings-pick");
+  if (!pick || !state.model) return;
+  const presets = state.model.presets || [];
+  pick.replaceChildren(
+    el("option", { value: "default", text: "Defaults" }),
+    presets.length ? el("optgroup", { label: "Presets" }, presets.map((ps, i) => el("option", { value: `preset:${i}`, text: ps.label }))) : null,
+    saved.list.length ? el("optgroup", { label: "Saved" }, saved.list.map((r) => el("option", { value: `saved:${r.id}`, text: r.name }))) : null);
+  pick.value = saved.active || "default";
+  if (pick.selectedIndex < 0) pick.value = "default";
+  const isSaved = (saved.active || "").startsWith("saved:");
+  $("#settings-rename").disabled = !isSaved;
+  $("#settings-delete").disabled = !isSaved;
+  $("#settings-export").disabled = false;
+}
+
+async function loadSaved() {
+  const key = state.model.key;
+  try { saved.list = await store.settings.list(key); } catch { saved.list = []; }
+  if (state.model?.key === key) renderSettingsPick();
+}
+
+const activeSaved = () => saved.list.find((r) => `saved:${r.id}` === saved.active) || null;
+
+let noteTimer = null;
+function note(text, kind = "") {
+  const n = $("#settings-note");
+  if (!n) return;
+  n.textContent = text;
+  n.className = `settings-note ${kind}`;
+  n.hidden = false;
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => { n.hidden = true; }, 9000);
+}
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const skippedText = (n) => (n ? ` ${plural(n, "setting")} didn't match this version of the model and stayed at the default.` : "");
+
+function chooseSettings(value) {
+  if (value === "default") setAllValues({});
+  else if (value.startsWith("preset:")) {
+    const ps = state.model.presets[+value.slice(7)];
+    if (!ps) return;
+    setAllValues({ ...state.values, ...ps.values }); // author presets set only what they're about (e.g. size)
+  } else if (value.startsWith("saved:")) {
+    const rec = saved.list.find((r) => `saved:${r.id}` === value);
+    if (!rec) return;
+    const { values, skipped } = withChanges(state.model, rec.values);
+    setAllValues(values);
+    if (skipped.length) note(skippedText(skipped.length).trim(), "warn");
+  }
+  saved.active = value;
+  renderSettingsPick();
+  generate();
+}
+
+function openSaveDialog(mode) {
+  if (!state.model) return;
+  const dlg = $("#save-dialog");
+  const cur = activeSaved();
+  const changes = Object.keys(changedValues(state.model, state.values)).length;
+  dlg.dataset.mode = mode;
+  $("#save-title").textContent = mode === "rename" ? "Rename saved settings" : "Save settings";
+  const name = $("#save-name");
+  name.value = mode === "rename" ? cur?.name || "" : cur ? cur.name : suggestName();
+  const updating = mode === "save" && !!cur;
+  dlg.dataset.updating = updating ? "1" : "";
+  $("#save-alt").hidden = !updating; // "Save as new"
+  $("#save-primary").textContent = mode === "rename" ? "Rename" : updating ? `Update “${cur.name}”` : "Save";
+  store.settings.persistent().then((keep) => {
+    $("#save-note").textContent = mode === "rename" ? "" :
+      `Keeps the ${plural(changes, "setting")} you changed from the defaults` +
+      (platform.kind === "browser" ? (keep ? ", in this browser." : ". This browser isn't keeping site data (private window?), so they'll be gone when you close the tab.") : ".");
+  });
+  dlg.showModal();
+  name.select();
+}
+
+function suggestName() {
+  const c = changedValues(state.model, state.values);
+  const byName = new Map(state.model.parameters.map((p) => [p.name, p]));
+  const bits = Object.entries(c).slice(0, 3).map(([k, v]) => `${byName.get(k)?.label || humanize(k)} ${Array.isArray(v) ? v.join("×") : v}`);
+  return bits.join(", ").slice(0, 60) || "My settings";
+}
+
+function uniqueName(name, exceptId = null) {
+  const taken = new Set(saved.list.filter((r) => r.id !== exceptId).map((r) => r.name.toLowerCase()));
+  if (!taken.has(name.toLowerCase())) return name;
+  for (let i = 2; ; i++) if (!taken.has(`${name} (${i})`.toLowerCase())) return `${name} (${i})`;
+}
+
+async function saveSettings(asNew) {
+  const dlg = $("#save-dialog");
+  const mode = dlg.dataset.mode;
+  const name = $("#save-name").value.trim();
+  if (!name) { $("#save-name").focus(); return; }
+  const cur = activeSaved();
+  const key = state.model.key;
+  try {
+    let rec;
+    if (mode === "rename" && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id) });
+    else if (!asNew && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id), values: changedValues(state.model, state.values) });
+    else rec = await store.settings.save({ model: key, name: uniqueName(name), values: changedValues(state.model, state.values) });
+    dlg.close();
+    saved.active = `saved:${rec.id}`;
+    await loadSaved();
+    note(mode === "rename" ? `Renamed to “${rec.name}”.` : `Saved “${rec.name}”.`, "ok");
+  } catch (e) {
+    note(`Couldn't save: ${e.message}`, "warn");
+  }
+}
+
+async function deleteSaved() {
+  const cur = activeSaved();
+  if (!cur || !confirm(`Delete saved settings “${cur.name}”? The form keeps its current values.`)) return;
+  await store.settings.remove(cur.id);
+  saved.active = null;
+  await loadSaved();
+  note(`Deleted “${cur.name}”.`);
+}
+
+async function shareSettings() {
+  if (!state.model) return;
+  const changes = changedValues(state.model, state.values);
+  const n = Object.keys(changes).length;
+  const base = `${location.origin}${location.pathname}#/m/${state.model.key}`;
+  const url = n ? `${base}?s=${await encodeShare(changes)}` : base;
+  let copied = false;
+  try { await navigator.clipboard.writeText(url); copied = true; } catch { /* not allowed here */ }
+  if (copied) note(n ? `Link copied. It opens this model with your ${plural(n, "changed setting")}.` : "Link copied. You haven't changed any settings, so it opens the defaults.", "ok");
+  else prompt("Copy this link:", url);
+  document.body.dataset.shareLink = url; // for tests
+}
+
+async function readShare(code) {
+  try {
+    const changes = await decodeShare(code);
+    return withChanges(state.model || { parameters: [] }, changes);
+  } catch {
+    return { error: true };
+  }
+}
+
+function noteShared(shared) {
+  if (shared.error) { note("That share link is damaged or incomplete, so the defaults are shown.", "warn"); return; }
+  note(`Opened a shared link: ${plural(shared.applied, "setting")} changed from the defaults.${skippedText(shared.skipped.length)}`, shared.skipped.length ? "warn" : "ok");
+}
+
+function exportSettings() {
+  const sets = saved.list.map((r) => ({ name: r.name, values: withChanges(state.model, r.values).values }));
+  const cur = changedValues(state.model, state.values);
+  if (!sets.some((s) => same(changedValues(state.model, s.values), cur))) sets.unshift({ name: "Current settings", values: state.values });
+  const text = toOpenSCAD(state.model, sets);
+  const fname = state.model.entry.split("/").pop().replace(/\.scad$/i, ".json");
+  const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "application/json" })), download: fname });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  note(`Exported ${plural(sets.length, "set")} as ${fname}. Put it next to the .scad file and OpenSCAD's Customizer lists them.`, "ok");
+}
+
+async function importSettings(file) {
+  if (!file || !state.model) return;
+  let sets;
+  try { sets = fromOpenSCAD(state.model, await file.text()); } catch (e) { note(e.message, "warn"); return; }
+  if (!sets.length) { note("That file has no parameter sets.", "warn"); return; }
+  let first = null, skipped = 0;
+  for (const s of sets) {
+    const rec = await store.settings.save({ model: state.model.key, name: uniqueName(s.name), values: s.changes });
+    saved.list.push(rec); // so the next name is unique too
+    first ||= rec;
+    skipped += s.skipped;
+  }
+  await loadSaved();
+  chooseSettings(`saved:${first.id}`);
+  note(`Imported ${plural(sets.length, "set")} and opened “${first.name}”.${skipped ? ` ${plural(skipped, "value")} didn't match this model and ${skipped === 1 ? "was" : "were"} skipped.` : ""}`, skipped ? "warn" : "ok");
+}
+
+$("#save-form").addEventListener("submit", (e) => { e.preventDefault(); saveSettings(!$("#save-dialog").dataset.updating); });
+$("#save-alt").addEventListener("click", () => saveSettings(true));
+$("#save-cancel").addEventListener("click", () => $("#save-dialog").close());
+$("#settings-import").addEventListener("change", (e) => { importSettings(e.target.files[0]); e.target.value = ""; });
 
 // ---------------------------------------------------------------- rendering
 function setStatus(kind, text) {
@@ -947,7 +1170,7 @@ FILAMENTS.forEach(([name, hex]) => {
     onclick: () => {
       fil.querySelectorAll(".swatch").forEach((s) => s.setAttribute("aria-checked", String(s === b)));
       state.viewer?.setColor(hex);
-      try { localStorage.setItem("gw-filament", hex); } catch { /* private mode */ }
+      store.prefs.set("gw-filament", hex);
     } });
   fil.append(b);
 });
@@ -956,8 +1179,8 @@ FILAMENTS.forEach(([name, hex]) => {
 (async function boot() {
   try {
     state.catalog = await getJSON("data/catalog.json");
-    state.engine = new EngineClient({ commonFiles: state.catalog.common_files });
-    $("#engine").textContent = `OpenSCAD ${state.catalog.engine}, in your browser`;
+    state.engine = platform.makeEngine(state.catalog);
+    $("#engine").textContent = state.engine.label;
     state.libraries = await Promise.all((state.catalog.libraries || []).map((l) => getJSON(`data/libraries/${l.id}.json`)));
     for (const l of state.libraries) state.libDetail[l.id] = l;
   } catch (e) {

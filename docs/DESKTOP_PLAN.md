@@ -1,6 +1,6 @@
 # Desktop app plan
 
-Status: **proposal for review** (2026-10-03). Nothing here is built yet.
+Status: **Phase 0 done** (2026-10-03): engine and storage seams, saved settings, share links, OpenSCAD parameter-file import/export. Phase 1 next.
 
 ## Goal
 

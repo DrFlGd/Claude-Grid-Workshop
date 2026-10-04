@@ -97,6 +97,50 @@ async def main():
         await pg.screenshot(path=f"{a.out}/95-batch.png")
         await pg.click("#batch-close")
 
+        # saved settings: save, reload, update, share link, export/import an OpenSCAD parameter file
+        pg.on("dialog", lambda d: asyncio.ensure_future(d.accept()))  # share falls back to prompt() without clipboard access
+        key = "gridfinity-rebuilt/bin"
+        await open_and_render(pg, a.base, key, a.timeout)
+        await pg.fill("#p-gridx", "4")
+        await pg.click("#settings-save")
+        await pg.fill("#save-name", "Four wide")
+        await pg.click("#save-primary")
+        await pg.wait_for_function("()=>document.querySelector('#settings-note').textContent.startsWith('Saved')", timeout=30000)
+        await pg.reload()
+        await pg.wait_for_function(DONE, timeout=a.timeout * 1000)
+        await pg.select_option("#settings-pick", label="Four wide")
+        got_saved = await pg.input_value("#p-gridx")
+        await pg.fill("#p-gridx", "5")
+        await pg.click("#settings-save")
+        await pg.click("#save-primary")  # "Update"
+        await pg.click("#settings-share")
+        await pg.wait_for_function("()=>!!document.body.dataset.shareLink")
+        link = await pg.evaluate("document.body.dataset.shareLink")
+        p2 = await ctx.new_page()
+        p2.on("pageerror", lambda e: errors.append(str(e)))
+        await p2.goto(link)
+        await p2.wait_for_function(f"()=>document.body.dataset.model === '{key}'", timeout=30000)
+        got_shared = await p2.input_value("#p-gridx")
+        await p2.close()
+        await pg.click("#settings-more summary")
+        async with pg.expect_download() as dl:
+            await pg.click("#settings-export")
+        exported = json.load(open(await (await dl.value).path()))
+        sets = exported["parameterSets"]
+        sets["Imported six"] = {**sets["Four wide"], "gridx": "6"}
+        imp = f"{a.out}/import-test.json"
+        json.dump(exported, open(imp, "w"))
+        await pg.set_input_files("#settings-import", imp)
+        await pg.wait_for_function("()=>document.querySelector('#settings-note').textContent.startsWith('Imported')", timeout=30000)
+        await pg.select_option("#settings-pick", label="Imported six")  # the file's first set opens; pick the new one
+        got_import = await pg.input_value("#p-gridx")
+        await pg.screenshot(path=f"{a.out}/96-saved-settings.png")
+        ok = (got_saved, got_shared, sets["Four wide"].get("gridx"), got_import) == ("4", "5", "5", "6")
+        print(f"{'PASS' if ok else 'FAIL'} saved settings: saved={got_saved} shared={got_shared} "
+              f"exported={sets['Four wide'].get('gridx')} imported={got_import}")
+        if not ok:
+            failures.append("saved settings")
+
         await pg.goto(f"{a.base}#/parts/opengrid-official/mounts-opengrid-wall-mount")
         await pg.wait_for_selector("#dims:not([hidden])", timeout=60000)
         await pg.wait_for_timeout(500)

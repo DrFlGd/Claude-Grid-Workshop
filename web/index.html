@@ -116,6 +116,20 @@
     </div>
   </main>
 
+  <dialog id="save-dialog" class="batch save-dialog" aria-labelledby="save-title">
+    <form method="dialog" id="save-form">
+      <h2 id="save-title">Save settings</h2>
+      <label class="batch-list" for="save-name">Name</label>
+      <input id="save-name" type="text" maxlength="80" required autocomplete="off">
+      <p id="save-note" class="muted"></p>
+      <div class="batch-actions">
+        <button type="button" class="ghost" id="save-cancel">Cancel</button>
+        <button type="button" class="ghost" id="save-alt" hidden>Save as new</button>
+        <button type="submit" class="primary" id="save-primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+  <input type="file" id="settings-import" accept=".json,application/json" hidden>
   <dialog id="batch" class="batch" aria-labelledby="batch-title">
     <form method="dialog" id="batch-form">
       <h2 id="batch-title">Batch generate</h2>
