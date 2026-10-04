@@ -35,7 +35,8 @@ async def main():
     a = ap.parse_args()
     import os
     os.makedirs(a.out, exist_ok=True)
-    models = a.models or [m["key"] for m in json.load(urllib.request.urlopen(a.base + "data/catalog.json"))["models"]]
+    models = a.models or [m["key"] for m in json.load(urllib.request.urlopen(a.base + "data/catalog.json"))["models"]
+                          if m.get("browser") is not False]  # desktop-only models are hidden on the site
     failures, errors, timings = [], [], []
     async with async_playwright() as p:
         b = await p.chromium.launch(args=["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])

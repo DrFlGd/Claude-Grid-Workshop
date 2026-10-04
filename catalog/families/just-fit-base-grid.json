@@ -31,6 +31,14 @@
     "library_paths": []
   },
   "status": "available",
+  "ui": {
+    "bed_x": {
+      "profile": "bed.x"
+    },
+    "bed_y": {
+      "profile": "bed.y"
+    }
+  },
   "models": [
     {
       "id": "baseplate",

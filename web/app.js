@@ -5,6 +5,10 @@ import { createPlatform } from "./platform.js";
 import { makeZip } from "./zip.js";
 import { changedValues, withChanges, encodeShare, decodeShare, toOpenSCAD, fromOpenSCAD } from "./settings-codec.js";
 
+// page errors, for the desktop UI test (tests/desktop_ui.py)
+window.addEventListener("error", (e) => { (window.__errors ||= []).push(String(e.message)); });
+window.addEventListener("unhandledrejection", (e) => { (window.__errors ||= []).push(String(e.reason?.message || e.reason)); });
+
 const platform = await createPlatform();
 const store = platform.store;
 
@@ -22,7 +26,7 @@ const el = (tag, attrs = {}, ...kids) => {
   return n;
 };
 const getJSON = async (path) => {
-  const r = await fetch(path);
+  const r = await platform.fetch(path);
   if (!r.ok) throw Object.assign(new Error(`Couldn't load ${path} (${r.status})`), { status: r.status });
   return r.json();
 };
@@ -95,6 +99,7 @@ function route() {
   if (m) openModel(`${m[1]}/${m[2]}`, new URLSearchParams(m[3] || "").get("s"));
   else if (p) openLibrary(p[1], p[2]);
   else if (h === "about" || h.startsWith("licenses")) showLicenses(h.split("/")[1]);
+  else if (h === "settings") showSettings();
   else showCatalog();
 }
 window.addEventListener("hashchange", route);
@@ -252,6 +257,14 @@ async function openModel(key, shareCode = null) {
     setStatus("error", e.status === 404 ? "This generator doesn't exist. Pick one from the catalog." : e.message);
     return;
   }
+  if (detail.browser === false && platform.kind === "browser") {
+    showView("catalog");
+    renderCatalog();
+    setCrumbs([{ text: "Generators", href: "#/" }]);
+    $("#catalog-list").prepend(el("p", { class: "missing", text: `${detail.family_name} ${detail.name} is too complex for the browser engine. It works in the desktop app.` }));
+    return;
+  }
+  applyProfile(detail);
   state.model = detail;
   state.rendered = null;
   state.lastResult = null;
@@ -356,7 +369,9 @@ function buildField(p) {
   const tip = p.description || (p.description_html ? helpNodes[0].textContent : null);
   const head = (labelNode) => {
     if (tip) labelNode.title = tip; // short labels; full explanation on hover or with Help on
-    return el("div", { class: "field-head" }, labelNode, helpLink, reset);
+    const prof = p.profiled ? el("a", { class: "profile-tag", href: "#/settings", text: "profile",
+      title: "Starts from your printer profile (Settings)" }) : null;
+    return el("div", { class: "field-head" }, labelNode, prof, helpLink, reset);
   };
   const wrap = el("div", { class: "field", "data-name": p.name, "data-search": `${p.name} ${label} ${p.description || ""}`.toLowerCase() });
   const describedby = helpNodes.length ? `${id}-help` : null;
@@ -702,9 +717,7 @@ function exportSettings() {
   if (!sets.some((s) => same(changedValues(state.model, s.values), cur))) sets.unshift({ name: "Current settings", values: state.values });
   const text = toOpenSCAD(state.model, sets);
   const fname = state.model.entry.split("/").pop().replace(/\.scad$/i, ".json");
-  const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "application/json" })), download: fname });
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  deliver(new Blob([text], { type: "application/json" }), fname);
   note(`Exported ${plural(sets.length, "set")} as ${fname}. Put it next to the .scad file and OpenSCAD's Customizer lists them.`, "ok");
 }
 
@@ -987,30 +1000,48 @@ $("#batch-run").addEventListener("click", async () => {
   const run = batch.running;
   updateBatchCount();
   const started = Date.now();
-  try {
-    for (let i = 0; i < combos.length; i++) {
+  run.jobs = new Set();
+  run.cancel = function () { this.cancelled = true; for (const j of this.jobs) j.cancel(); };
+  const width = Math.max(1, Math.min(state.engine.concurrency || 1, combos.length));
+  const results = new Array(combos.length);
+  let next = 0, done = 0;
+  const progress = () => {
+    bar.style.width = `${(done / combos.length) * 100}%`;
+    text.textContent = width > 1 ? `Making ${combos.length} parts, ${width} at a time: ${done} done`
+      : `Making ${Math.min(done + 1, combos.length)} of ${combos.length}: ${Object.entries(combos[Math.min(done, combos.length - 1)]).map(([k, v]) => `${humanize(k)} ${v}`).join(", ")}`;
+  };
+  const worker = async () => {
+    while (next < combos.length) {
       if (run.cancelled) throw Object.assign(new Error("Batch cancelled."), { cancelled: true });
+      const i = next++;
       const values = { ...structuredClone(state.values), ...combos[i] };
-      const desc = Object.entries(combos[i]).map(([k, v]) => `${humanize(k)} ${v}`).join(", ");
-      text.textContent = `Making ${i + 1} of ${combos.length}: ${desc}`;
-      bar.style.width = `${(i / combos.length) * 100}%`;
-      run.job = state.engine.render(model, values);
-      const result = await run.job.promise;
+      const job = state.engine.render(model, values);
+      run.jobs.add(job);
+      try { results[i] = { values, result: await job.promise }; } finally { run.jobs.delete(job); }
+      done++;
+      progress();
+    }
+  };
+  try {
+    progress();
+    await Promise.all(Array.from({ length: width }, worker));
+    for (let i = 0; i < combos.length; i++) {
       let name = `${model.family}-${model.id}-` + Object.entries(combos[i]).map(([k, v]) => `${k}-${v}`).join("-");
       name = name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 140);
       while (names.has(name)) name += "_";
       names.add(name);
-      files.push({ name: `${name}.stl`, data: new Uint8Array(await result.blob.arrayBuffer()) });
-      if (i === combos.length - 1) { state.viewerOwner = "model"; await showResult(result, values, true); }
+      files.push({ name: `${name}.stl`, data: new Uint8Array(await results[i].result.blob.arrayBuffer()) });
     }
+    const last = results[combos.length - 1];
+    state.viewerOwner = "model";
+    await showResult(last.result, last.values, true);
     bar.style.width = "100%";
     const zip = makeZip(files);
-    const a = el("a", { href: URL.createObjectURL(zip), download: `${model.family}-${model.id}-batch-${files.length}.zip` });
-    document.body.append(a);
-    a.click();
-    a.remove();
-    text.textContent = `Done: ${files.length} files (${bytes(zip.size)}) in ${Math.round((Date.now() - started) / 1000)} s. Your download has started.`;
-    setStatus("ok", `Batch of ${files.length} downloaded. The preview shows the last one.`);
+    const took = Math.round((Date.now() - started) / 1000);
+    const saved = await deliver(zip, `${model.family}-${model.id}-batch-${files.length}.zip`);
+    text.textContent = `Done: ${files.length} files (${bytes(zip.size)}) in ${took} s. ` +
+      (saved === null ? "Not saved." : saved ? `Saved to ${saved}.` : "Your download has started.");
+    setStatus("ok", `Batch of ${files.length} ${saved === null ? "made" : saved ? "saved" : "downloaded"}. The preview shows the last one.`);
   } catch (e) {
     text.textContent = e.cancelled ? "Batch cancelled. Nothing was downloaded." : `Stopped: ${e.message}`;
   } finally {
@@ -1104,7 +1135,9 @@ async function showPart(lib, item) {
   }
   empty.hidden = true;
   try {
-    const d = await state.viewer.load(item.preview_url);
+    const url = platform.kind === "browser" ? item.preview_url : URL.createObjectURL(await (await platform.fetch(item.preview_url)).blob());
+    const d = await state.viewer.load(url);
+    if (url !== item.preview_url) URL.revokeObjectURL(url);
     if (state.viewerOwner === "library") showDims(d);
   } catch (e) {
     empty.textContent = `Preview unavailable: ${e.message}`;
@@ -1118,6 +1151,7 @@ const spdx = (l) => (!l?.spdx || l.spdx === "NOASSERTION" ? "Not stated" : l.spd
 
 function showLicenses(focus) {
   showView("about");
+  $("#about-title").textContent = "Licenses & credits";
   document.title = "Licenses & credits | Claude Grid Workshop";
   setCrumbs([{ text: "Generators", href: "#/" }, { text: "Licenses & credits" }]);
   const c = state.catalog;
@@ -1175,10 +1209,165 @@ FILAMENTS.forEach(([name, hex]) => {
   fil.append(b);
 });
 
+// ---------------------------------------------------------------- files out (download or save)
+let toastTimer = null;
+function toast(text, action) {
+  const t = $("#toast");
+  t.replaceChildren(el("span", { text }), action ? el("button", { type: "button", class: "ghost light", text: action.label, onclick: action.run }) : null);
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 8000);
+}
+
+/**
+ * Hand a file to the user: a download in the browser, a save dialog in the desktop
+ * app. Resolves to the saved path (desktop), "" (browser download) or null (cancelled).
+ */
+async function deliver(blob, name) {
+  if (!platform.save) {
+    const a = el("a", { href: URL.createObjectURL(blob), download: name });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    return "";
+  }
+  try {
+    const path = await platform.save(blob, name);
+    if (path) toast(`Saved ${path.split(/[\\/]/).pop()}`, { label: "Show in folder", run: () => platform.reveal(path) });
+    return path || null;
+  } catch (e) {
+    toast(`Couldn't save: ${e?.message || e}`);
+    return null;
+  }
+}
+
+// In the desktop app, download links (STL, parts, ZIPs) open a save dialog instead.
+if (platform.save) {
+  document.addEventListener("click", async (e) => {
+    const a = e.target.closest?.("a[download]");
+    if (!a || a.classList.contains("is-disabled") || a.getAttribute("href") === "#") return;
+    e.preventDefault();
+    const href = a.getAttribute("href");
+    const name = a.getAttribute("download") || href.split("/").pop();
+    try {
+      const blob = href.startsWith("blob:") ? await (await fetch(href)).blob() : await (await platform.fetch(href)).blob();
+      deliver(blob, name);
+    } catch (err) {
+      toast(`Couldn't read the file: ${err.message}`);
+    }
+  });
+}
+
+// ---------------------------------------------------------------- printer profile
+// Values the user sets once (Settings) that generators asking for them start from.
+const PROFILE_FIELDS = [
+  { id: "bed", label: "Print bed size", unit: "mm", axes: ["width (X)", "depth (Y)"], kind: "vec2", min: 50, max: 2000 },
+  { id: "nozzle", label: "Nozzle diameter", unit: "mm", kind: "number", min: 0.1, max: 2, step: 0.05 },
+];
+const getProfile = () => store.prefs.get("gw-profile", {}) || {};
+
+function profileValue(path, profile = getProfile()) {
+  const [field, axis] = path.split(".");
+  const v = profile[field];
+  if (v == null) return undefined;
+  if (axis) return Array.isArray(v) ? v[{ x: 0, y: 1, z: 2 }[axis]] : undefined;
+  return v;
+}
+
+function applyProfile(detail) {
+  for (const p of detail.parameters) {
+    if (!p.profile) continue;
+    const v = profileValue(p.profile);
+    const d = p.default;
+    const fits = Array.isArray(d) ? Array.isArray(v) && v.length === d.length && v.every((x) => typeof x === "number")
+      : typeof d === "number" && typeof v === "number";
+    if (fits) { p.default = structuredClone(v); p.profiled = true; }
+  }
+}
+
+function showSettings() {
+  showView("about");
+  document.title = "Settings | Claude Grid Workshop";
+  setCrumbs([{ text: "Generators", href: "#/" }, { text: "Settings" }]);
+  $("#about-title").textContent = "Settings";
+  const profile = getProfile();
+  const uses = state.catalog?.profile_uses || {};
+  const nameOf = (key) => { const m = state.catalog?.models.find((x) => x.key === key); return m ? `${m.family_name} ${m.name}` : key; };
+  const saveProfile = (id, value) => {
+    const next = { ...getProfile() };
+    if (value == null) delete next[id]; else next[id] = value;
+    store.prefs.set("gw-profile", next);
+    if (state.model) state.model = null; // reopen models with the new defaults
+    $("#profile-note").textContent = "Saved. Generators open with these values from now on.";
+  };
+  const fields = PROFILE_FIELDS.map((f) => {
+    const cur = profile[f.id];
+    const used = [...new Set((uses[f.id] || []).map((u) => u.key))].map((k) => el("a", { href: `#/m/${k}`, text: nameOf(k) }));
+    let inputs;
+    if (f.kind === "vec2") {
+      inputs = el("div", { class: "vector named", style: "--n:2" }, f.axes.map((ax, i) => el("label", { "data-axis": ax, style: `--ax:${ax.length}` }, ax,
+        el("input", { type: "number", min: f.min, max: f.max, step: "any", value: cur ? cur[i] : "", "aria-label": `${f.label} ${ax}`, placeholder: "not set",
+          onchange: (e) => {
+            const ins = e.target.closest(".vector").querySelectorAll("input");
+            const vals = [...ins].map((x) => (x.value === "" ? null : +x.value));
+            saveProfile(f.id, vals.every((x) => x != null && x > 0) ? vals : null);
+          } }))));
+    } else {
+      inputs = el("input", { type: "number", min: f.min, max: f.max, step: f.step || "any", value: cur ?? "", placeholder: "not set", "aria-label": f.label,
+        onchange: (e) => saveProfile(f.id, e.target.value === "" ? null : +e.target.value) });
+    }
+    return el("div", { class: "field profile-field" },
+      el("div", { class: "field-head" }, el("span", { class: "label", text: `${f.label} (${f.unit})` })), inputs,
+      el("p", { class: "help-inline" }, used.length ? ["Used by ", ...used.flatMap((a, i) => [i ? ", " : "", a]), "."] : "No generator uses this yet."));
+  });
+  const body = [
+    el("h2", { text: "Printer profile" }),
+    el("p", { text: "Generators that ask for these start with your values instead of the author's. Leave a value empty to keep the defaults. Magnet and tolerance settings aren't linked: each project measures them differently." }),
+    el("div", { class: "profile-grid" }, fields),
+    el("p", { id: "profile-note", class: "muted", role: "status" }),
+  ];
+  if (platform.kind === "desktop") body.push(...desktopSettings());
+  else body.push(el("h2", { text: "Your data" }),
+    el("p", { text: "Saved settings and this profile are kept in this browser only. Use Export for OpenSCAD on a model to keep a copy as a file." }));
+  $("#about-body").replaceChildren(...body);
+}
+
+function desktopSettings() {
+  const info = platform.info || {};
+  const gb = (n) => (n == null ? "unknown" : bytes(n));
+  const cacheLine = el("span", { text: gb(info.cache_bytes) });
+  return [
+    el("h2", { text: "Workspace" }),
+    el("p", { text: "Everything you save lives in this folder as plain files, so you can back it up or sync it." }),
+    el("p", { class: "path" }, el("code", { text: info.workspace || info.workspace_error || "not available" })),
+    el("div", { class: "button-row" },
+      el("button", { type: "button", class: "ghost", text: "Open folder", onclick: () => platform.workspace.open().catch((e) => toast(String(e))) }),
+      el("button", { type: "button", class: "ghost", text: "Use another folder…", onclick: async () => {
+        try { if (await platform.workspace.choose()) location.reload(); } catch (e) { toast(String(e)); }
+      } })),
+    el("h2", { text: "Engine" }),
+    info.engine
+      ? el("p", {}, `OpenSCAD ${info.engine}, native, up to ${info.concurrency || 1} render${info.concurrency > 1 ? "s" : ""} at once. `, el("br"), el("code", { text: info.engine_path || "" }))
+      : el("p", { class: "lic-summary", text: info.engine_error || "OpenSCAD isn't available." }),
+    el("p", {}, "Finished renders are kept so repeating one is instant: ", cacheLine, ". ",
+      el("button", { type: "button", class: "ghost", text: "Clear", onclick: async () => {
+        try { await platform.workspace.clearCache(); const i = await platform.refreshInfo(); cacheLine.textContent = gb(i.cache_bytes); } catch (e) { toast(String(e)); }
+      } })),
+  ];
+}
+
 // ---------------------------------------------------------------- boot
 (async function boot() {
   try {
     state.catalog = await getJSON("data/catalog.json");
+    if (platform.kind === "browser") {
+      // models that need native OpenSCAD only appear in the desktop app
+      state.catalog.models = state.catalog.models.filter((m) => m.browser !== false);
+      for (const c of state.catalog.categories) c.models = c.models.filter((m) => m.browser !== false);
+    } else {
+      document.body.dataset.platform = platform.kind;
+      const intro = $(".catalog-head p");
+      if (intro) intro.textContent = intro.textContent.replace("right here in your browser", "on this computer");
+    }
     state.engine = platform.makeEngine(state.catalog);
     $("#engine").textContent = state.engine.label;
     state.libraries = await Promise.all((state.catalog.libraries || []).map((l) => getJSON(`data/libraries/${l.id}.json`)));

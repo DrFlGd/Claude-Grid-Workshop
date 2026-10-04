@@ -55,7 +55,8 @@ if (cmd === "version") {
   const catalog = JSON.parse(fs.readFileSync(path.join(site, "data", "catalog.json"), "utf8"));
   const engine = await loadEngine(path.join(site, "engine"));
   const version = await engine.getVersion();
-  let jobs = catalog.models.map((m) => ({ key: m.key, id: m.key, params: {} }));
+  // desktop-only models crash this engine by design; workshop-cli bench covers them natively
+  let jobs = catalog.models.filter((m) => m.browser !== false).map((m) => ({ key: m.key, id: m.key, params: {} }));
   if (paramsFile) jobs = JSON.parse(fs.readFileSync(paramsFile, "utf8")).map((j) => ({ ...j, id: j.id || j.key }));
   if (only) jobs = jobs.filter((j) => only.split(",").includes(j.key));
   if (stlDir) fs.mkdirSync(stlDir, { recursive: true });

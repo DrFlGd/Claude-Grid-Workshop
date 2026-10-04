@@ -55,7 +55,7 @@ The page detects Tauri at start-up and picks the implementation. Everything abov
 
 ### Workspace folder
 
-You choose it on first run (default `~/OpenSCAD Workshop`). It's plain files so it can be synced or put in git:
+You choose it on first run (default `~/Claude Grid Workshop`). It's plain files so it can be synced or put in git:
 
 ```
 workspace/

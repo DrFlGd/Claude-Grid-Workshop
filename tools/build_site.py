@@ -235,6 +235,25 @@ def convert_params(raw: dict) -> tuple[list[dict], list[str]]:
     return params, groups
 
 
+def native_params(exe: Path, out: Path, entry: str, files: dict) -> dict:
+    """OpenSCAD's Customizer export with a native engine, for models the WebAssembly one can't read."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        for vpath, sha in files.items():
+            dst = root / vpath.lstrip("/")
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(out / "fs" / sha, dst)
+        target = root / "params.json"
+        env = {**os.environ, "OPENSCADPATH": str(root / "libraries"), "OPENSCAD_FONT_PATH": str(root / "fonts")}
+        exe = exe.resolve() if exe.exists() else exe  # runs with cwd inside the temp tree
+        r = subprocess.run([str(exe), str(root / entry.lstrip("/")), "--export-format=param", "-o", str(target)],
+                           cwd=root, env=env, capture_output=True, text=True, timeout=600)
+        if not target.exists():
+            return {"error": (r.stdout + r.stderr)[-2000:]}
+        return json.loads(target.read_text())
+
+
 def apply_metadata(params: list[dict], groups: list[str], fam: dict, model: dict, meta: dict) -> tuple[list, dict]:
     fixed = dict(model.get("fixed", {}))
     hidden = set(model.get("hidden", [])) | set(fixed)
@@ -269,7 +288,7 @@ def apply_metadata(params: list[dict], groups: list[str], fam: dict, model: dict
         if isinstance(m.get("presets"), dict) and m["presets"].get("values"):
             p["presets"] = {"label": m["presets"].get("text", "Presets"),
                             "values": [{"label": k, "value": v} for k, v in m["presets"]["values"].items()]}
-        for k in ("label", "description", "unit", "advanced", "axes", "min", "max"):
+        for k in ("label", "description", "unit", "advanced", "axes", "min", "max", "profile"):
             if k in m:
                 p[k] = m[k]
         if isinstance(m.get("options"), list):  # site override, e.g. fonts the browser engine has
@@ -347,6 +366,8 @@ def main():
     ap.add_argument("--public", action="store_true", help="hide families not cleared for public use")
     ap.add_argument("--hide-blocked", action="store_true", help="hide only families whose license is marked blocked")
     ap.add_argument("--skip-libraries", action="store_true")
+    ap.add_argument("--native-engine", type=Path,
+                    help="native openscad executable; needed to include desktop-only models (\"browser\": false)")
     args = ap.parse_args()
     out = args.out
     if out.exists():
@@ -381,12 +402,16 @@ def main():
         families.append({"id": fam["id"], "name": fam["name"], "status": fam["status"], "category": fam["category"],
                          "license": fam.get("license", {}), "authors": fam.get("authors", []),
                          "source": (fam.get("source") or {}).get("repository") or next(iter((fam.get("links") or {}).values()), None),
-                         "models": [m["name"] for m in fam.get("models", []) if m.get("status") == "available" and m.get("browser") is not False]})
+                         "models": [m["name"] for m in fam.get("models", []) if m.get("status") == "available"]})
         editor_cfg = load_editor_toml(ROOT / fam["editor_toml"]) if fam.get("editor_toml") else {}
         lib_paths = (fam.get("engine") or {}).get("library_paths", [])
         for m in fam.get("models", []):
-            if m.get("status") != "available" or not m.get("entrypoint") or m.get("browser") is False:
+            # "browser": false models crash the WebAssembly engine; they're built for the
+            # desktop app (native OpenSCAD) and hidden on the website
+            if m.get("status") != "available" or not m.get("entrypoint"):
                 continue
+            if m.get("browser") is False and not args.native_engine:
+                continue  # website build: these can't even be read by the WebAssembly engine
             key = f'{fam["id"]}/{m["id"]}'
             files, missing = collect_files(m["entrypoint"], lib_paths)
             if missing:
@@ -404,9 +429,14 @@ def main():
         (out / "data/models" / (mdl["key"].replace("/", "--") + ".json")).write_text(
             json.dumps({"entry": mdl["entry"], "files": mdl["files"], "parameters": []}))
     raw = json.loads(subprocess.run(["node", str(ROOT / "tools/engine/cli.mjs"), "params", str(args.engine), str(out),
-                                     *[m["key"] for m in models]], capture_output=True, text=True, check=True).stdout)
+                                     *[m["key"] for m in models if m["meta"].get("browser") is not False]],
+                                    capture_output=True, text=True, check=True).stdout)
+    for mdl in models:
+        if mdl["meta"].get("browser") is False:
+            raw[mdl["key"]] = native_params(args.native_engine, out, mdl["entry"], {**common, **mdl["files"]})
 
     listing = []
+    profile_uses: dict = {}  # printer-profile field -> models that start from it
     for mdl in models:
         fam, m, key = mdl["fam"], mdl["meta"], mdl["key"]
         if "error" in raw[key]:
@@ -429,6 +459,8 @@ def main():
             "category": fam["category"], "category_label": CATEGORY_LABELS.get(fam["category"], fam["category"]),
             "summary": fam.get("summary", ""), "tags": fam.get("tags", []), "license": fam.get("license", {}),
         }
+        if m.get("browser") is False:
+            summary["browser"] = False
         detail = {
             **summary,
             "authors": fam.get("authors", []), "links": fam.get("links", {}), "source": fam.get("source"),
@@ -440,6 +472,9 @@ def main():
         }
         (out / "data/models" / (key.replace("/", "--") + ".json")).write_text(json.dumps(detail, separators=(",", ":")))
         listing.append(summary)
+        for p in params:
+            if p.get("profile"):
+                profile_uses.setdefault(p["profile"].split(".")[0], []).append({"key": key, "param": p["name"]})
 
     cats = {}
     for s in listing:
@@ -454,6 +489,7 @@ def main():
                        for c in sorted(cats, key=lambda c: order.index(c) if c in order else 99)],
         "families": families,
         "libraries": libraries,
+        "profile_uses": profile_uses,
     }
     (out / "data/catalog.json").write_text(json.dumps(catalog, separators=(",", ":")))
     print(f"engine {engine_version}; {len(listing)} models; {len(libraries)} libraries; "

@@ -2,7 +2,9 @@
 // Everything else in web/ talks only to these two interfaces, so the same
 // front end works on the website and in the desktop app (docs/DESKTOP_PLAN.md).
 //
-// createPlatform() -> { kind, store, makeEngine(catalog) }
+// createPlatform() -> { kind, store, makeEngine(catalog), fetch(path), save?(blob, name) }
+//   fetch: site files (data/, parts/) by relative path; the desktop app reads them from its bundle
+//   save:  desktop only; a save dialog instead of a browser download
 //
 // engine (from makeEngine)
 //   render(model, values, onEvent) -> { promise, cancel }
@@ -11,6 +13,7 @@
 //     onEvent: { type: "stage", stage } | { type: "log", line }
 //     promise: resolves { blob (STL), ms, logs, cached }; rejects Error with .logs or .cancelled
 //   label: short text for the header ("OpenSCAD 2026.10.02, in your browser")
+//   concurrency: how many renders can run at once (batches use it)
 //
 // store
 //   prefs.get(key, fallback) / prefs.set(key, value)   small UI preferences, synchronous
@@ -30,9 +33,11 @@ export async function createPlatform() {
   return {
     kind: "browser",
     store: new BrowserStore(),
+    fetch: (path) => fetch(path),
     makeEngine(catalog) {
       const engine = new EngineClient({ commonFiles: catalog.common_files });
       engine.label = `OpenSCAD ${catalog.engine}, in your browser`;
+      engine.concurrency = 1; // each WebAssembly render already uses a lot of memory
       return engine;
     },
   };

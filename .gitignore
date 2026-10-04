@@ -10,3 +10,6 @@ bench.json
 parity.json
 /*.stl
 /*.3mf
+desktop/target/
+desktop/src-tauri/gen/
+desktop/node_modules/

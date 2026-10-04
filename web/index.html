@@ -22,6 +22,7 @@
     </a>
     <nav class="crumbs" id="crumbs" aria-label="Location"></nav>
     <a class="engine" id="engine" href="#/licenses" title="Licenses and credits"></a>
+    <a class="topnav" href="#/settings" title="Printer profile and app settings">Settings</a>
   </header>
 
   <main id="view-catalog" class="catalog" hidden>
@@ -111,10 +112,12 @@
 
   <main id="view-about" class="catalog" hidden>
     <div class="about">
-      <h1>Licenses &amp; credits</h1>
+      <h1 id="about-title">Licenses &amp; credits</h1>
       <div id="about-body"></div>
     </div>
   </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <dialog id="save-dialog" class="batch save-dialog" aria-labelledby="save-title">
     <form method="dialog" id="save-form">

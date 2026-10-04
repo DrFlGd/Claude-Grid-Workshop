@@ -37,6 +37,11 @@
     ]
   },
   "status": "available",
+  "ui": {
+    "bed_size": {
+      "profile": "bed"
+    }
+  },
   "models": [
     {
       "id": "baseplate",

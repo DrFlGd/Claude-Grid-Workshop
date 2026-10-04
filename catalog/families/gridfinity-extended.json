@@ -137,6 +137,9 @@
         "vertical",
         "depth"
       ]
+    },
+    "build_plate_size": {
+      "profile": "bed"
     }
   },
   "models": [

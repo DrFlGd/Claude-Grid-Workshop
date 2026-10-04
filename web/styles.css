@@ -55,6 +55,25 @@ a { color: inherit; }
 .engine { margin-left: auto; font-size: 12.5px; color: #aab6c1; white-space: nowrap; text-decoration: none; }
 .engine:hover { color: var(--white); text-decoration: underline; }
 .engine.off { color: #ffb4ab; }
+.topnav { font-size: 13px; color: #d6dee5; text-decoration: none; border: 1px solid rgba(255,255,255,.3); border-radius: var(--radius-s); padding: 4px 10px; white-space: nowrap; }
+.topnav:hover { background: rgba(255,255,255,.12); color: var(--white); }
+@media (max-width: 760px) { .topnav { margin-left: auto; } }
+
+/* ---- toast (save results) ---------------------------------------------- */
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 50; display: flex; gap: 12px; align-items: center;
+  background: var(--ink); color: var(--white); padding: 10px 14px; border-radius: var(--radius-m); box-shadow: 0 8px 28px rgba(0,0,0,.3); font-size: 14px; max-width: calc(100vw - 32px); }
+.toast span { overflow-wrap: anywhere; }
+
+/* ---- settings page -------------------------------------------------------- */
+.profile-grid { display: grid; gap: 14px; max-width: 560px; }
+.field.profile-field { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 0; }
+.field.profile-field > * { grid-column: 1; }
+.profile-field .vector { max-width: 360px; }
+.profile-field > input { max-width: 160px; }
+.help-inline { font-size: 12.5px; color: var(--graphite); margin: 0; }
+.profile-tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--focus); text-decoration: none; border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; line-height: 1.5; }
+.path code { overflow-wrap: anywhere; }
+.button-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---- buttons & inputs ------------------------------------------------- */
 button, .button {
