@@ -1,0 +1,97 @@
+name: Native OpenSCAD engines
+
+# Finds the native OpenSCAD snapshots (Linux AppImage, Windows ZIP) matching the
+# WebAssembly version pinned in engine.json, records their checksums and checks
+# they run headless. Results go to the engine-cache-native branch, so they can be
+# pinned in engine.json for the desktop app.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/native-engine.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    outputs:
+      windows_file: ${{ steps.find.outputs.windows_file }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        name: Find snapshots for the pinned version
+        run: |
+          VERSION=$(python3 -c 'import json;print(json.load(open("engine.json"))["version"])')
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p out && cd out
+          curl -fsSL https://files.openscad.org/snapshots/ > listing.html
+          grep -o "OpenSCAD-${VERSION}[^\"<>]*" listing.html | sort -u | tee AVAILABLE
+          LINUX=$(grep -E 'x86_64\.AppImage$' AVAILABLE | head -1)
+          WINDOWS=$(grep -E 'x86-64\.zip$' AVAILABLE | head -1)
+          echo "linux=$LINUX windows=$WINDOWS"
+          test -n "$LINUX" && test -n "$WINDOWS"
+          echo "LINUX=$LINUX" >> "$GITHUB_ENV"
+          echo "WINDOWS=$WINDOWS" >> "$GITHUB_ENV"
+          echo "windows_file=$WINDOWS" >> "$GITHUB_OUTPUT"
+          rm listing.html
+      - name: Download, checksum, run
+        run: |
+          cd out
+          curl -fsSL -o "$LINUX" "https://files.openscad.org/snapshots/$LINUX"
+          curl -fsSL -o win.zip "https://files.openscad.org/snapshots/$WINDOWS"
+          python3 - <<'PY'
+          import hashlib, json, os
+          def rec(path, name):
+              data = open(path, "rb").read()
+              return {"file": name, "url": f"https://files.openscad.org/snapshots/{name}",
+                      "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+          out = {"version": os.environ["VERSION"],
+                 "linux-x86_64": rec(os.environ["LINUX"], os.environ["LINUX"]),
+                 "windows-x86_64": rec("win.zip", os.environ["WINDOWS"])}
+          json.dump(out, open("native-engines.json", "w"), indent=2)
+          print(json.dumps(out, indent=2))
+          PY
+          unzip -l win.zip | tee WINDOWS_FILES | head -40
+          rm win.zip
+          chmod +x "$LINUX"
+          "./$LINUX" --appimage-extract > /dev/null
+          ls squashfs-root | tee LINUX_ROOT
+          find squashfs-root -maxdepth 3 -type f -name 'openscad*' | tee -a LINUX_ROOT
+          printf 'cube([10,20,30]);\ntext("Ab", font="Liberation Sans");\n' > t.scad
+          squashfs-root/AppRun --version 2>&1 | tee LINUX_VERSION
+          squashfs-root/AppRun --backend=manifold -o t.stl t.scad 2>&1 | tail -5 | tee LINUX_RENDER
+          test -s t.stl
+          rm -rf squashfs-root t.stl t.scad
+          ls -la
+      - name: Publish to engine-cache-native
+        run: |
+          cd out
+          # keep the AppImage on the branch only if it fits GitHub's file limit
+          if [ "$(stat -c %s "$LINUX")" -gt 95000000 ]; then rm "$LINUX"; fi
+          git init -q && git checkout -q -b engine-cache-native
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "Native OpenSCAD ${VERSION}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" engine-cache-native
+
+  windows:
+    needs: linux
+    runs-on: windows-2022
+    steps:
+      - name: Download and run
+        shell: pwsh
+        run: |
+          $f = "${{ needs.linux.outputs.windows_file }}"
+          Invoke-WebRequest -Uri "https://files.openscad.org/snapshots/$f" -OutFile win.zip
+          Expand-Archive win.zip -DestinationPath win
+          Get-ChildItem -Recurse win -Filter "openscad*" | Select-Object FullName, Length | Format-Table -AutoSize
+          $com = (Get-ChildItem -Recurse win -Filter "openscad.com" | Select-Object -First 1).FullName
+          $exe = (Get-ChildItem -Recurse win -Filter "openscad.exe" | Select-Object -First 1).FullName
+          Write-Host "com=$com exe=$exe"
+          Set-Content t.scad 'cube([10,20,30]); text("Ab", font="Liberation Sans");'
+          $bin = if ($com) { $com } else { $exe }
+          & $bin --version
+          & $bin --backend=manifold -o t.stl t.scad
+          if (!(Test-Path t.stl) -or (Get-Item t.stl).Length -eq 0) { throw "render failed" }
+          Write-Host "Windows render OK: $((Get-Item t.stl).Length) bytes"
