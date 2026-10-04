@@ -39,8 +39,9 @@ jobs:
       - name: Download, checksum, run
         run: |
           cd out
-          curl -fsSL -o "$LINUX" "https://files.openscad.org/snapshots/$LINUX"
-          curl -fsSL -o win.zip "https://files.openscad.org/snapshots/$WINDOWS"
+          note() { echo "::notice title=$1::$2"; echo "$1: $2" >> REPORT; }
+          curl -fsSL -o "$LINUX" "https://files.openscad.org/snapshots/$LINUX" || { note download "linux failed"; exit 1; }
+          curl -fsSL -o win.zip "https://files.openscad.org/snapshots/$WINDOWS" || { note download "windows failed"; exit 1; }
           python3 - <<'PY'
           import hashlib, json, os
           def rec(path, name):
@@ -53,23 +54,30 @@ jobs:
           json.dump(out, open("native-engines.json", "w"), indent=2)
           print(json.dumps(out, indent=2))
           PY
-          unzip -l win.zip | tee WINDOWS_FILES | head -40
+          note pins "$(python3 -c 'import json;d=json.load(open("native-engines.json"));print(" | ".join(f"{k} {v[\"file\"]} {v[\"bytes\"]} {v[\"sha256\"]}" for k,v in d.items() if k!="version"))')"
+          unzip -l win.zip > WINDOWS_FILES 2>&1 || true
+          note windows-zip "$(grep -E 'openscad\.(exe|com)' WINDOWS_FILES | awk '{print $4}' | tr '\n' ' ')"
           rm win.zip
           chmod +x "$LINUX"
-          "./$LINUX" --appimage-extract > /dev/null
-          ls squashfs-root | tee LINUX_ROOT
-          find squashfs-root -maxdepth 3 -type f -name 'openscad*' | tee -a LINUX_ROOT
+          ("./$LINUX" --appimage-extract > EXTRACT_LOG 2>&1) || note extract "failed: $(tail -3 EXTRACT_LOG | tr '\n' ' ')"
+          ls squashfs-root > LINUX_ROOT 2>&1 || true
+          find squashfs-root -maxdepth 3 -name 'openscad*' >> LINUX_ROOT 2>&1 || true
+          du -sh squashfs-root >> LINUX_ROOT 2>&1 || true
+          note linux-root "$(tr '\n' ' ' < LINUX_ROOT)"
           printf 'cube([10,20,30]);\ntext("Ab", font="Liberation Sans");\n' > t.scad
-          squashfs-root/AppRun --version 2>&1 | tee LINUX_VERSION
-          squashfs-root/AppRun --backend=manifold -o t.stl t.scad 2>&1 | tail -5 | tee LINUX_RENDER
+          (squashfs-root/AppRun --version > LINUX_VERSION 2>&1) || true
+          note linux-version "$(tr '\n' ' ' < LINUX_VERSION | cut -c1-300)"
+          (squashfs-root/AppRun --backend=manifold -o t.stl t.scad > LINUX_RENDER 2>&1) || true
+          note linux-render "$(tail -6 LINUX_RENDER | tr '\n' ' ' | cut -c1-400) size=$(stat -c %s t.stl 2>/dev/null)"
           test -s t.stl
           rm -rf squashfs-root t.stl t.scad
-          ls -la
       - name: Publish to engine-cache-native
+        if: always()
         run: |
           cd out
           # keep the AppImage on the branch only if it fits GitHub's file limit
-          if [ "$(stat -c %s "$LINUX")" -gt 95000000 ]; then rm "$LINUX"; fi
+          if [ -f "$LINUX" ] && [ "$(stat -c %s "$LINUX")" -gt 95000000 ]; then rm "$LINUX"; fi
+          rm -rf squashfs-root win.zip
           git init -q && git checkout -q -b engine-cache-native
           git -c user.name=ci -c user.email=ci@users.noreply.github.com add -A
           git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "Native OpenSCAD ${VERSION}"
@@ -94,4 +102,4 @@ jobs:
           & $bin --version
           & $bin --backend=manifold -o t.stl t.scad
           if (!(Test-Path t.stl) -or (Get-Item t.stl).Length -eq 0) { throw "render failed" }
-          Write-Host "Windows render OK: $((Get-Item t.stl).Length) bytes"
+          Write-Host "::notice title=windows-render::OK $((Get-Item t.stl).Length) bytes; $(& $bin --version 2>&1)"
