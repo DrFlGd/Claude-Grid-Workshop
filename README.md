@@ -104,6 +104,10 @@ python3 tools/import_library.py path/to/unzipped-pack --id my-parts --name "My p
 
 Files with the same name (`part.3mf`, `part.step`) become one item with several downloads; 3MF/STL items get a 3D preview and measured size. Rename items or categories in the JSON afterwards: re-running keeps those edits. Keep single files under 100 MB (GitHub's limit). If a generator might already make some of the parts, add a spec in `sources/parity/` and CI reports which published files it reproduces.
 
+## Desktop app (planned)
+
+A Windows/Linux desktop version (Tauri, native OpenSCAD, ingest from GitHub or files, a searchable index of generators and library modules, and a model library) is planned in [docs/DESKTOP_PLAN.md](docs/DESKTOP_PLAN.md).
+
 ## Server version (on hold)
 
 The earlier version rendered on a server (Starlette + native OpenSCAD in Docker, with a shared render cache). It's preserved on the `archive/server-v1` branch and can come back as an optional fallback for models too heavy for a browser.
