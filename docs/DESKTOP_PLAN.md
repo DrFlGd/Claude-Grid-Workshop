@@ -229,7 +229,10 @@ What was built, and where it differs from the plan above.
   - `workshop-cli bench` (all 58 models, first and repeated renders) on Linux and Windows;
   - a WebDriver test of the built app on both systems: catalog, native and desktop-only renders, saved settings in the workspace, Settings, a part preview;
   - installers on the `desktop-latest` pre-release.
+- **Results (CI, 2026-10-04):**
+  - All 58 models render natively on Linux and Windows.
+  - In the built app on Windows, the race picked WebAssembly for the Gridfinity Extended bin: 3.7 s, against about 12 s native on the same runner.
+  - On Linux, native won (1.1 s).
 - **Not yet:**
   - code signing;
-  - auto-update (the release is rebuilt from `main`; download it again to update);
-  - batch rendering in parallel on Windows (races already use two engines per model).
+  - auto-update (the release is rebuilt from `main`; download it again to update).
