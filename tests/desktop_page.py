@@ -99,7 +99,7 @@ async def main():
             await ctx.add_init_script(path=str(SHIM))
             pg = await ctx.new_page()
             pg.on("pageerror", lambda e: errors.append(str(e)))
-            pg.on("console", lambda m: errors.append(m.text) if m.type == "error" and "net::ERR_" not in m.text else None)
+            pg.on("console", lambda m: errors.append(f"{m.text} ({m.location.get('url', '')})") if m.type == "error" and "net::ERR_" not in m.text else None)
             pg.on("dialog", lambda d: asyncio.ensure_future(d.accept()))
             await pg.goto(B)
             await pg.wait_for_selector(".home .tile", timeout=120000)
@@ -295,10 +295,14 @@ async def main():
             await pg.locator(".group-tile", has_text=name).first.click()
             await pg.locator(".results [data-item]").first.click()
             await pg.click("[data-act=group-icon]")
-            await pg.wait_for_timeout(800)
+            await pg.wait_for_function(f"() => !!window.__workshop.catalog.sources.find((s) => s.id === '{v76}').icon", timeout=20000)
             await pg.click(".group-crumb .link-btn")
             tile = pg.locator(".group-tile", has_text=name).first
             await tile.wait_for()
+            try:
+                await tile.locator(".thumb > img").first.wait_for(timeout=10000)
+            except Exception:
+                pass
             check("condensed group shows its chosen icon", await tile.locator(".thumb > img").count() == 1)
             await pg.screenshot(path=str(out / "p2-05-condensed.png"))
             await pg.click("[data-condense]")
@@ -364,6 +368,14 @@ async def main():
             await pg.wait_for_selector('[data-category="labels"]')
             back = await pg.evaluate("() => window.__workshop.index.items.filter((i) => i.category === 'labels').length")
             check("categories: add, remove (items move), bring back", left == 0 and back >= 5, (left, back))
+            # a picture of your own as a category's icon (the file dialog answered through /test/pick)
+            icon_src = home / "kitchen.svg"
+            icon_src.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#f2b705"/></svg>')
+            urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(icon_src)}).encode(), method="POST"))
+            await pg.click('[data-category="kitchen"] [data-act=category-image]')
+            await pg.wait_for_selector('[data-category="kitchen"] img.ls-cat-icon', timeout=30000)
+            icon_ok = await pg.evaluate("""() => { const i = document.querySelector('[data-category="kitchen"] img.ls-cat-icon'); return !!i && i.complete && i.naturalWidth > 0; }""")
+            check("a category icon from an image file, kept in the library", icon_ok and (library / "icons/category-kitchen.svg").is_file(), icon_ok)
             await pg.click("#ls-deleted [data-act=restore-item]")
             await pg.wait_for_function(f"() => !!window.__workshop.index.get('{del_id}')")
             check("a deleted item comes back from Library settings", True)

@@ -129,7 +129,7 @@
     }
   },
   "$no_guess": {
-    "$comment": "Modules whose guessed start values don't make a shape (workshop-cli components-check): they wait for input instead.",
+    "$comment": "Modules whose guessed or default start values don't make a shape (workshop-cli components-check): they wait for values instead.",
     "MCAD": [
       "ball_screw",
       "egg",
@@ -148,11 +148,21 @@
       "zBolt"
     ],
     "NopSCADlib": [
+      "arrow",
+      "camera",
+      "chamfer_hole",
       "drill",
+      "extrusion_corner_bracket_3D",
+      "extrusion_corner_bracket_assembly",
       "poly_cylinder",
       "poly_drill",
+      "screw_countersink",
+      "screw_polysink",
+      "screw_tearsink",
       "sector",
       "slot",
+      "smd_coax",
+      "solder",
       "strap",
       "strap_assembly"
     ]

@@ -779,6 +779,9 @@ pub struct Component {
     pub examples: Vec<Example>,
     /// choices for an argument: OpenSCAD expressions (NopSCADlib type constants)
     pub choices: BTreeMap<String, Vec<String>>,
+    /// its defaults don't make a shape (catalog/components.json "$no_guess"): wait for values
+    #[serde(default)]
+    pub hold: bool,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -1089,6 +1092,7 @@ pub fn index_library(info: &LibInfo, root: &Path, curated: Option<&Value>, no_gu
                     anchors,
                     examples,
                     choices: BTreeMap::new(),
+                    hold: false,
                 });
             }
             continue;
@@ -1158,6 +1162,7 @@ pub fn index_library(info: &LibInfo, root: &Path, curated: Option<&Value>, no_gu
                 anchors: vec![],
                 examples: vec![],
                 choices,
+                hold: false,
             });
         }
     }
@@ -1172,7 +1177,11 @@ pub fn index_library(info: &LibInfo, root: &Path, curated: Option<&Value>, no_gu
     }
     // otherwise guessed values for arguments with telling names (radius, height, ...) when that covers all the required ones
     let no_guess: Vec<String> = no_guess.and_then(Value::as_array).into_iter().flatten().filter_map(|v| v.as_str().map(String::from)).collect();
-    for c in comps.iter_mut().filter(|c| c.examples.iter().all(|e| e.calls.is_empty()) && !no_guess.contains(&c.module)) {
+    for c in comps.iter_mut().filter(|c| c.examples.iter().all(|e| e.calls.is_empty())) {
+        c.hold = no_guess.contains(&c.module);
+    }
+    // (documented libraries have their own examples: no guessing there)
+    for c in comps.iter_mut().filter(|c| style != "docs" && c.examples.iter().all(|e| e.calls.is_empty()) && !c.hold) {
         let required: Vec<&String> = c.args.iter().filter(|a| a.1.is_none()).map(|a| &a.0).collect();
         if required.is_empty() {
             continue;
@@ -1658,12 +1667,27 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
         c.args
             .iter()
             .filter(|(n, sig)| sig.is_none() && !n.starts_with('_'))
-            .filter(|(n, _)| params.iter().any(|p| p["name"] == n.as_str() && p["default"].is_null()))
+            .filter(|(n, _)| c.hold || params.iter().any(|p| p["name"] == n.as_str() && p["default"].is_null()))
             .map(|(n, _)| n.clone())
             .collect()
     } else {
         vec![]
     };
+    // held: its defaults don't make a shape, so the settings it needs (at least the first) start empty
+    let mut needs = needs;
+    if c.hold && needs.is_empty() {
+        needs.extend(c.args.first().map(|a| a.0.clone()));
+    }
+    if c.hold {
+        for p in params.iter_mut().filter(|p| needs.iter().any(|n| p["name"] == n.as_str())) {
+            p["default"] = Value::Null;
+            if let Some(opts) = p["options"].as_array_mut() {
+                if !opts.iter().any(|o| o["value"].is_null()) {
+                    opts.insert(0, json!({ "value": null, "label": "Choose…" }));
+                }
+            }
+        }
+    }
     let terms = ingest::setting_terms(&params);
     let mut description_html = String::new();
     if !c.description.is_empty() {

@@ -126,12 +126,18 @@ function Categories({ ro }) {
               await set({ id: c.id, moved_to: to }, `Removed ${c.label}; its items are in ${cats.find((x) => x.id === to)?.label}.`, `removing ${c.label}`); }}>Remove</button>
             <button type="button" class="ghost small" onClick=${() => setRemoving(null)}>Cancel</button></span>`
           : html`<button type="button" class="ghost small" disabled=${ro} data-act="rename-category" onClick=${() => setEditing({ id: c.id, label: c.label })}>Rename</button>
+            <button type="button" class="ghost small" disabled=${ro} data-act="category-image" title="Use a picture of your own (PNG, JPEG, WebP or SVG) as this category's icon"
+              onClick=${async () => {
+                const path = await ctx.platform.library.pickFile("Choose an image for the category", ["png", "jpg", "jpeg", "webp", "svg"]);
+                if (!path) return;
+                try { await api("icon_import", { category: c.id, path }); await ctx.reloadCatalog(); ctx.toast(`Icon set for ${c.label}.`); } catch (e) { fail(e); }
+              }}>Image…</button>
             ${c.icon ? html`<button type="button" class="ghost small" disabled=${ro} onClick=${() => set({ id: c.id, icon: "" }, "Icon cleared.")}>Clear icon</button>` : null}
             ${c.id !== "other" ? html`<button type="button" class="ghost small danger-text" disabled=${ro} data-act="remove-category"
               onClick=${() => setRemoving({ id: c.id, to: "other" })}>Remove…</button>` : null}`}
         </td></tr>`)}
     </tbody></table>
-    <p class="muted">To give a category an icon, group by category, condense, and use “Use as the group's icon” on an item in it.</p>
+    <p class="muted">A category's icon is a picture of your own (Image…, copied into the library's <code>icons/</code> folder), or an item's thumbnail: group by category, condense, and use “Use as the group's icon” on an item in it.</p>
     ${removed.length ? html`<details class="ls-removed"><summary>${plural(removed.length, "removed category", "removed categories")}</summary>
       <ul>${removed.map((c) => html`<li>${c.label} <span class="muted">→ ${c.moved_to_label}</span>
         <button type="button" class="ghost small" disabled=${ro} onClick=${() => set({ id: c.id, moved_to: "" }, `${c.label} is back.`)} data-act="restore-category">Bring back</button></li>`)}</ul></details>` : null}

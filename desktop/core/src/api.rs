@@ -882,6 +882,30 @@ impl App {
                 self.invalidate();
                 j(Value::Null)
             }
+            "icon_import" => {
+                // { category, path }: an image of your own as a category's icon, copied into the library's icons/ folder
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let id = arg(&args, "category").map_err(e2s)?.to_string();
+                let from = PathBuf::from(arg(&args, "path").map_err(e2s)?);
+                let ext = from.extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default();
+                if !["png", "jpg", "jpeg", "webp", "svg"].contains(&ext.as_str()) {
+                    return Err("Choose a PNG, JPEG, WebP or SVG image.".into());
+                }
+                let data = std::fs::read(&from).map_err(|e| format!("couldn't read {}: {e}", from.display()))?;
+                if data.len() > 4 << 20 {
+                    return Err("That image is over 4 MB; use a smaller one.".into());
+                }
+                let rel = format!("icons/category-{}.{ext}", library::slug(&id));
+                crate::config::write_atomic(&lib.root().join(&rel), &data).map_err(e2s)?;
+                let mut cats = lib.meta()["categories"].as_object().cloned().unwrap_or_default();
+                let mut c = cats.get(&id).and_then(Value::as_object).cloned().unwrap_or_default();
+                let prev = c.insert("icon".into(), json!(rel));
+                cats.insert(id, Value::Object(c));
+                lib.update_meta(json!({ "categories": cats })).map_err(e2s)?;
+                self.invalidate();
+                j(json!({ "icon": rel, "previous": prev }))
+            }
             "component_thumb" => {
                 // { key: "@lib/module", data: webp data URL }: a thumbnail made after the component was rendered
                 let lib = self.library()?;

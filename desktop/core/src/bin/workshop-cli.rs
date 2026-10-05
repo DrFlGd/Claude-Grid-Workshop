@@ -525,6 +525,7 @@ fn content_type(path: &str) -> &'static str {
         "json" => "application/json",
         "svg" => "image/svg+xml",
         "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
         "wasm" => "application/wasm",
         "ttf" => "font/ttf",
