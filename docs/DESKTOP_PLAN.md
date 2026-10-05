@@ -424,6 +424,26 @@ These are saved as overlays in the same form as `catalog/families` `ui`. A good 
 - **Accessibility:** everything reachable by keyboard, with visible focus, labelled controls and enough contrast. The layout works down to a 900 px wide window.
 - **Website:** gets the browser views and search, in read-only form over the built-in catalog. Editing, sources and collections stay desktop-only.
 
+### Reference documents
+
+(Requested 2026-10-05; Phase 4. Talk through the implementation before building it.)
+
+Every project gets a **reference document** in the interface: the project's own documentation, kept with it in the library and readable offline.
+
+- **GitHub projects:** a copy of the README, at the pinned version (updated with the project). NopSCADlib's README is the model: a long, structured reference with a section and pictures for each part.
+- **Printables downloads:** the information from the PDF in the ZIP (description, creator, license, dates, print settings, and the pictures where they can be extracted).
+- **Other sources:** a ZIP or folder's README or PDF; the bundled libraries (BOSL2, NopSCADlib and the rest) too, so the Components from a library can open its reference.
+
+What exists now: a project's page has an About tab with its README rendered, and the bundled libraries keep their README file but have no page to show it.
+
+Questions for when it's built:
+- where it opens: the project's page, its own tab or panel next to a model, or from the inspector and a component's page;
+- links from a model or component to its section of the document (NopSCADlib has one section per part);
+- images: copy the ones the README uses into the library, so the document works offline;
+- PDFs: show the extracted text and images, the PDF itself, or both;
+- whether documents are searchable from the main search;
+- whether you can add your own notes to a project's document, kept as edits so updates don't overwrite them.
+
 ### Front-end structure
 
 `web/app.js` is already about 1,400 lines of hand-built DOM. The new interface (virtual lists, multi-select, an inspector, tabs) needs structure, so before building it:
@@ -447,7 +467,7 @@ Each phase ends with something usable and with checks in CI.
 | **1.5 Interface** | Mockup first. Then: front end split into modules (Preact + htm); app layout with sidebar, browser, inspector, workbench tabs, status bar; grid, list, table and grouped views; search with filters and command palette; `index` seam (in-memory over `catalog.json` for now); thumbnails for the 58 models; favourites, recent; light/dark/night themes; "Updated" filter and sort from source dates | All 58 models and the parts library browsable in all four views; search and filters answer in under 100 ms; the website keeps working with the new browser views; WebDriver tests updated |
 | **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; the index rebuilt from the library behind the `index` seam (SQLite deferred, see Phase 2 notes), with open metadata fields that become filters, sorts and columns; source pages; "Needs attention"; portable library folder (choose, open, move, merge; versioned format; workspace migrated); the built-in projects packaged as a starter library installed with the app and copied into the library; layered metadata editing at library, project, folder and item level (inspector, overlays, bulk edit, undo, provenance); condensed groups in the browser, with editable group icons | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update; a project-level license change shows on all its items except those with their own; the library folder, moved to another path and opened on the other operating system's CI runner, shows the same items and metadata; a condensed project shows the icon chosen for it |
 | **3. Libraries + modules** | Bundled libraries; BOSL2 doc parser; signature parser; module → form; pinned generators; form editor (labels, box names, conditions, presets as overlays); category editor | The bevel-gear acceptance test passes; every BOSL2 module with geometry gets a form that renders its first doc example; a form edit made in the app matches what a family manifest `ui` block produces |
-| **4. Model library + file formats** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); one item per file name with a download format picker (built-in parts, imports and generator output); multi-colour and multi-part 3MF export; recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection; a pack with STL, 3MF and STEP copies of each part imports as one item per name; a two-colour label and the Rugged Box download as 3MF files that open in Bambu Studio and OrcaSlicer with their colours and separate parts |
+| **4. Model library + file formats** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); reference documents for projects (README, Printables PDF; section 5); one item per file name with a download format picker (built-in parts, imports and generator output); multi-colour and multi-part 3MF export; recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection; a pack with STL, 3MF and STEP copies of each part imports as one item per name; a two-colour label and the Rugged Box download as 3MF files that open in Bambu Studio and OrcaSlicer with their colours and separate parts |
 | **5. Productivity** | Batch from CSV, multi-setting sweeps, multi-part 3MF arranged on the bed for the printer profile, send to slicer (open the file in Bambu Studio / OrcaSlicer / PrusaSlicer), live reload when a watched .scad file is saved | As listed |
 
 ## Testing
