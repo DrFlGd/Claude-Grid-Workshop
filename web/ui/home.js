@@ -1,9 +1,12 @@
-// Home: continue where you left off, favourites, categories to browse, and what needs attention.
+// Home: continue where you left off, favourites, the categories of Parametric
+// Models and the Parts Library to browse, and what needs attention.
 import { html } from "../lib/html.js";
 import { useStore } from "../lib/store.js";
 import { ui } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { scopeInfo } from "./sidebar.js";
+import { plural } from "../lib/util.js";
+import { Icon } from "./icons.js";
 
 const ago = (t) => {
   const m = Math.round((Date.now() - t) / 60000);
@@ -17,40 +20,53 @@ const ago = (t) => {
 
 export function Home() {
   const s = useStore(ui, (st) => ({ favs: st.favs, recent: st.recent }));
-  const { index, catalog, libraries, platform } = ctx;
+  const { index, catalog, platform } = ctx;
   const recent = s.recent.map((r) => ({ ...index.get(r.id), t: r.t })).filter((i) => i.id).slice(0, 8);
   const favs = s.favs.map((id) => index.get(id)).filter(Boolean);
   const tile = (scope, label, sub, thumb) => html`<a class="tile" href=${scopeHash(scope)} data-scope=${scope}>
     <span class="thumb">${thumb ? html`<img src=${thumb} alt="" loading="lazy" />` : null}</span>
     <b>${label}</b><span class="muted">${sub}</span></a>`;
-  const firstThumb = (pred) => index.items.find((i) => pred(i) && i.thumb)?.thumb;
+  const shown = index.items.filter((i) => !i.hidden);
+  const firstThumb = (pred) => shown.find((i) => pred(i) && i.thumb)?.thumb;
   const attention = scopeInfo("attention").query.ids;
   const attentionProjects = [...new Set(attention.map((id) => index.get(id).project))];
-  const gens = index.items.filter((i) => i.kind === "generator").length;
+  const gens = shown.filter((i) => i.kind === "generator").length;
+  const parts = shown.length - gens;
+  /** Category tiles for one kind, in the library's category order. */
+  const categories = (kind) => {
+    const counts = new Map();
+    for (const i of shown) if (i.kind === kind) counts.set(i.category, { label: i.categoryLabel, n: (counts.get(i.category)?.n || 0) + 1 });
+    const order = (catalog.category_choices || catalog.categories || []).map((c) => c.id);
+    const rank = (id) => (id === "other" ? 1e6 : order.includes(id) ? order.indexOf(id) : 1e5);
+    return [...counts.entries()].sort((a, b) => rank(a[0]) - rank(b[0])).map(([id, c]) =>
+      tile(`${kind === "part" ? "pcat" : "cat"}:${id}`, c.label, plural(c.n, kind === "part" ? "part" : "model"), firstThumb((i) => i.kind === kind && i.category === id)));
+  };
   return html`<div class="home">
     <header class="home-head">
       <h1>Make things that fit</h1>
-      <p>Pick a generator, set the sizes and save a print-ready file. ${gens} generators and ${index.items.length - gens} ready-made parts, made
+      <p>Pick a model, set the sizes and save a print-ready file. ${plural(gens, "parametric model")} and ${plural(parts, "part")}, made
         ${platform.kind === "desktop" ? " on this computer" : " right here in your browser"} with OpenSCAD. Every model is open work, credited to its author.</p>
+      ${platform.kind === "desktop" && !catalog.library?.read_only ? html`<div class="home-actions">
+        <button type="button" class="primary" id="home-add-project" onClick=${() => ui.set({ dialog: { type: "add-project" } })}>${Icon.plus(16)} Add a project</button>
+        <span class="muted">From a GitHub link, a ZIP file or a folder. Its models and parts join the library.</span>
+      </div>` : null}
     </header>
     ${recent.length ? html`<section><h2>Continue</h2><div class="home-recent">
       ${recent.map((i) => html`<a class="recent" href=${i.href} key=${i.id}>
         <span class="thumb">${i.thumb ? html`<img src=${i.thumb} alt="" loading="lazy" />` : null}</span>
         <span><b>${i.name}</b><span class="muted">${i.project} · ${ago(i.t)}</span></span></a>`)}
     </div></section>` : null}
-    <section><h2>Browse</h2><div class="home-tiles">
-      ${catalog.categories.map((c) => tile(`cat:${c.id}`, c.label, `${c.models.length} generators`, firstThumb((i) => i.category === c.id)))}
-      ${libraries.map((l) => tile(`lib:${l.id}`, l.name, `${l.items.length} ready-made parts`, firstThumb((i) => i.projectId === l.id && i.kind === "part")))}
-    </div></section>
+    <section><h2>Parametric Models</h2><div class="home-tiles">${categories("generator")}</div></section>
+    ${parts ? html`<section><h2>Parts Library</h2><div class="home-tiles">${categories("part")}</div></section>` : null}
     <div class="home-pair">
       <section class="home-card"><h2>Favourites</h2>
         ${favs.length ? html`<div class="home-favs">${favs.slice(0, 12).map((i) => html`<a href=${i.href} title=${`${i.name}, ${i.project}`} key=${i.id}>
           <span class="thumb">${i.thumb ? html`<img src=${i.thumb} alt=${i.name} loading="lazy" />` : i.name}</span></a>`)}</div>
           ${favs.length > 12 ? html`<a href=${scopeHash("favs")}>All ${favs.length} favourites</a>` : null}`
-          : html`<p class="muted">Star a generator or part (or select it and press F) to keep it here.</p>`}
+          : html`<p class="muted">Star a model or part (or select it and press F) to keep it here.</p>`}
       </section>
       ${attentionProjects.length ? html`<section class="home-card attention"><h2>Needs attention</h2>
-        <p class="muted">License or author not stated, or not cleared for sharing. Check before sharing or selling prints.</p>
+        <p class="muted">Flagged as broken, or license or author not stated or not cleared for sharing. Check before sharing or selling prints.</p>
         <p>${attentionProjects.join(" · ")}</p>
         <a href=${scopeHash("attention")}>Show ${attention.length} items</a>
       </section>` : null}

@@ -71,6 +71,10 @@ async fn run() -> Result<()> {
     let cmd = all.remove(0);
     let mut a = Args { rest: all };
     match cmd.as_str() {
+        "--version" | "-V" => {
+            println!("workshop-cli {}", workshop_core::VERSION);
+            return Ok(());
+        }
         "site-prepare" => return site_prepare(a),
         "site-finish" => return site_finish(a).await,
         "bundle" => {
@@ -487,7 +491,10 @@ async fn serve(mut a: Args) -> Result<()> {
                             match res {
                                 Ok(workshop_core::api::Reply::Json(v)) => respond(&mut stream, 200, "application/json", &[], &serde_json::to_vec(&v)?),
                                 Ok(workshop_core::api::Reply::Bytes(b)) => respond(&mut stream, 200, "application/octet-stream", &[], &b),
-                                Err(e) => respond(&mut stream, 400, "application/json", &[], &serde_json::to_vec(&json!(e))?),
+                                Err(e) => {
+                                    eprintln!("{} {}: {e}", args["cmd"].as_str().unwrap_or(""), args["args"]);
+                                    respond(&mut stream, 400, "application/json", &[], &serde_json::to_vec(&json!(e))?)
+                                }
                             }
                         }
                         "render" => {

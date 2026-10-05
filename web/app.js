@@ -9,7 +9,8 @@ import { LocalIndex } from "./ui/index-local.js";
 import { mountShell } from "./ui/shell.js";
 import { setContext } from "./ui/context.js";
 import { html, render } from "./lib/html.js";
-import { LibrarySettings } from "./ui/library.js";
+import { LibrarySettingsPage } from "./ui/libsettings.js";
+import { unflagItems } from "./ui/actions.js";
 import { ui, recordRecent, setTabs, layoutFor, isDark, setTheme, THEMES } from "./ui/state.js";
 import { scopeFromPath } from "./ui/context.js";
 import { scopeInfo } from "./ui/sidebar.js";
@@ -53,6 +54,7 @@ function route() {
   else if (p) openLibrary(p[1], p[2]);
   else if (path === "about" || path.startsWith("licenses")) showLicenses(path.split("/")[1]);
   else if (path === "settings") showSettings();
+  else if (path === "library-settings") showLibrarySettings();
   else if (path === "search") showBrowse("search", params.get("q") || "");
   else if (path.startsWith("browse")) showBrowse(scopeFromPath(path), params.get("q") || "");
   else showBrowse("home", "");
@@ -161,6 +163,13 @@ function renderModelHeader(detail) {
   holder.append(...notesNodes);
   const alerts = [...holder.querySelectorAll("[class^=alert]")];
   alerts.forEach((a) => a.remove());
+  // flagged as broken in the library (desktop)
+  const broken = detail.meta?.broken;
+  if (broken) alerts.unshift(el("div", { class: "alert-broken", role: "note" }, `Flagged as broken${broken.date ? ` on ${broken.date}` : ""}${broken.note ? `: ${broken.note}` : "."} `,
+    el("button", { type: "button", class: "link-btn", text: "Remove the flag", onclick: async () => {
+      const it = state.index.get(`gen:${detail.key}`);
+      if (it) await unflagItems([it]);
+    } })));
   $("#model-alerts").replaceChildren(...alerts);
   const hasNotes = !!holder.textContent.trim();
   $("#model-notes-body").replaceChildren(...holder.childNodes);
@@ -195,8 +204,8 @@ async function openModel(key, shareCode = null, savedId = null) {
   } catch (e) {
     showView("model");
     setStatus("error", e.status === 404 ? (platform.kind === "browser" && state.desktopOnly?.has(key)
-      ? "This generator is too complex for the browser engine. It works in the desktop app."
-      : "This generator doesn't exist. Pick one from the library.") : e.message);
+      ? "This model is too complex for the browser engine. It works in the desktop app."
+      : "This model doesn't exist. Pick one from the library.") : e.message);
     return;
   }
   if (detail.browser === false && platform.kind === "browser") {
@@ -739,8 +748,18 @@ function generate() {
     finishJob();
     if (err.cancelled) { setStatus("stale", "Render cancelled."); return; }
     setStatus("error", err.message);
+    offerBrokenFlag(model, err.message);
     if (err.logs?.length) { $("#log-text").textContent = err.logs.join("\n"); $("#log").hidden = false; }
   });
+}
+
+/** After a failed render (desktop): "Flag as broken", with the error as the note. */
+function offerBrokenFlag(model, message) {
+  if (platform.kind !== "desktop" || state.catalog?.library?.read_only) return;
+  const it = state.index?.get(`gen:${model.key}`);
+  if (!it || it.broken) return;
+  $("#status").append(" ", el("button", { type: "button", class: "link-btn", id: "flag-broken", text: "Flag as broken",
+    onclick: () => ui.set({ dialog: { type: "flag", items: [it.id], note: String(message || "").slice(0, 300) } }) }));
 }
 
 function finishJob() {
@@ -1041,7 +1060,7 @@ async function showPart(lib, item) {
   const status = $("#part-status");
   status.replaceChildren(el("p", { class: "part-name", text: item.name }));
   if (item.description) status.append(el("p", { class: "help", text: item.description }));
-  if (item.generator) status.append(el("p", { class: "help" }, el("a", { href: `#/m/${item.generator}`, text: "Open the generator" }), " to print it at any size."));
+  if (item.generator) status.append(el("p", { class: "help" }, el("a", { href: `#/m/${item.generator}`, text: "Open the parametric model" }), " to print it at any size."));
   const dl = $("#part-downloads");
   dl.replaceChildren(...item.files.map((f, i) => el("a", {
     class: `button ${i === 0 && !["step", "shapr"].includes(f.format) ? "primary" : "secondary"}`, href: f.url,
@@ -1090,14 +1109,14 @@ function showLicenses(focus) {
     el("thead", {}, el("tr", {}, ["Project", "Authors", "License", "Status", "Source"].map((h) => el("th", { scope: "col", text: h })))),
     el("tbody", {}, rows)));
   const review = fams.filter((f) => f.license?.public_use && f.license.public_use !== "ok");
-  $("#about-body").replaceChildren(
-    el("p", { text: "Every generator and part here is someone else's open work, credited below with its license. Generated files carry the same license as the project that made them." }),
+  showPage([
+    el("p", { text: "Every model and part here is someone else's open work, credited below with its license. Generated files carry the same license as the project that made them." }),
     review.length ? el("p", { class: "lic-summary" },
       `${review.length} project${review.length > 1 ? "s need" : " needs"} a license check before files are shared or sold: `,
       ...review.flatMap((f, i) => [i ? ", " : "", el("a", { href: `#/licenses/${f.id}`, text: f.name })]), ".") : null,
-    el("h2", { text: "Generators" }),
+    el("h2", { text: "Parametric Models" }),
     table(fams.map((f) => row(f.id, f.name, (f.models || []).join(", "), (f.authors || []).map((a) => a.name).join(", "), f.license, f.source))),
-    el("h2", { text: "Ready-made parts" }),
+    el("h2", { text: "Parts Library" }),
     table(state.libraries.map((l) => row(l.id, l.name, `${l.item_count} parts`, (l.authors || []).map((a) => a.name).join(", "), l.license, l.source_url))),
     el("h2", { text: "This site" }),
     el("ul", {},
@@ -1106,7 +1125,7 @@ function showLicenses(focus) {
         el("a", { href: "engine/COPYING", target: "_blank", text: "license text" }), "."),
       el("li", { text: "3D preview: three.js (MIT). Interface: Preact (MIT) and htm (Apache-2.0)." }),
       el("li", { text: "Fonts for text on parts: Liberation Sans and Liberation Mono (SIL Open Font License 1.1)." }),
-      el("li", { text: "Nothing you configure is sent to a server; once loaded, the site keeps working offline." })));
+      el("li", { text: "Nothing you configure is sent to a server; once loaded, the site keeps working offline." }))]);
   const target = focus && document.getElementById(`lic-${focus}`);
   if (target) requestAnimationFrame(() => target.scrollIntoView({ block: "center" }));
   else window.scrollTo(0, 0);
@@ -1219,7 +1238,7 @@ function showSettings() {
     if (value == null) delete next[id]; else next[id] = value;
     store.prefs.set("gw-profile", next);
     if (state.model) state.model = null; // reopen models with the new defaults
-    $("#profile-note").textContent = "Saved. Generators open with these values from now on.";
+    $("#profile-note").textContent = "Saved. Models open with these values from now on.";
   };
   const fields = PROFILE_FIELDS.map((f) => {
     const cur = profile[f.id];
@@ -1239,21 +1258,41 @@ function showSettings() {
     }
     return el("div", { class: "field profile-field" },
       el("div", { class: "field-head" }, el("span", { class: "label", text: `${f.label} (${f.unit})` })), inputs,
-      el("p", { class: "help-inline" }, used.length ? ["Used by ", ...used.flatMap((a, i) => [i ? ", " : "", a]), "."] : "No generator uses this yet."));
+      el("p", { class: "help-inline" }, used.length ? ["Used by ", ...used.flatMap((a, i) => [i ? ", " : "", a]), "."] : "No model uses this yet."));
   });
   const body = [
     el("h2", { text: "Appearance" }),
     el("div", { class: "theme-pick", role: "radiogroup", "aria-label": "Theme" }, THEMES.map(([id, label]) => el("label", {},
       el("input", { type: "radio", name: "theme", value: id, checked: ui.get().theme === id, onchange: () => setTheme(id) }), " ", label))),
     el("h2", { text: "Printer profile" }),
-    el("p", { text: "Generators that ask for these start with your values instead of the author's. Leave a value empty to keep the defaults. Magnet and tolerance settings aren't linked: each project measures them differently." }),
+    el("p", { text: "Models that ask for these start with your values instead of the author's. Leave a value empty to keep the defaults. Magnet and tolerance settings aren't linked: each project measures them differently." }),
     el("div", { class: "profile-grid" }, fields),
     el("p", { id: "profile-note", class: "muted", role: "status" }),
   ];
   if (platform.kind === "desktop") body.push(...desktopSettings());
   else body.push(el("h2", { text: "Your data" }),
     el("p", { text: "Saved settings and this profile are kept in this browser only. Use Export for OpenSCAD on a model to keep a copy as a file." }));
-  $("#about-body").replaceChildren(...body);
+  showPage(body);
+}
+
+const RELEASES_URL = "https://github.com/DrFlGd/Claude-Grid-Workshop/releases";
+
+/** The text pages share #about-body; a Preact page mounted there is unmounted when another page replaces it. */
+let mountedPage = null;
+function showPage(children) {
+  if (mountedPage) { render(null, mountedPage); mountedPage = null; }
+  $("#about-body").replaceChildren(...children);
+}
+
+function showLibrarySettings() {
+  if (platform.kind !== "desktop") { location.hash = "#/settings"; return; }
+  showView("about");
+  document.title = "Library settings | SCAD Workshop";
+  $("#about-title").textContent = "Library settings";
+  const box = el("div", { id: "library-settings-page" });
+  showPage([box]);
+  render(html`<${LibrarySettingsPage} />`, box);
+  mountedPage = box;
 }
 
 function desktopSettings() {
@@ -1262,7 +1301,9 @@ function desktopSettings() {
   const cacheLine = el("span", { text: gb(info.cache_bytes) });
   return [
     el("h2", { text: "Library" }),
-    (() => { const box = el("div", { id: "library-settings" }); render(html`<${LibrarySettings} />`, box); return box; })(),
+    el("p", {}, "Library folder: ", el("code", { text: info.library?.path || info.workspace || "not available" }), ". ",
+      el("a", { href: "#/library-settings", id: "settings-library-link", text: "Library settings" }),
+      " has projects, categories, hidden and deleted items, the trash and updates."),
     el("h2", { text: "Engine" }),
     info.engine
       ? el("p", {}, `OpenSCAD ${info.engine}, native, up to ${info.concurrency || 1} render${info.concurrency > 1 ? "s" : ""} at once. `, el("br"), el("code", { text: info.engine_path || "" }))
@@ -1278,6 +1319,9 @@ function desktopSettings() {
       el("button", { type: "button", class: "ghost", text: "Clear", onclick: async () => {
         try { await platform.workspace.clearCache(); const i = await platform.refreshInfo(); cacheLine.textContent = gb(i.cache_bytes); } catch (e) { toast(String(e)); }
       } })),
+    el("h2", { text: "About" }),
+    el("p", { id: "app-version" }, `SCAD Workshop ${info.version || "(version unknown)"}. `,
+      el("a", { href: RELEASES_URL, target: "_blank", rel: "noopener", text: "All releases and what changed" })),
   ];
 }
 
@@ -1307,6 +1351,8 @@ async function reloadCatalog() {
   setContext({ catalog, libraries, index: state.index });
   ui.set((s) => ({ catalogVersion: s.catalogVersion + 1 }));
   if (ui.get().view === "library" && location.hash.startsWith("#/parts/")) route();
+  // the open model's header (name, credits, a broken flag) follows edits
+  if (ui.get().view === "model" && state.model) loadModel(state.model.key).then(({ detail }) => renderModelHeader(detail), () => {});
 }
 
 (async function boot() {
@@ -1324,7 +1370,7 @@ async function reloadCatalog() {
     ui.set({ ready: true });
   } catch (e) {
     $("#view-browse").hidden = false;
-    $("#view-browse").replaceChildren(el("p", { class: "empty", text: `Couldn't load the generator list: ${e.message}. Reload to try again.` }));
+    $("#view-browse").replaceChildren(el("p", { class: "empty", text: `Couldn't load the library: ${e.message}. Reload to try again.` }));
     return;
   }
   route();

@@ -162,6 +162,10 @@
     },
     "system": {
       "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "description": "Library category the pack is listed under (gridfinity, carrying, labels, wall, mechanical, ...). The items' own \"category\" is a subcategory within the pack."
     }
   }
 }

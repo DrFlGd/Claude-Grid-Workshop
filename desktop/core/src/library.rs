@@ -429,6 +429,120 @@ impl Library {
         }
         write_json(&p, meta)
     }
+
+    // ------------------------------------------------------------ trash
+
+    /// Deleted projects wait in trash/<time>-<id>/ (source/, local/ for your own
+    /// project's folder, trash.json) until restored or the trash is emptied.
+    pub fn trash_dir(&self) -> PathBuf {
+        self.root.join("trash")
+    }
+
+    /// Move a project to the trash. Returns its trash entry.
+    pub fn trash_source(&self, id: &str, name: &str) -> Result<Value> {
+        self.writable()?;
+        let src = self.source(id)?;
+        let stamp: String = now().chars().filter(char::is_ascii_digit).take(14).collect();
+        let entry = format!("{stamp}-{id}");
+        let dest = self.trash_dir().join(&entry);
+        std::fs::create_dir_all(&dest)?;
+        let mut local = Value::Null;
+        if src["kind"] == "local" {
+            let rel = src["origin"]["path"].as_str().unwrap_or("");
+            let from = self.root.join(rel_inside(rel)?);
+            if from.is_dir() {
+                std::fs::rename(&from, dest.join("local")).with_context(|| format!("couldn't move {} to the trash", from.display()))?;
+                local = json!(rel);
+            }
+        }
+        let dir = self.source_dir(id)?;
+        std::fs::rename(&dir, dest.join("source")).with_context(|| format!("couldn't move {} to the trash", dir.display()))?;
+        let info = json!({ "entry": entry, "kind": "project", "id": id, "name": name, "deleted": now(), "local": local, "source_kind": src["kind"] });
+        write_json(&dest.join("trash.json"), &info)?;
+        Ok(info)
+    }
+
+    /// What's in the trash, newest first, with sizes.
+    pub fn trash_list(&self) -> Vec<Value> {
+        let mut out: Vec<Value> = std::fs::read_dir(self.trash_dir())
+            .map(|rd| {
+                rd.flatten()
+                    .filter_map(|e| {
+                        let mut info = read_json_object(&e.path().join("trash.json"));
+                        info.get("id")?;
+                        info["entry"] = json!(e.file_name().to_string_lossy());
+                        info["bytes"] = json!(dir_bytes(&e.path()));
+                        Some(info)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.sort_by(|a, b| b["deleted"].as_str().cmp(&a["deleted"].as_str()));
+        out
+    }
+
+    /// Put a deleted project back. Fails if a project with its id came back meanwhile.
+    pub fn trash_restore(&self, entry: &str) -> Result<Value> {
+        self.writable()?;
+        valid_id(entry)?;
+        let dir = self.trash_dir().join(entry);
+        let info = read_json_object(&dir.join("trash.json"));
+        let id = info["id"].as_str().context("not a trash entry")?.to_string();
+        let target = self.source_dir(&id)?;
+        if target.exists() {
+            bail!("A project with the id {id} is in the library already; delete it first to bring this one back.");
+        }
+        if let Some(rel) = info["local"].as_str() {
+            let to = self.root.join(rel_inside(rel)?);
+            if to.exists() {
+                bail!("{rel} exists already; move it away to bring this project back.");
+            }
+            std::fs::create_dir_all(to.parent().unwrap_or(&self.root))?;
+            std::fs::rename(dir.join("local"), &to)?;
+        }
+        std::fs::create_dir_all(self.sources_dir())?;
+        std::fs::rename(dir.join("source"), &target)?;
+        std::fs::remove_dir_all(&dir)?;
+        Ok(info)
+    }
+
+    /// Delete one trash entry for good, or all of them. Returns how many went.
+    pub fn trash_empty(&self, entry: Option<&str>) -> Result<usize> {
+        self.writable()?;
+        let entries: Vec<String> = match entry {
+            Some(e) => {
+                valid_id(e)?;
+                vec![e.to_string()]
+            }
+            None => std::fs::read_dir(self.trash_dir()).map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default(),
+        };
+        let mut n = 0;
+        for e in entries {
+            let p = self.trash_dir().join(&e);
+            if p.is_dir() {
+                std::fs::remove_dir_all(&p).with_context(|| format!("couldn't delete {}", p.display()))?;
+                n += 1;
+            } else if p.is_file() {
+                std::fs::remove_file(&p)?;
+            }
+        }
+        Ok(n)
+    }
+}
+
+/// Total size of the files under a folder.
+fn dir_bytes(p: &Path) -> u64 {
+    std::fs::read_dir(p)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| match e.file_type() {
+                    Ok(t) if t.is_dir() => dir_bytes(&e.path()),
+                    Ok(_) => e.metadata().map(|m| m.len()).unwrap_or(0),
+                    Err(_) => 0,
+                })
+                .sum()
+        })
+        .unwrap_or(0)
 }
 
 fn migration_favs(lib: &Library) -> Value {
@@ -508,6 +622,30 @@ mod tests {
         assert!(lib.read_only().is_some());
         assert!(lib.put_recipe(&json!({"id": "a", "model": "m/x"})).is_err());
         assert!(lib.set_favourites(&json!(["a"])).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn trash_round_trip() {
+        let dir = temp_dir("trash");
+        let (lib, _) = Library::open(&dir, &Prefs::new(dir.join("p.json"))).unwrap();
+        // your own project: its local/ folder goes to the trash with it
+        std::fs::create_dir_all(dir.join("local/bevel")).unwrap();
+        std::fs::write(dir.join("local/bevel/gear.scad"), "cube(1);").unwrap();
+        lib.save_source(&json!({ "id": "local-bevel", "kind": "local", "origin": { "path": "local/bevel" }, "version": "v" })).unwrap();
+        let info = lib.trash_source("local-bevel", "Bevel").unwrap();
+        assert!(!dir.join("local/bevel").exists() && lib.source("local-bevel").is_err());
+        let list = lib.trash_list();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["name"], "Bevel");
+        assert!(list[0]["bytes"].as_u64().unwrap() > 0);
+        lib.trash_restore(info["entry"].as_str().unwrap()).unwrap();
+        assert!(dir.join("local/bevel/gear.scad").is_file() && lib.source("local-bevel").is_ok());
+        assert!(lib.trash_list().is_empty());
+        // emptying
+        lib.trash_source("local-bevel", "Bevel").unwrap();
+        assert_eq!(lib.trash_empty(None).unwrap(), 1);
+        assert!(lib.trash_list().is_empty() && !dir.join("local/bevel").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

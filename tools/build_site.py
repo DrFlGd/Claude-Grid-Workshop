@@ -83,7 +83,7 @@ def build_libraries(out: Path) -> list[dict]:
         public["item_count"] = len(lib["items"])
         public["categories"] = sorted({i["category"] for i in lib["items"]})
         (out / f"data/libraries/{lib['id']}.json").write_text(json.dumps(public, separators=(",", ":")))
-        listing.append({k: public[k] for k in ("id", "name", "summary", "item_count", "categories", "license", "authors") if k in public})
+        listing.append({k: public[k] for k in ("id", "name", "summary", "item_count", "categories", "category", "license", "authors") if k in public})
     return listing
 
 

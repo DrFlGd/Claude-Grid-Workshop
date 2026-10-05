@@ -63,13 +63,13 @@ async def main():
         check("home shows browse tiles", await pg.locator(".home .tile").count() >= len(catalog["categories"]))
         await pg.screenshot(path=f"{a.out}/ui-00-home.png")
 
-        # all generators, four views
+        # all parametric models, four views
         await pg.click('.sidebar [data-scope="all"]')
         await pg.wait_for_selector(".results [data-item]")
         n = await items(pg)
-        check("all generators listed", n == len(gens), f"{n} of {len(gens)}")
+        check("all parametric models listed", n == len(gens), f"{n} of {len(gens)}")
         thumbs = await pg.locator(".results .card img").count()
-        check("generators have thumbnails", thumbs == n, f"{thumbs} of {n}")
+        check("models have thumbnails", thumbs == n, f"{thumbs} of {n}")
         for layout in ["grid", "list", "table", "grouped"]:
             await pg.click(f'button[data-layout="{layout}"]')
             await pg.wait_for_selector(f'.results[data-layout="{layout}"] [data-item]')
@@ -85,13 +85,13 @@ async def main():
         await pg.click('button[data-layout="grid"]')
         await pg.select_option('select[aria-label="Sort"]', "default")  # the sort is remembered; searches below want best match
 
-        # ready-made parts
+        # the parts library
         parts = 0
         for lib in catalog.get("libraries", []):
             parts += len(json.load(urllib.request.urlopen(a.base + f"data/libraries/{lib['id']}.json"))["items"])
         await pg.click('.sidebar [data-scope="parts"]')
         await pg.wait_for_function(f"()=>document.querySelectorAll('.results [data-item^=\"part:\"]').length === {parts}")
-        check("all ready-made parts listed", True, parts)
+        check("all parts listed", True, parts)
         await pg.locator(".results [data-item]").first.click()
         await pg.wait_for_selector(".inspector .insp-files a")
         check("a part's inspector offers its files", True, await pg.locator(".inspector .insp-files a").count())
@@ -99,10 +99,26 @@ async def main():
         await pg.click('.sidebar [data-scope="all"]')
         await pg.wait_for_selector('.results [data-item^="gen:"]')
 
-        # grouped by project, condensed into one tile per project
-        await pg.select_option('select[aria-label="Group"]', "project")
+        # the left menu: Parametric Models and the Parts Library, each by category (collapsed), projects inside
+        heads = await pg.eval_on_selector_all(".sidebar .nav-head", "els => els.map(e => e.textContent.trim())")
+        cats = await pg.locator('.sidebar [data-section="generator"] [data-scope^="cat:"]').count()
+        pcats = await pg.locator('.sidebar [data-section="part"] [data-scope^="pcat:"]').count()
+        projs = await pg.locator('.sidebar [data-scope^="project:"], .sidebar [data-scope^="lib:"]').count()
+        check("left menu: models and parts by category, collapsed", heads[:2] == ["Parametric Models", "Parts Library"] and cats >= 4 and pcats >= 1 and projs == 0,
+              (heads, cats, pcats, projs))
+        await pg.click('.sidebar [data-section="part"] .nav-toggle >> nth=0')
+        await pg.wait_for_selector('.sidebar [data-scope^="lib:"]')
+        await pg.click('.sidebar [data-scope^="lib:"] >> nth=0')
+        await pg.wait_for_selector('.results [data-item^="part:"]')
+        check("a parts category opens to its projects", await items(pg) > 0, await pg.inner_text(".browse-title h1"))
+        await pg.click('.sidebar [data-section="part"] .nav-toggle >> nth=0')
+        await pg.click('.sidebar [data-scope="all"]')
+        await pg.wait_for_selector('.results [data-item^="gen:"]')
+
+        # Condense, with no grouping chosen, groups by project: one tile per project
         await pg.click("[data-condense]")
         await pg.wait_for_selector(".group-tile")
+        check("Condense groups by project", await pg.input_value('select[aria-label="Group"]') == "project")
         tiles = await pg.locator(".group-tile").count()
         families = len({m["family"] for m in gens})
         check("condensed groups: one tile per project", tiles == families, f"{tiles} tiles, {families} projects")

@@ -6,15 +6,17 @@ import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 
 function commands() {
-  const { catalog, libraries, platform } = ctx;
+  const { catalog, platform, index } = ctx;
+  const partCats = [...new Map(index.items.filter((i) => i.kind === "part" && !i.hidden).map((i) => [i.category, i.categoryLabel])).entries()];
   const go = (hash) => () => { location.hash = hash; };
   const list = [
     { label: "Go to Home", run: go("#/") },
-    { label: "Go to All generators", run: go(scopeHash("all")) },
+    { label: "Go to Parametric Models", run: go(scopeHash("all")) },
+    { label: "Go to the Parts Library", run: go(scopeHash("parts")) },
     { label: "Go to Favourites", run: go(scopeHash("favs")) },
     { label: "Go to Recent", run: go(scopeHash("recent")) },
     ...catalog.categories.map((c) => ({ label: `Go to ${c.label}`, run: go(scopeHash(`cat:${c.id}`)) })),
-    ...libraries.map((l) => ({ label: `Go to ${l.name}`, run: go(scopeHash(`lib:${l.id}`)) })),
+    ...partCats.map(([id, label]) => ({ label: `Go to ${label} parts`, run: go(scopeHash(`pcat:${id}`)) })),
     { label: "Open Settings", hint: "printer profile", run: go("#/settings") },
     { label: "Open Licenses & credits", run: go("#/licenses") },
     { label: "Switch to Grid view", run: () => setLayout("grid") },
@@ -25,7 +27,9 @@ function commands() {
     { label: ui.get().inspector ? "Hide the inspector" : "Show the inspector", run: () => setPref({ inspector: !ui.get().inspector }) },
   ];
   if (platform.kind === "desktop") {
-    list.push({ label: "Open the workspace folder", run: () => platform.workspace.open() });
+    if (!catalog.library?.read_only) list.push({ label: "Add a project", hint: "GitHub, ZIP or folder", run: () => ui.set({ dialog: { type: "add-project" } }) });
+    list.push({ label: "Open Library settings", hint: "projects, categories, trash", run: go("#/library-settings") });
+    list.push({ label: "Open the library folder", run: () => platform.workspace.open() });
     list.push({ label: "Clear the render cache", run: () => platform.workspace.clearCache() });
   }
   return list;

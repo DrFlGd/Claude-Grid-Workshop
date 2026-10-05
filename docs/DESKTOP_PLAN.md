@@ -8,7 +8,8 @@ Status (2026-10-05):
 - **Phase 1 done:** see "Phase 1 notes" at the end.
 - **Phase 1.5 done:** the library interface (section 5); see "Phase 1.5 notes" at the end.
 - **Phase 2 done:** the portable library, adding projects, update checks, metadata editing; see "Phase 2 notes" at the end.
-- **Next:** Phase 3, bundled libraries and library modules as generators.
+- **0.2.x (Phase 2 follow-ups):** numbered releases, the left menu by category (Parametric Models and Parts Library), Library settings, hide / delete / flag as broken, the trash; see "0.2 notes" at the end.
+- **Next:** Phase 3 (0.3), bundled libraries and library modules as generators.
 
 ## Goal
 
@@ -288,7 +289,7 @@ Today's home page is one long scrolling page grouped by type and project. It wor
 **Sidebar** (collapsible):
 
 - Home, Recent and Favourites.
-- Generators, library modules, ready-made parts, collections and sources, each as a category tree with counts.
+- Generators, library modules, ready-made parts, collections and sources, each as a category tree with counts. (As built in 0.2: **Parametric Models** and the **Parts Library**, each by category, collapsed until opened, with projects inside; projects have no list of their own, they're reached by category, by condensing on project, or from Library settings.)
 - Smart lists (saved searches).
 - "Needs attention": sources with missing includes, failed thumbnails, unknown licenses or updates waiting. Today that list lives only in SOURCE_AUDIT.md.
 
@@ -464,7 +465,7 @@ What was built, and where it differs from the plan above.
   - unit tests;
   - `workshop-cli bench` (all 58 models, first and repeated renders) on Linux and Windows;
   - a WebDriver test of the built app on both systems: catalog, native and desktop-only renders, saved settings in the workspace, Settings, a part preview;
-  - installers on the `desktop-latest` pre-release.
+  - installers on the `desktop-latest` pre-release (numbered releases replaced it in 0.2.0).
 - **Results (CI, 2026-10-04):**
   - All 58 models render natively on Linux and Windows.
   - In the built app on Windows, the race picked WebAssembly for the Gridfinity Extended bin: 3.7 s, against about 12 s native on the same runner.
@@ -505,3 +506,15 @@ What was built, and where it differs from the plan above.
 - **Not yet:** reading Printables' PDFs (Phase 4, with ZIP packs of ready-made parts); re-rendering saved settings to compare before accepting an update (with recipes in Phase 4); GitLab and other hosts.
 - **Testing:** Rust unit tests for the reader, library, metadata and sources; `tests/desktop_page.py`, the Phase 2 acceptance test, drives the page against the real backend in CI: the starter library, three public GitHub projects added by URL (one pinned to an older commit, one a library), a local project that includes BOSL2, search, a render from library files, the upstream change detected, summarised and accepted with edits surviving, a project-wide license with one item keeping its own, a condensed group's icon, and the library opening the same after moving it. CI then opens that Linux-made library on Windows and compares (`library-summary`). Locally the same test runs against `tests/github_mock.py`.
 
+## 0.2 notes
+
+Follow-ups to Phase 2, from using it, before Phase 3.
+
+- **Numbered releases.** The repository keeps `<major>.<minor>.0` (tauri.conf.json and the Rust workspace); the minor number is the roadmap phase. CI gives each build the next free number in that series from the release tags (`tools/set_version.py --next`), stamps it into the app and the installers, and publishes release `v<version>` (with the commits since the previous release as notes) only when the Linux and Windows apps, the acceptance test and the portability check all passed. The unnumbered `desktop-latest` pre-release is gone. Settings → About shows the version; `workshop-cli --version` too.
+- **Names:** generators are **Parametric Models** and ready-made parts the **Parts Library**, in the menu, on Home, in filters and in the inspector.
+- **Left menu:** both sections list categories, collapsed until opened, with their projects inside; parts now have categories too (a parts pack's category, from the project like a model's; the pack's own groupings become a "Type" filter). The Projects list is gone; Add a project sits at the bottom of the menu and on Home.
+- **Condense** is a labelled button, always shown; with no grouping it groups by project. A project's tile opens the project's page (details, README, files, versions, updates) above its items.
+- **Editing:** fields start with the value in use, editable in place, with a note on where it comes from. An unchanged value stays inherited; Reset drops one set at this level. An item can be listed under another project (`project` on the item): it groups, filters and lists there, and is hidden with that project, while its files, license and credits stay with the project it came from.
+- **Hide, delete, flag:** `hidden` (inherited: a hidden project hides its items), `deleted` (the item is left out of the catalog, also after updates; Library settings brings it back) and `broken` ({ note, date }: a badge, a "Status" filter, Needs attention; a failed render offers it) are metadata like any other, so they move with the library and undo works. A deleted project goes to `trash/<time>-<id>/` (with your own project's `local/` folder) until it's brought back or the trash is emptied.
+- **Library settings** (`#/library-settings`): the folder, projects (hide, delete), categories (add, rename, remove: a removed category points to the one its items moved to, so projects added later land there too; it can be brought back), hidden and deleted items, the trash, defaults, GitHub.
+- **Testing:** the acceptance test adds hide, flag, delete (with Ctrl+Z and restore), moving an item to another project, categories, a hidden project and the trash; the website test checks the left menu and Condense; the app test checks the version and Library settings on Linux and Windows.

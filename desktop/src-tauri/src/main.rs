@@ -135,6 +135,15 @@ fn open_path(app: AppHandle, path: String) -> Result<(), String> {
     app.opener().open_path(path, None::<&str>).map_err(err)
 }
 
+/// Open a web link (a project's GitHub page, the releases page) in the default browser.
+#[tauri::command]
+fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("Only web links open in the browser.".into());
+    }
+    app.opener().open_url(url, None::<&str>).map_err(err)
+}
+
 fn mime(path: &str) -> &'static str {
     match path.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str() {
         "webp" => "image/webp",
@@ -190,7 +199,7 @@ fn main() {
             app.manage(AppState { app: core });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![api, api_bytes, render, render_cancel, save_file, pick_folder, pick_file, reveal, open_path])
+        .invoke_handler(tauri::generate_handler![api, api_bytes, render, render_cancel, save_file, pick_folder, pick_file, reveal, open_path, open_url])
         .run(tauri::generate_context!())
         .expect("error while running SCAD Workshop");
 }

@@ -13,6 +13,7 @@ ready-made part previews, and the night theme applies. Exits non-zero on any fai
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -194,6 +195,16 @@ try:
     time.sleep(0.5)
     shot("03-settings")
     report["settings_text"] = text("#about-body")[:600]
+    report["version"] = text("#app-version")
+    if not re.search(r"SCAD Workshop \d+\.\d+\.\d+", report["version"]):
+        failures.append(f"no version number in Settings: {report['version']!r}")
+
+    # library settings: projects, categories, trash
+    d.execute_script("location.hash = '#/library-settings'")
+    if wait("document.querySelector('#ls-project-table tbody tr') && document.querySelector('#ls-category-table tbody tr')", 30, "library settings"):
+        report["library_settings_projects"] = d.execute_script("return document.querySelectorAll('#ls-project-table tbody tr').length")
+        time.sleep(0.5)
+        shot("03b-library-settings")
 
     d.execute_script("location.hash = '#/parts/opengrid-official/mounts-opengrid-wall-mount'")
     if wait("!document.querySelector('#dims').hidden", 60, "part preview"):

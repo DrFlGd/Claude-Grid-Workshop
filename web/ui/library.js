@@ -9,6 +9,7 @@ import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 import { Viewer } from "../viewer.js";
 import { bytes, plural } from "../lib/util.js";
+import { hideProject, deleteProject } from "./actions.js";
 
 export const isDesktop = () => ctx.platform?.kind === "desktop";
 export const api = (cmd, args) => ctx.platform.api(cmd, args);
@@ -151,7 +152,7 @@ export function AddProject() {
 }
 
 // ---------------------------------------------------------------- a project's page
-function when(iso) {
+export function when(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   return isNaN(d) ? iso : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -222,6 +223,8 @@ export function SourcePanel({ id }) {
       </div>
       <div class="source-actions">
         <button type="button" class="ghost" disabled=${ro} onClick=${() => ui.set({ dialog: { type: "edit", level: "project", source: id } })} data-act="edit">Edit details</button>
+        <button type="button" class="ghost" disabled=${ro} onClick=${() => hideProject(id, !src.hidden)} data-act="hide-project"
+          title=${src.hidden ? "List it again" : "Keep it and everything in it out of browsing and search"}>${src.hidden ? "Unhide" : "Hide"}</button>
         ${src.kind === "github" ? html`<button type="button" class="ghost" disabled=${!!busy || ro} data-act="check" onClick=${() => act("check", async () => {
           const r = await runJob(api("updates_check", { id }), `Checking ${src.name}`);
           await ctx.reloadCatalog();
@@ -238,12 +241,9 @@ export function SourcePanel({ id }) {
             await runJob(api("source_role", { id, role: src.role === "library" ? "project" : "library" }), `Reading ${src.name}`);
             await ctx.reloadCatalog();
           })}>${src.role === "library" ? "Treat as a project (list its models)" : "Treat as a library (others include it)"}</button>` : null}
-          ${src.kind !== "local" ? html`<button type="button" class="danger-text" disabled=${ro} data-act="remove" onClick=${() => act("remove", async () => {
-            if (!confirm(`Remove ${src.name} from the library? Its files and your edits to it are deleted.${src.kind === "bundled" ? " (It came with the app; Settings can bring it back.)" : ""}`)) return;
-            await api("source_remove", { id });
-            await ctx.reloadCatalog();
-            location.hash = "#/";
-          })}>Remove from the library</button>` : null}
+          <button type="button" class="danger-text" disabled=${ro} data-act="remove" onClick=${() => act("remove", async () => {
+            if (await deleteProject(id)) location.hash = "#/";
+          })}>Delete project…</button>
         </div></details>
       </div>
     </div>
@@ -274,7 +274,8 @@ export function SourcePanel({ id }) {
 
 // ---------------------------------------------------------------- needs attention
 const ATTN_TEXT = { update: "Update ready", missing: "Missing files", settings: "Settings couldn't be read", unread: "Not read", reread: "Read with an older version",
-  "missing-folder": "Folder missing", license: "License", scan: "Note" };
+  "missing-folder": "Folder missing", license: "License", scan: "Note", broken: "Flagged as broken" };
+const attnLink = (a) => (a.kind === "broken" && a.model ? `#/m/${a.model}` : a.kind === "broken" && a.part ? `#/parts/${a.part}` : scopeHash(`source:${a.source}`));
 
 export function AttentionList() {
   useStore(ui, (s) => s.catalogVersion);
@@ -284,7 +285,7 @@ export function AttentionList() {
   for (const a of items) (byKind[a.kind] ||= []).push(a);
   return html`<section class="attention-list" aria-label="Projects that need attention">
     ${Object.entries(byKind).map(([kind, list]) => html`<div class="attn-group"><h3>${ATTN_TEXT[kind] || kind} <span class="muted">${list.length}</span></h3>
-      <ul>${list.slice(0, 40).map((a) => html`<li><a href=${scopeHash(`source:${a.source}`)}>${sourceById(a.source)?.name || a.source}</a>: ${a.message}</li>`)}</ul></div>`)}
+      <ul>${list.slice(0, 40).map((a) => html`<li><a href=${attnLink(a)}>${sourceById(a.source)?.name || a.source}</a>: ${a.message}</li>`)}</ul></div>`)}
   </section>`;
 }
 
@@ -328,7 +329,7 @@ async function drawThumb(url) {
 /** Make thumbnails for library models and parts that have none (renders defaults). */
 export async function makeThumbnails() {
   if (!isDesktop() || thumbRunning || readOnly()) return;
-  const todo = ctx.index.items.filter((i) => !i.thumb && (i.kind === "generator" || i.preview) && sourceById(i.projectId)?.kind !== "bundled");
+  const todo = ctx.index.items.filter((i) => !i.thumb && (i.kind === "generator" || i.preview) && sourceById(i.sourceId || i.projectId)?.kind !== "bundled");
   if (!todo.length) return;
   thumbRunning = true;
   const done = addJob(`Making thumbnails (0 of ${todo.length})`);
@@ -336,6 +337,7 @@ export async function makeThumbnails() {
   try {
     for (const [n, it] of todo.entries()) {
       done.update(`Making thumbnails (${n + 1} of ${todo.length})`);
+      if (!ctx.index.get(it.id)) continue; // deleted meanwhile
       try {
         let blob;
         if (it.kind === "generator") {
@@ -348,7 +350,7 @@ export async function makeThumbnails() {
         let data;
         try { data = await drawThumb(url); } finally { URL.revokeObjectURL(url); }
         const name = it.kind === "generator" ? it.key.split("/")[1] : `part-${it.key.split("/")[1]}`;
-        await api("thumb_put", { source: it.projectId, name, data });
+        await api("thumb_put", { source: it.sourceId || it.projectId, name, data });
         made++;
       } catch (e) {
         console.warn("thumbnail", it.id, e);
@@ -359,60 +361,6 @@ export async function makeThumbnails() {
     thumbRunning = false;
   }
   if (made) await ctx.reloadCatalog();
-}
-
-// ---------------------------------------------------------------- library settings
-export function LibrarySettings() {
-  const v = useStore(ui, (s) => s.catalogVersion);
-  const [info, setInfo] = useState(ctx.platform.info || {});
-  const [token, setToken] = useState("");
-  const [name, setName] = useState(ctx.catalog?.library?.name || "");
-  useEffect(() => { ctx.platform.refreshInfo().then((i) => setInfo({ ...i })); }, [v]);
-  const lib = info.library || ctx.catalog?.library || {};
-  const open = async (path) => {
-    if (!path) return;
-    try {
-      await api("library_open", { path });
-      location.reload();
-    } catch (e) { ctx.toast(String(e.message || e)); }
-  };
-  const merge = async () => {
-    const path = await ctx.platform.library.pickFolder("Choose the library to merge in");
-    if (!path) return;
-    try {
-      const r = await runJob(api("library_merge", { path }), "Merging a library");
-      await ctx.reloadCatalog();
-      if (r.conflicts?.length) ui.set({ dialog: { type: "merge", result: r } });
-      else ctx.toast(`Merged: ${plural(r.copied.length, "new project")}, ${plural(r.combined.length, "project")} combined, ${plural(r.recipes, "saved setting")}.`);
-    } catch (e) { ctx.toast(String(e.message || e)); }
-  };
-  return html`<div class="library-settings">
-    ${lib.read_only ? html`<p class="lic-summary">${lib.read_only}</p>` : null}
-    <p>Everything you add, save or edit lives in this folder as plain files. Move it, copy it or sync it, then open it here or on another computer.</p>
-    <p class="path"><code>${lib.path || info.workspace || info.library_error || "not available"}</code></p>
-    <div class="button-row">
-      <button type="button" class="ghost" onClick=${() => ctx.platform.workspace.open().catch((e) => ctx.toast(String(e)))}>Open folder</button>
-      <button type="button" class="ghost" onClick=${async () => open(await ctx.platform.library.pickFolder("Open a library folder (or an empty folder for a new library)"))} id="library-open">Open another library…</button>
-      <button type="button" class="ghost" disabled=${!!lib.read_only} onClick=${merge} id="library-merge">Merge a library into this one…</button>
-    </div>
-    <form class="inline-form" onSubmit=${async (e) => { e.preventDefault(); try { await api("library_rename", { name }); await ctx.reloadCatalog(); ctx.toast("Renamed."); } catch (err) { ctx.toast(String(err)); } }}>
-      <label>Name <input value=${name} onInput=${(e) => setName(e.target.value)} disabled=${!!lib.read_only} /></label>
-      <button type="submit" class="ghost" disabled=${!!lib.read_only}>Rename</button></form>
-    ${(info.recent_libraries || []).length > 1 ? html`<p class="muted">Recent: ${(info.recent_libraries || []).filter((p) => p !== lib.path).map((p, i) => html`${i ? ", " : ""}<button type="button" class="link-btn" onClick=${() => open(p)}>${p}</button>`)}</p>` : null}
-    <p><button type="button" class="ghost" disabled=${!!lib.read_only} onClick=${() => rescanLocal(false)} id="library-rescan">Look for changes</button>
-      <span class="muted"> Your own projects go in the library's <code>local/</code> folder (one folder each); the app reads them when they change.</span></p>
-    <p><button type="button" class="ghost" disabled=${!!lib.read_only} onClick=${() => ui.set({ dialog: { type: "edit", level: "library" } })}>Library-wide defaults…</button>
-      <span class="muted"> License and author for projects that state none (your own, say).</span></p>
-    <p><button type="button" class="ghost" disabled=${!!lib.read_only} onClick=${async () => { const r = await api("source_restore_starter"); await ctx.reloadCatalog(); ctx.toast(r.installed.length ? `Brought back ${plural(r.installed.length, "project")}.` : "All the starter projects are there."); }}>Bring back removed starter projects</button></p>
-    <h3>GitHub</h3>
-    <p>Adding projects and checking for updates uses GitHub's public API (60 requests an hour). A personal access token (no scopes needed for public projects) raises that and lets you add private repositories. It's kept on this computer, not in the library.</p>
-    <form class="inline-form" onSubmit=${async (e) => { e.preventDefault(); const set = await api("github_token", { token }); setToken(""); setInfo({ ...info, github_token: set }); ctx.toast(set ? "Token saved." : "Token removed."); }}>
-      <label>Token <input type="password" value=${token} onInput=${(e) => setToken(e.target.value)} placeholder=${info.github_token ? "saved (type to replace, empty to remove)" : "ghp_…"} autocomplete="off" /></label>
-      <button type="submit" class="ghost">Save</button></form>
-    <p><button type="button" class="ghost" id="check-all-updates" onClick=${async () => {
-      try { const r = await runJob(api("updates_check", {}), "Checking for updates"); await ctx.reloadCatalog(); ctx.toast(r.updates.length ? `${plural(r.updates.length, "update")} ready to review.` : "Everything is up to date."); } catch (e) { ctx.toast(String(e.message || e)); }
-    }}>Check every GitHub project for updates</button></p>
-  </div>`;
 }
 
 // ---------------------------------------------------------------- merge conflicts

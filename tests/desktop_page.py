@@ -10,8 +10,11 @@ Checks: the starter library; adding three public GitHub projects by URL (one
 pinned to an old commit, one a library); a local project that includes the
 library; search; a render from library files; an upstream change detected and
 summarised, accepted, with edits surviving; a project-wide license with one item
-keeping its own; a condensed group showing the icon chosen for it; and the
-library opening the same after being moved (library-summary). Writes
+keeping its own; a condensed group showing the icon chosen for it; hiding,
+flagging as broken, deleting (undo, restore) and moving items to another
+project; categories added, removed and brought back; a hidden project; a deleted
+project through the trash; and the library opening the same after being moved
+(library-summary). Writes
 <out>/library-summary.json and <out>/library.zip for the cross-platform check.
 """
 import argparse
@@ -102,8 +105,11 @@ async def main():
             # 1. the starter library
             n = await pg.evaluate("() => window.__workshop.index.items.filter((i) => i.kind === 'generator').length")
             parts = await pg.evaluate("() => window.__workshop.index.items.filter((i) => i.kind === 'part').length")
-            projects = await pg.locator(".nav-projects .nav-link").count()
+            projects = await pg.evaluate("() => window.__workshop.catalog.sources.length")
             check("starter library installed", n == 58 and parts == 44 and projects == 19, f"{n} generators, {parts} parts, {projects} projects")
+            heads = await pg.eval_on_selector_all(".sidebar .nav-head", "els => els.map(e => e.textContent.trim())")
+            pcats = await pg.locator('.sidebar [data-scope^="pcat:"]').count()
+            check("left menu: Parametric Models and Parts Library by category", heads[:2] == ["Parametric Models", "Parts Library"] and pcats >= 1, (heads, pcats))
             await pg.screenshot(path=str(out / "p2-00-home.png"))
 
             # 2. three public projects by URL
@@ -192,7 +198,7 @@ async def main():
             await pg.fill("#meta-license", "CC-BY-SA-4.0")
             await pg.click("#meta-save")
             await pg.wait_for_selector(".dialog", state="detached")
-            await pg.wait_for_timeout(800)
+            await pg.wait_for_function(f"() => window.__workshop.index.get('{cup}')?.license?.spdx === 'CC-BY-SA-4.0'", timeout=20000)
             items = await index_items(pg, v76)
             gens = [i for i in items if i["kind"] == "generator"]
             ok = all(i["license"] == ("MIT" if i["id"] == other else "CC-BY-SA-4.0") for i in gens)
@@ -215,12 +221,95 @@ async def main():
             await pg.screenshot(path=str(out / "p2-05-condensed.png"))
             await pg.click("[data-condense]")
             await pg.select_option("select[aria-label=Group]", "none")
+
+            # 9. hide, flag as broken, delete and list under another project (with undo and restore)
+            gens = sorted(i["id"] for i in await index_items(pg, v76) if i["kind"] == "generator" and i["id"] not in (cup, other))
+            hide_id, flag_id, del_id, move_id = gens[:4]
+            await pg.goto(B + f"#/browse/source/{v76}")
+            await pg.wait_for_selector(f'.results [data-item="{hide_id}"]')
+            await pg.click(f'.results [data-item="{hide_id}"]')
+            await pg.click(".inspector [data-act=hide]")
+            await pg.wait_for_selector(f'.results [data-item="{hide_id}"]', state="detached")
+            await pg.click("[data-show-hidden]")
+            await pg.wait_for_selector(f'.results [data-item="{hide_id}"][data-hidden]')
+            check("hidden item leaves the list; Show hidden brings it back", True)
+            await pg.click("[data-show-hidden]")
+            await pg.click(f'.results [data-item="{flag_id}"]')
+            await pg.click(".inspector [data-act=flag]")
+            await pg.fill("#flag-note", "Lid too tight")
+            await pg.click("#flag-save")
+            await pg.wait_for_selector(".inspector .insp-flag.broken")
+            key = flag_id.split(":", 1)[1]
+            attn = await pg.evaluate(f"() => window.__workshop.catalog.attention.some((a) => a.kind === 'broken' && a.model === '{key}')")
+            note = await pg.evaluate(f"() => window.__workshop.index.get('{flag_id}').broken?.note")
+            check("flagged as broken, with its note, under Needs attention", attn and note == "Lid too tight", note)
+            await pg.click(f'.results [data-item="{del_id}"]')
+            await pg.click(".inspector [data-act=delete]")
+            await pg.wait_for_selector(f'.results [data-item="{del_id}"]', state="detached")
+            await pg.keyboard.press("Control+z")
+            await pg.wait_for_selector(f'.results [data-item="{del_id}"]')
+            await pg.click(f'.results [data-item="{del_id}"]')
+            await pg.click(".inspector [data-act=delete]")
+            await pg.wait_for_selector(f'.results [data-item="{del_id}"]', state="detached")
+            removed = await pg.evaluate("() => window.__workshop.catalog.removed_items.map((r) => r.target)")
+            check("deleted item leaves the library (Ctrl+Z undoes)", del_id.split("/")[-1] in removed, removed)
+            await pg.click(f'.results [data-item="{move_id}"]')
+            await pg.click(".inspector [data-act=edit]")
+            await pg.wait_for_selector("#meta-save:not([disabled])")
+            prefilled = await pg.input_value("#meta-license")
+            await pg.select_option("#meta-project", ids["gears"])
+            await pg.click("#meta-save")
+            await pg.wait_for_selector(".dialog", state="detached")
+            await pg.wait_for_function(f"() => window.__workshop.index.get('{move_id}')?.projectId === '{ids['gears']}'", timeout=20000)
+            mv = await pg.evaluate(f"() => window.__workshop.index.get('{move_id}')")
+            check("edit dialog starts with the values in use", prefilled == "CC-BY-SA-4.0", prefilled)
+            check("item listed under another project; credits stay", mv["projectId"] == ids["gears"] and mv["sourceId"] == v76 and mv["license"]["spdx"] == "CC-BY-SA-4.0",
+                  (mv["projectId"], mv["sourceId"], mv["license"]))
+
+            # 10. library settings: categories, deleted items, project hide, trash
+            await pg.goto(B + "#/library-settings")
+            await pg.wait_for_selector("#ls-category-table")
+            await pg.fill("#category-new", "Kitchen")
+            await pg.click("#category-add")
+            await pg.wait_for_selector('[data-category="kitchen"]')
+            await pg.click('[data-category="labels"] [data-act=remove-category]')
+            await pg.select_option('[data-category="labels"] [data-move-to]', "gridfinity")
+            await pg.click('[data-category="labels"] [data-act=remove-confirm]')
+            await pg.wait_for_selector('[data-category="labels"]', state="detached")
+            left = await pg.evaluate("() => window.__workshop.index.items.filter((i) => i.category === 'labels').length")
+            await pg.click(".ls-removed summary")
+            await pg.click("[data-act=restore-category]")
+            await pg.wait_for_selector('[data-category="labels"]')
+            back = await pg.evaluate("() => window.__workshop.index.items.filter((i) => i.category === 'labels').length")
+            check("categories: add, remove (items move), bring back", left == 0 and back >= 5, (left, back))
+            await pg.click("#ls-deleted [data-act=restore-item]")
+            await pg.wait_for_function(f"() => !!window.__workshop.index.get('{del_id}')")
+            check("a deleted item comes back from Library settings", True)
+            await pg.click(f'[data-source="{ids["gears"]}"] [data-act=hide-project]')
+            await pg.wait_for_function(f"() => window.__workshop.index.items.filter((i) => i.projectId === '{ids['gears']}').every((i) => i.hidden)")
+            hidden_n = await pg.evaluate(f"() => window.__workshop.index.query({{ scope: {{ project: '{ids['gears']}' }} }}).total")
+            await pg.click(f'[data-source="{ids["gears"]}"] [data-act=hide-project]')
+            await pg.wait_for_function(f"() => window.__workshop.index.query({{ scope: {{ project: '{ids['gears']}' }} }}).total > 0")
+            check("a hidden project hides everything in it", hidden_n == 0)
+            await pg.click('[data-source="local-bevel"] [data-act=delete-project]')
+            await pg.wait_for_selector("[data-entry]")
+            in_trash = not (library / "local/bevel").exists() and any((library / "trash").iterdir())
+            await pg.click("[data-entry] [data-act=trash-restore]")
+            await pg.wait_for_selector('[data-source="local-bevel"]')
+            restored = (library / "local/bevel/bevel_gear.scad").is_file()
+            await pg.click('[data-source="local-bevel"] [data-act=delete-project]')
+            await pg.wait_for_selector("[data-entry]")
+            await pg.screenshot(path=str(out / "p2-06-library-settings.png"), full_page=True)
+            await pg.click("#trash-empty")
+            await pg.wait_for_selector("#trash-none")
+            emptied = not any((library / "trash").iterdir())
+            check("deleted project goes to the trash, comes back, trash empties", in_trash and restored and emptied, (in_trash, restored, emptied))
             await b.close()
     finally:
         server.terminate()
         server.wait(timeout=20)
 
-    # 9. portable: the library opens the same after moving it
+    # 11. portable: the library opens the same after moving it
     moved = home / "moved" / "My library"
     shutil.copytree(library, moved)
 

@@ -4,6 +4,7 @@
   "name": "openGrid parts",
   "summary": "Official openGrid connectors, wall mounts, cover snaps, snaps and Multiconnect parts, plus STEP and Shapr3D modelling files. Tiles and the standard snaps come from the openGrid generator instead.",
   "system": "opengrid",
+  "category": "wall",
   "authors": [
     {
       "name": "David D"

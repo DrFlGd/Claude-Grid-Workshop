@@ -7,7 +7,7 @@ import { Icon } from "./icons.js";
 import { LICENSE_TEXT } from "./index-local.js";
 import { bytes, FORMAT_LABEL, plural } from "../lib/util.js";
 import { isDesktop, readOnly, api } from "./library.js";
-import { itemTarget } from "./metaedit.js";
+import { ItemActions } from "./actions.js";
 
 const canEdit = () => isDesktop() && !readOnly();
 
@@ -16,11 +16,10 @@ async function useAsGroupIcon(it, group) {
   const name = it.kind === "part" ? `part-${it.key.split("/")[1]}` : it.key.split("/")[1];
   try {
     if (group === "project") {
-      const r = await api("meta_set", { source: it.projectId, level: "project", target: null, patch: { icon: `item:${name}` } });
+      await api("meta_set", { source: it.projectId, level: "project", target: null, patch: { icon: `item:${it.sourceId}/${name}` } });
       ctx.toast(`Icon set for ${it.project}.`);
-      void r;
     } else {
-      await api("category_set", { id: it.category, icon: `item:${it.projectId}/${name}` });
+      await api("category_set", { id: it.category, icon: `item:${it.sourceId}/${name}` });
       ctx.toast(`Icon set for ${it.categoryLabel}.`);
     }
     await ctx.reloadCatalog();
@@ -73,7 +72,8 @@ export function Inspector() {
         <button type="button" class="ghost" onClick=${() => ui.set({ selection: [] })}>Clear selection</button>
       </div>
       ${canEdit() ? html`<button type="button" class="ghost" data-act="bulk-edit" onClick=${() => ui.set({ dialog: { type: "edit", level: "bulk", items: sel.map((i) => i.id) } })}>
-        ${Icon.edit(15)} Edit details of ${plural(sel.length, "item")}</button>` : html`<p class="muted insp-later">${isDesktop() ? "This library is read-only." : "Editing details is in the desktop app."}</p>`}
+        ${Icon.edit(15)} Edit details of ${plural(sel.length, "item")}</button>
+        <${ItemActions} items=${sel} />` : html`<p class="muted insp-later">${isDesktop() ? "This library is read-only." : "Editing details is in the desktop app."}</p>`}
     </aside>`;
   }
   const it = sel[0];
@@ -94,12 +94,14 @@ export function Inspector() {
         title="Favourite (F)" onClick=${() => toggleFav([it.id])}>${Icon.star(17, fav)}</button>
       <button type="button" class="ghost" onClick=${() => ui.set({ quicklook: it.id })} title="Quick look (Space)">${Icon.eye(16)} Quick look</button>
     </div>
+    ${it.broken ? html`<p class="insp-flag broken" role="note">${Icon.alert(14)} Flagged as broken${it.broken.date ? ` on ${it.broken.date}` : ""}${it.broken.note ? html`: <span>${it.broken.note}</span>` : "."}</p>` : null}
+    ${it.hidden ? html`<p class="insp-flag" role="note">${Icon.eye(14)} Hidden${it.hidden === "item" ? "" : it.hidden === "project" ? " with its project" : " with its folder"}: it only shows with “Show hidden”.</p>` : null}
     ${it.summary ? html`<p class="insp-summary">${it.summary}</p>` : null}
     <dl class="insp-dl">
-      <dt>Kind</dt><dd>${it.kind === "part" ? "Ready-made part" : "Generator"}${it.desktopOnly ? " (desktop app only)" : ""}</dd>
+      <dt>Kind</dt><dd>${it.kind === "part" ? "Part" : "Parametric model"}${it.desktopOnly ? " (desktop app only)" : ""}</dd>
       <dt>Category</dt><dd>${it.subcategory ? `${it.categoryLabel} › ${it.subcategory}` : it.categoryLabel}</dd>
       <dt>License</dt><dd>${lic} ${it.licenseStatus !== "ok" ? html`<span class=${`badge ${it.licenseStatus}`}>${LICENSE_TEXT[it.licenseStatus]}</span>` : null}
-        <a class="insp-more" href=${`#/licenses/${it.projectId}`}>details</a></dd>
+        <a class="insp-more" href=${`#/licenses/${it.sourceId || it.projectId}`}>details</a></dd>
       ${it.settings != null ? html`<dt>Settings</dt><dd>${it.settings}</dd>` : null}
       ${it.dims ? html`<dt>Size</dt><dd>${it.dims.map((d) => Math.round(d * 10) / 10).join(" × ")} mm</dd>` : null}
       ${it.tags.length ? html`<dt>Tags</dt><dd>${it.tags.join(", ")}</dd>` : null}
@@ -116,6 +118,7 @@ export function Inspector() {
       <button type="button" class="ghost" data-act="edit" onClick=${() => ui.set({ dialog: { type: "edit", level: "item", item: it.id } })}>${Icon.edit(15)} Edit details</button>
       ${it.thumb && (s.group === "project" || s.group === "cat") ? html`<button type="button" class="ghost" data-act="group-icon" onClick=${() => useAsGroupIcon(it, s.group)}
         title=${`Show this item's thumbnail for ${s.group === "project" ? it.project : it.categoryLabel} when groups are condensed`}>Use as the group's icon</button>` : null}
-    </div>` : null}
+    </div>
+    <${ItemActions} items=${[it]} />` : null}
   </aside>`;
 }

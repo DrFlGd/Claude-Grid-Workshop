@@ -28,6 +28,7 @@ export const ui = createStore({
   inspector: true,
   condensed: false,        // grouped results shown as one tile per group
   openGroup: null,         // the condensed group being looked into
+  showHidden: false,       // list hidden items and projects too
   catalogVersion: 0,       // bumps when the catalog is reloaded (desktop: library changes)
   dialog: null,            // { type: "add-project" | "edit" | "merge", ... }
   undo: [],                // [{ label, run }] newest last (metadata edits)

@@ -13,9 +13,12 @@
 use serde_json::{json, Map, Value};
 
 /// Fields an item takes from its folder and project unless it has its own.
-pub const INHERITED: [&str; 6] = ["summary", "category", "tags", "license", "authors", "origin"];
-/// Fields that belong to one level only.
-pub const OWN: [&str; 3] = ["name", "notes", "icon"];
+/// ("hidden" on a project hides all its items; an item can say false.)
+pub const INHERITED: [&str; 7] = ["summary", "category", "tags", "license", "authors", "origin", "hidden"];
+/// Fields that belong to one level only. On an item: "broken" ({ note, date }: it
+/// doesn't work), "deleted" (left out of the library, also after updates) and
+/// "project" (listed under another project; credits stay with its own).
+pub const OWN: [&str; 6] = ["name", "notes", "icon", "broken", "deleted", "project"];
 
 /// Every editable field (plus open "fields": { key: value }).
 pub fn is_field(k: &str) -> bool {
@@ -42,6 +45,9 @@ pub fn normalise(field: &str, v: &Value) -> Value {
             }
             l
         }
+        ("hidden" | "deleted", v) => json!(v.as_bool().unwrap_or(!v.is_null())),
+        ("broken", Value::Bool(true)) => json!({}),
+        ("broken", Value::String(s)) => json!({ "note": s }),
         ("tags", Value::String(s)) => json!(s.split(',').map(str::trim).filter(|t| !t.is_empty()).collect::<Vec<_>>()),
         ("authors", Value::String(s)) => json!(s.split(',').map(str::trim).filter(|t| !t.is_empty()).map(|n| json!({ "name": n })).collect::<Vec<_>>()),
         _ => v.clone(),

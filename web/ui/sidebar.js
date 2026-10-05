@@ -1,38 +1,69 @@
-// Sidebar: Home, Recent, Favourites, generators by category and project,
-// ready-made parts, "Needs attention", and links to Settings and Licenses.
+// Sidebar: Home, Recent, Favourites; Parametric Models and the Parts Library,
+// each as categories (collapsed until opened) with their projects inside;
+// "Needs attention"; Add a project (desktop); Settings, Library settings, Licenses.
 import { html, useState } from "../lib/html.js";
 import { useStore } from "../lib/store.js";
 import { ui } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
-import { isDesktop, sourceById } from "./library.js";
+import { isDesktop, readOnly, sourceById } from "./library.js";
+import { categoryLabel } from "./index-local.js";
+
+/** The name of a project as the index lists it (moved items included). */
+function projectName(id, kind) {
+  const it = ctx.index.items.find((i) => i.projectId === id && (!kind || i.kind === kind));
+  return it?.project || sourceById(id)?.name || ctx.catalog.families?.find((f) => f.id === id)?.name || ctx.libraries?.find((l) => l.id === id)?.name || id;
+}
+
+/** Everything that needs a look: licenses not cleared for sharing, and models flagged as broken. */
+export const needsAttention = (i) => i.licenseStatus !== "ok" || !!i.broken;
 
 export function scopeInfo(scope) {
-  const { catalog, libraries, index } = ctx;
+  const { catalog, index } = ctx;
   const s = ui.get();
   if (scope === "home") return { label: "Home" };
   if (scope === "search") return { label: "Search", query: {} };
-  if (scope === "all") return { label: "All generators", query: { kind: "generator" } };
+  if (scope === "all") return { label: "Parametric Models", query: { kind: "generator" } };
+  if (scope === "parts") return { label: "Parts Library", query: { kind: "part" } };
   if (scope === "favs") return { label: "Favourites", query: { ids: s.favs }, sort: "given" };
   if (scope === "recent") return { label: "Recent", query: { ids: s.recent.map((r) => r.id) }, sort: "given" };
-  if (scope === "parts") return { label: "Ready-made parts", query: { kind: "part" } };
   if (scope === "attention") {
-    const ids = index.items.filter((i) => i.licenseStatus !== "ok").map((i) => i.id);
-    return { label: "Needs attention", note: "Items below have a license or author that isn't stated, or isn't cleared for sharing. Check before sharing or selling prints.", query: { ids } };
+    const ids = index.items.filter((i) => needsAttention(i) && !i.hidden).map((i) => i.id);
+    return { label: "Needs attention", note: "Models flagged as broken, and items whose license or author isn't stated or isn't cleared for sharing. Check before sharing or selling prints.", query: { ids } };
   }
   const [kind, id] = scope.split(":");
-  if (kind === "cat") return { label: catalog.categories.find((c) => c.id === id)?.label || id, query: { kind: "generator", category: id } };
-  if (kind === "project") {
-    const fam = catalog.families.find((f) => f.id === id);
-    return { label: fam?.name || id, query: { kind: "generator", project: id }, project: fam };
-  }
-  if (kind === "lib") return { label: libraries.find((l) => l.id === id)?.name || id, query: { kind: "part", project: id } };
-  if (kind === "source") return { label: sourceById(id)?.name || id, query: { project: id }, source: id };
+  if (kind === "cat") return { label: categoryLabel(catalog, id), query: { kind: "generator", category: id } };
+  if (kind === "pcat") return { label: `${categoryLabel(catalog, id)} parts`, query: { kind: "part", category: id } };
+  if (kind === "project") return { label: projectName(id, "generator"), query: { kind: "generator", project: id } };
+  if (kind === "lib") return { label: projectName(id, "part"), query: { kind: "part", project: id } };
+  if (kind === "source") return { label: sourceById(id)?.name || projectName(id), query: { project: id }, source: id };
   return { label: scope, query: {} };
 }
 
 function count(query) {
   return ctx.index.query({ scope: query }).total;
+}
+
+/**
+ * One section's categories with their projects: [{ id, label, n, projects: [{ id, name, n }] }],
+ * in the library's category order ("Other" last). Hidden items don't count.
+ */
+function tree(kind) {
+  const cats = new Map();
+  const perProject = new Map();
+  for (const i of ctx.index.items) {
+    if (i.kind !== kind || i.hidden) continue;
+    perProject.set(i.projectId, (perProject.get(i.projectId) || 0) + 1);
+    let c = cats.get(i.category);
+    if (!c) cats.set(i.category, (c = { id: i.category, label: i.categoryLabel, n: 0, projects: new Map() }));
+    c.n++;
+    if (!c.projects.has(i.projectId)) c.projects.set(i.projectId, { id: i.projectId, name: i.project });
+  }
+  const order = (ctx.catalog.category_choices || ctx.catalog.categories || []).map((c) => c.id);
+  const rank = (id) => (id === "other" ? 1e6 : order.includes(id) ? order.indexOf(id) : 1e5);
+  return [...cats.values()]
+    .sort((a, b) => rank(a.id) - rank(b.id) || a.label.localeCompare(b.label))
+    .map((c) => ({ ...c, projects: [...c.projects.values()].map((p) => ({ ...p, n: perProject.get(p.id) })).sort((a, b) => a.name.localeCompare(b.name)) }));
 }
 
 function Row({ scope, label, n, icon, depth = 0, expand, open, onToggle, current }) {
@@ -47,31 +78,33 @@ function Row({ scope, label, n, icon, depth = 0, expand, open, onToggle, current
   </li>`;
 }
 
-function Projects({ current }) {
-  const [open, setOpen] = useState(true);
-  const sources = (ctx.catalog.sources || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  return html`<div class="nav-head-row"><button type="button" class="nav-head nav-head-btn" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>
-      Projects <span class="nav-count">${sources.length}</span></button>
-      <button type="button" class="nav-add" title="Add a project from GitHub, a ZIP or a folder" aria-label="Add a project"
-        onClick=${() => ui.set({ dialog: { type: "add-project" }, navOpen: false })} id="add-project">+</button></div>
-    ${open ? html`<ul class="nav-list nav-projects">${sources.map((src) => html`<${Row} scope=${`source:${src.id}`} label=${src.name}
-      n=${(src.models || 0) + (src.parts || 0)} current=${current} key=${src.id}
-      icon=${src.update?.state === "available" ? html`<span class="dot busy" title="Update ready"></span>` : src.role === "library" ? html`<span title="Library">${Icon.box(13)}</span>` : null} />`)}</ul>` : null}`;
+/** A section: "All …", then each category, opening to its projects. */
+function Section({ kind, current, open, toggle }) {
+  const catScope = kind === "part" ? "pcat" : "cat";
+  const projScope = kind === "part" ? "lib" : "project";
+  const all = kind === "part" ? "parts" : "all";
+  return html`<ul class="nav-list" data-section=${kind}>
+    <${Row} scope=${all} label=${kind === "part" ? "All parts" : "All models"} n=${count({ kind })} current=${current}
+      icon=${kind === "part" ? Icon.box(15) : Icon.grid(15)} />
+    ${tree(kind).map((c) => {
+      const key = `${kind}:${c.id}`;
+      return html`<${Row} scope=${`${catScope}:${c.id}`} label=${c.label} n=${c.n} current=${current} key=${key}
+          expand=${true} open=${open[key]} onToggle=${toggle(key)} />
+        ${open[key] ? c.projects.map((p) => html`<${Row} scope=${`${projScope}:${p.id}`} label=${p.name} depth=${1}
+          n=${p.n} current=${current} key=${`${key}/${p.id}`} />`) : null}`;
+    })}
+  </ul>`;
 }
 
 export function Sidebar() {
   const s = useStore(ui, (st) => ({ scope: st.scope, view: st.view, favs: st.favs.length, recent: st.recent.length, ready: st.ready, navOpen: st.navOpen, v: st.catalogVersion }));
   const [open, setOpen] = useState(() => ({}));
   if (!s.ready) return null;
-  const { catalog, libraries } = ctx;
   const current = s.view === "browse" ? s.scope : null;
   const toggle = (k) => () => setOpen({ ...open, [k]: !open[k] });
-  const fams = (catId) => {
-    const keys = new Set(catalog.categories.find((c) => c.id === catId)?.models || []);
-    const ids = [...new Set(catalog.models.filter((m) => keys.has(m.key)).map((m) => m.family))];
-    return ids.map((id) => catalog.families.find((f) => f.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
-  };
-  const attention = count(scopeInfo("attention").query) + (ctx.catalog.attention || []).filter((a) => a.kind !== "license").length;
+  const hasParts = ctx.index.items.some((i) => i.kind === "part" && !i.hidden);
+  const attention = count(scopeInfo("attention").query) + (ctx.catalog.attention || []).filter((a) => a.kind !== "license" && a.kind !== "broken").length;
+  const page = location.hash.replace(/^#\/?/, "").split(/[/?]/)[0];
   return html`${s.navOpen ? html`<div class="nav-backdrop" onClick=${() => ui.set({ navOpen: false })}></div>` : null}
   <nav class=${`sidebar${s.navOpen ? " open" : ""}`} aria-label="Library"
     onKeyDown=${(e) => { if (e.key === "Escape" && ui.get().navOpen) ui.set({ navOpen: false }); }}>
@@ -80,27 +113,20 @@ export function Sidebar() {
       <${Row} scope="recent" label="Recent" n=${s.recent} icon=${Icon.clock(15)} current=${current} />
       <${Row} scope="favs" label="Favourites" n=${s.favs} icon=${Icon.star(15)} current=${current} />
     </ul>
-    <h2 class="nav-head">Generators</h2>
-    <ul class="nav-list">
-      <${Row} scope="all" label="All generators" n=${count({ kind: "generator" })} current=${current} />
-      ${catalog.categories.map((c) => html`
-        <${Row} scope=${`cat:${c.id}`} label=${c.label} n=${count({ kind: "generator", category: c.id })} current=${current}
-          expand=${true} open=${open[c.id]} onToggle=${toggle(c.id)} />
-        ${open[c.id] ? fams(c.id).map((f) => html`<${Row} scope=${`project:${f.id}`} label=${f.name} depth=${1}
-          n=${count({ kind: "generator", project: f.id })} current=${current} />`) : null}`)}
-    </ul>
-    ${libraries.length ? html`<h2 class="nav-head">Library</h2>
-      <ul class="nav-list">
-        <${Row} scope="parts" label="Ready-made parts" n=${count({ kind: "part" })} icon=${Icon.box(15)} current=${current}
-          expand=${libraries.length > 0} open=${open.__parts} onToggle=${toggle("__parts")} />
-        ${open.__parts ? libraries.map((l) => html`<${Row} scope=${`lib:${l.id}`} label=${l.name} depth=${1} n=${l.items.length} current=${current} />`) : null}
-      </ul>` : null}
-    ${isDesktop() ? html`<${Projects} current=${current} />` : null}
+    <h2 class="nav-head">Parametric Models</h2>
+    <${Section} kind="generator" current=${current} open=${open} toggle=${toggle} />
+    ${hasParts ? html`<h2 class="nav-head">Parts Library</h2>
+      <${Section} kind="part" current=${current} open=${open} toggle=${toggle} />` : null}
+    ${isDesktop() && !readOnly() ? html`<ul class="nav-list nav-add"><li>
+      <button type="button" class="nav-link" id="add-project" title="Add a project from GitHub, a ZIP or a folder. Its models and parts appear under Parametric Models and the Parts Library."
+        onClick=${() => ui.set({ dialog: { type: "add-project" }, navOpen: false })}><span class="nav-icon">${Icon.plus(15)}</span><span class="nav-label">Add a project</span></button>
+    </li></ul>` : null}
     ${attention ? html`<ul class="nav-list nav-attention">
       <${Row} scope="attention" label="Needs attention" n=${attention} icon=${Icon.alert(15)} current=${current} />
     </ul>` : null}
     <ul class="nav-list nav-foot">
-      <li><a class="nav-link" href="#/settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.gear(15)}</span><span class="nav-label">Settings</span></a></li>
+      <li><a class=${`nav-link${page === "settings" ? " active" : ""}`} href="#/settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.gear(15)}</span><span class="nav-label">Settings</span></a></li>
+      ${isDesktop() ? html`<li><a class=${`nav-link${page === "library-settings" ? " active" : ""}`} href="#/library-settings" id="nav-library-settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.box(15)}</span><span class="nav-label">Library settings</span></a></li>` : null}
       <li><a class="nav-link" href="#/licenses" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon"></span><span class="nav-label">Licenses & credits</span></a></li>
     </ul>
   </nav>`;

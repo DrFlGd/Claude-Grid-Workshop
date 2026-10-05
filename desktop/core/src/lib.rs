@@ -30,3 +30,7 @@ pub use engine::NativeEngine;
 pub use render::{RenderEvent, RenderOutput, RenderRequest, Renderer};
 pub use site::SiteDir;
 pub use library::Library;
+
+/// The app's version. The repository keeps `<major>.<minor>.0`; release builds
+/// get their number from CI (tools/set_version.py), one higher each release.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");

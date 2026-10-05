@@ -183,6 +183,16 @@ export async function createPlatform() {
     }
   }
   const libraryUrl = info.library_url || "library://localhost/";
+  // web links (a project's GitHub page, the releases page) open in the default browser, not in the app's window
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest?.("a[href]");
+    if (!a || e.defaultPrevented || a.hasAttribute("download")) return;
+    let url;
+    try { url = new URL(a.href, location.href); } catch { return; }
+    if (!/^https?:$/.test(url.protocol) || url.origin === location.origin || url.href.startsWith(libraryUrl)) return;
+    e.preventDefault();
+    invoke("open_url", { url: url.href }).catch((err) => console.warn("open_url", err));
+  });
   return {
     kind: "desktop",
     info,

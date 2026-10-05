@@ -5,6 +5,7 @@ import { useStore } from "../lib/store.js";
 import { ui, setTabs, cycleTheme, resolvedTheme } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
+import { plural } from "../lib/util.js";
 
 export function searchTo(q) {
   const target = q ? `#/search?q=${encodeURIComponent(q)}` : "#/search";
@@ -28,7 +29,7 @@ export function TopSearch() {
   }, []);
   return html`<div class="topsearch">
     <span class="topsearch-icon">${Icon.search(16)}</span>
-    <input ref=${input} type="search" id="global-search" value=${value} placeholder="Search generators, parts, settings…"
+    <input ref=${input} type="search" id="global-search" value=${value} placeholder="Search models, parts, settings…"
       aria-label="Search everything" autocomplete="off" spellcheck="false"
       onInput=${(e) => searchTo(e.target.value)}
       onKeyDown=${(e) => { if (e.key === "Enter" || e.key === "ArrowDown") { e.preventDefault(); document.querySelector(".results")?.focus(); } }} />
@@ -63,7 +64,7 @@ export function Tabs() {
     ctx.closeModelTab(key);
   };
   const libActive = s.view !== "model";
-  return html`<div class="tabstrip" role="tablist" aria-label="Open generators" ref=${strip} onWheel=${onWheel}>
+  return html`<div class="tabstrip" role="tablist" aria-label="Open models" ref=${strip} onWheel=${onWheel}>
     <a role="tab" class=${`tab tab-lib${libActive ? " active" : ""}`} aria-selected=${libActive ? "true" : "false"}
       href=${ui.get().lastBrowse || "#/"}>${Icon.grid(14)} Library</a>
     ${s.tabs.map((key) => {
@@ -90,10 +91,11 @@ export function StatusBar() {
   const s = useStore(ui, (st) => ({ jobs: st.jobs, ready: st.ready }));
   const [open, setOpen] = useState(false);
   if (!s.ready) return null;
-  const gens = ctx.index.items.filter((i) => i.kind === "generator").length;
+  const shown = ctx.index.items.filter((i) => !i.hidden);
+  const gens = shown.filter((i) => i.kind === "generator").length;
   const latest = s.jobs[s.jobs.length - 1];
   return html`<div class="statusbar-inner">
-    <span>${gens} generators · ${ctx.index.items.length - gens} ready-made parts</span>
+    <span>${plural(gens, "parametric model")} · ${plural(shown.length - gens, "part")}${ctx.index.hiddenCount ? ` · ${ctx.index.hiddenCount} hidden` : ""}</span>
     <span class="status-jobs">
       ${latest ? html`<button type="button" class="status-job" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>
         <span class="dot busy"></span>${latest.label}… <${Elapsed} since=${latest.started} />${s.jobs.length > 1 ? ` · ${s.jobs.length} running` : ""}</button>`

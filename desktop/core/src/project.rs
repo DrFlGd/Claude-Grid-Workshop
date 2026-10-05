@@ -356,8 +356,9 @@ pub fn bundle_site(site: &Path, out: &Path) -> Result<Vec<String>> {
             }
             parts.push(it);
         }
+        let category = detail["category"].as_str().unwrap_or("other");
         let family = json!({
-            "id": id, "name": detail["name"], "status": "available", "category": "parts",
+            "id": id, "name": detail["name"], "status": "available", "category": category,
             "summary": detail["summary"], "tags": [], "license": detail["license"], "authors": detail["authors"],
             "links": detail["source_url"].as_str().map(|u| json!({ "source": u })).unwrap_or(json!({})),
             "source": { "repository": detail["source_url"] }, "models": [],
@@ -374,7 +375,7 @@ pub fn bundle_site(site: &Path, out: &Path) -> Result<Vec<String>> {
             "version": version, "version_date": made, "versions": [{ "id": version, "date": made, "added": made }],
             "detected": {
                 "name": detail["name"], "summary": detail["summary"], "license": detail["license"], "authors": detail["authors"],
-                "tags": [], "origin": detail["source_url"],
+                "tags": [], "origin": detail["source_url"], "category": category,
             },
         });
         crate::config::write_json(&dir.join("source.json"), &src)?;

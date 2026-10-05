@@ -8,8 +8,8 @@ import { scopeInfo } from "./sidebar.js";
 import { Icon } from "./icons.js";
 import { Inspector } from "./inspector.js";
 import { Home } from "./home.js";
-import { LICENSE_TEXT, AGE_TEXT } from "./index-local.js";
-import { SourcePanel, AttentionList, isDesktop } from "./library.js";
+import { LICENSE_TEXT, AGE_TEXT, KINDS, STATUS_TEXT } from "./index-local.js";
+import { SourcePanel, AttentionList, isDesktop, sourceById, readOnly } from "./library.js";
 import { plural } from "../lib/util.js";
 
 const LAYOUTS = [["grid", "Grid", Icon.grid], ["list", "List", Icon.list], ["table", "Table", Icon.table], ["grouped", "Grouped", Icon.grouped]];
@@ -18,7 +18,7 @@ const GROUPS = [["none", "No grouping"], ["project", "Project"], ["cat", "Catego
 export const COLUMNS = {
   project: { label: "Project", get: (i) => i.project, sort: "project" },
   categoryLabel: { label: "Category", get: (i) => i.subcategory ? `${i.categoryLabel} › ${i.subcategory}` : i.categoryLabel },
-  kind: { label: "Kind", get: (i) => (i.kind === "part" ? "Part" : "Generator"), sort: "kind" },
+  kind: { label: "Kind", get: (i) => (i.kind === "part" ? "Part" : "Parametric model"), sort: "kind" },
   license: { label: "License", get: (i) => i.license?.spdx && i.license.spdx !== "NOASSERTION" ? i.license.spdx : "Not stated", sort: "license", badge: true },
   settings: { label: "Settings", get: (i) => (i.settings ?? ""), sort: "settings", num: true },
   updated: { label: "Updated", get: (i) => i.updated || "", sort: "updated", nowrap: true },
@@ -31,7 +31,7 @@ function allColumns() {
   return { ...COLUMNS, ...extra };
 }
 const GROUP_KEY = {
-  project: (i) => i.project, cat: (i) => i.categoryLabel, kind: (i) => (i.kind === "part" ? "Ready-made parts" : "Generators"),
+  project: (i) => i.project, cat: (i) => i.categoryLabel, kind: (i) => KINDS[i.kind],
   license: (i) => LICENSE_TEXT[i.licenseStatus] || i.licenseStatus,
 };
 const SIZES = { s: 132, m: 172, l: 236 };
@@ -44,14 +44,14 @@ export function openItem(item) {
 
 /** Query for the current place, search and filters. */
 export function useResults() {
-  const s = useStore(ui, (st) => ({ scope: st.scope, q: st.q, filters: st.filters, sort: st.sort, favs: st.favs, recent: st.recent, ready: st.ready, v: st.catalogVersion }));
+  const s = useStore(ui, (st) => ({ scope: st.scope, q: st.q, filters: st.filters, sort: st.sort, favs: st.favs, recent: st.recent, ready: st.ready, v: st.catalogVersion, showHidden: st.showHidden }));
   return useMemo(() => {
     if (!s.ready || s.scope === "home") return null;
     const info = scopeInfo(s.scope);
     const sort = s.sort === "default" ? (info.sort || "relevance") : s.sort;
-    const res = ctx.index.query({ text: s.q, scope: info.query, filters: s.filters, sort });
+    const res = ctx.index.query({ text: s.q, scope: { ...info.query, hidden: s.showHidden }, filters: s.filters, sort });
     return { info, ...res };
-  }, [s.scope, s.q, s.filters, s.sort, s.favs, s.recent, s.ready, s.v]);
+  }, [s.scope, s.q, s.filters, s.sort, s.favs, s.recent, s.ready, s.v, s.showHidden]);
 }
 
 function groupItems(items, group) {
@@ -74,6 +74,8 @@ function Thumb({ item, cls = "thumb" }) {
 
 function Badges({ item, favs }) {
   return html`${favs.includes(item.id) ? html`<span class="badge-fav" title="Favourite">${Icon.star(12, true)}</span>` : null}
+    ${item.broken ? html`<span class="badge-mini broken" title=${item.broken.note ? `Flagged as broken: ${item.broken.note}` : "Flagged as broken"}>broken</span>` : null}
+    ${item.hidden ? html`<span class="badge-mini hidden" title="Hidden">hidden</span>` : null}
     ${item.desktopOnly ? html`<span class="badge-mini" title="Needs native OpenSCAD (desktop app)">desktop</span>` : null}
     ${item.kind === "part" ? html`<span class="badge-mini">part</span>` : null}`;
 }
@@ -137,7 +139,7 @@ function GridView({ groups, size, sel, favs, onPick, onOpen, cols }) {
     ${g.key ? html`<h2 class="group-head">${g.key} <span>${g.items.length}</span></h2>` : null}
     <div class="grid-view" style=${`--card:${SIZES[size]}px`}>
       ${g.items.map((it) => html`<div role="option" aria-selected=${sel.includes(it.id) ? "true" : "false"} tabindex="-1"
-        class="card" data-item=${it.id} key=${it.id} onClick=${(e) => onPick(it, e)} onDblClick=${() => onOpen(it)}>
+        class="card" data-item=${it.id} data-hidden=${it.hidden ? "" : null} key=${it.id} onClick=${(e) => onPick(it, e)} onDblClick=${() => onOpen(it)}>
         <${Thumb} item=${it} />
         <span class="card-name">${it.name}</span>
         <span class="card-sub">${it.project}</span>
@@ -153,7 +155,7 @@ function ListView({ items, sel, favs, onPick, onOpen, scrollRef }) {
   const w = useWindow(scrollRef, items.length, ROW, virt);
   return html`<div class="list-view" style=${virt ? `padding-top:${w.start * ROW}px;padding-bottom:${(items.length - w.end) * ROW}px` : ""}>
     ${items.slice(w.start, w.end).map((it) => html`<div role="option" aria-selected=${sel.includes(it.id) ? "true" : "false"} tabindex="-1"
-      class="row" data-item=${it.id} key=${it.id} onClick=${(e) => onPick(it, e)} onDblClick=${() => onOpen(it)}>
+      class="row" data-item=${it.id} data-hidden=${it.hidden ? "" : null} key=${it.id} onClick=${(e) => onPick(it, e)} onDblClick=${() => onOpen(it)}>
       <${Thumb} item=${it} cls="thumb thumb-sm" />
       <span class="row-name">${it.name} <${Badges} item=${it} favs=${favs} /></span>
       <span class="row-project">${it.project}</span>
@@ -176,7 +178,7 @@ function TableView({ items, sel, favs, columns: wanted, sort, onSort, onPick, on
     <tbody>
       ${virt && w.start ? html`<tr aria-hidden="true" style=${`height:${w.start * ROW}px`}><td colspan=${columns.length + 1}></td></tr>` : null}
       ${items.slice(w.start, w.end).map((it) => html`<tr role="option" aria-selected=${sel.includes(it.id) ? "true" : "false"} tabindex="-1"
-        data-item=${it.id} key=${it.id} onClick=${(e) => onPick(it, e)} onDblClick=${() => onOpen(it)}>
+        data-item=${it.id} data-hidden=${it.hidden ? "" : null} key=${it.id} onClick=${(e) => onPick(it, e)} onDblClick=${() => onOpen(it)}>
         <td class="td-name"><${Thumb} item=${it} cls="thumb thumb-xs" /> ${it.name} <${Badges} item=${it} favs=${favs} /></td>
         ${columns.map((c) => html`<td class=${COLUMNS[c].num ? "num" : COLUMNS[c].nowrap ? "nowrap" : ""}>${COLUMNS[c].badge
           ? html`${COLUMNS[c].get(it)} ${it.licenseStatus !== "ok" ? html`<span class=${`badge ${it.licenseStatus}`}>${LICENSE_TEXT[it.licenseStatus]}</span>` : null}`
@@ -208,19 +210,31 @@ function groupIcon(group, g) {
   return null;
 }
 
+// what a grouping's tiles are called ("‹ All projects")
+const GROUP_NOUN = { project: "projects", cat: "categories", kind: "kinds", license: "licenses" };
+
 function CondensedView({ groups, group, size }) {
+  const projects = group === "project" && isDesktop();
   return html`<div class="grid-view condensed" style=${`--card:${SIZES[size]}px`}>
     ${groups.map((g) => {
       const icon = groupIcon(group, g);
       const thumbs = g.items.filter((i) => i.thumb).slice(0, 4);
+      const src = projects ? sourceById(g.items[0]?.projectId) : null;
       return html`<button type="button" class="card group-tile" data-group=${g.key || ""} key=${g.key || "all"}
-        onClick=${() => ui.set({ openGroup: g.key, selection: [], anchor: null })}>
+        onClick=${() => ui.set({ openGroup: g.key, selection: [], anchor: null, sourceTab: "items" })}>
         <span class=${`thumb${icon ? "" : " collage"}${!icon && thumbs.length < 2 ? " single" : ""}`}>${icon ? html`<img src=${icon} alt="" />`
           : thumbs.length ? thumbs.map((t) => html`<img src=${t.thumb} alt="" loading="lazy" />`) : html`<span class="thumb-none">${(g.key || "?").slice(0, 2)}</span>`}</span>
+        ${src?.update?.state === "available" ? html`<span class="card-badges"><span class="badge-mini update" title="A newer version is ready to review">update</span></span>` : null}
         <span class="card-name">${g.key || "Other"}</span>
         <span class="card-sub">${plural(g.items.length, "item")}</span>
       </button>`;
     })}
+    ${projects && !readOnly() ? html`<button type="button" class="card group-tile add-tile" id="add-project-tile"
+      onClick=${() => ui.set({ dialog: { type: "add-project" } })}>
+      <span class="thumb add-thumb">${Icon.plus(30)}</span>
+      <span class="card-name">Add a project</span>
+      <span class="card-sub">From GitHub, a ZIP or a folder</span>
+    </button>` : null}
   </div>`;
 }
 
@@ -229,7 +243,7 @@ export function Browser() {
   const s = useStore(ui, (st) => ({
     scope: st.scope, q: st.q, filters: st.filters, layout: st.layout, size: st.size, sort: st.sort, group: st.group,
     columns: st.columns, selection: st.selection, anchor: st.anchor, favs: st.favs, inspector: st.inspector, ready: st.ready,
-    condensed: st.condensed, openGroup: st.openGroup, sourceTab: st.sourceTab, v: st.catalogVersion,
+    condensed: st.condensed, openGroup: st.openGroup, sourceTab: st.sourceTab, v: st.catalogVersion, showHidden: st.showHidden,
   }));
   const res = useResults();
   const scrollRef = useRef();
@@ -273,6 +287,7 @@ export function Browser() {
   const onKey = (e) => {
     if (e.target.closest("input, select, textarea, .filter-panel")) return;
     const st = ui.get();
+    if (st.condensed && st.group !== "none" && !st.openGroup) return; // group tiles are plain buttons (Tab, Enter)
     const ids = items.map((i) => i.id);
     const cur = Math.max(0, ids.indexOf(st.anchor ?? ids[0]));
     const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: s.layout === "grid" ? cols : 1, ArrowUp: s.layout === "grid" ? -cols : -1 }[e.key];
@@ -299,18 +314,30 @@ export function Browser() {
   const setFilter = (k) => (vals) => ui.set({ filters: { ...ui.get().filters, [k]: vals } });
   const allGroups = groupItems(items, s.group);
   const condensing = s.condensed && s.group !== "none";
+  const overview = condensing && !s.openGroup;
   const groups = condensing && s.openGroup ? allGroups.filter((g) => g.key === s.openGroup) : allGroups;
   const shownItems = condensing && s.openGroup ? groups.flatMap((g) => g.items) : items;
-  const sourceHidden = info.source && s.sourceTab && s.sourceTab !== "items";
+  // a project opened from its tile shows the project's page (details, files, versions, updates)
+  const openProject = condensing && s.openGroup && s.group === "project" && isDesktop() ? groups[0]?.items[0]?.projectId : null;
+  const panelSource = info.source || (openProject && sourceById(openProject) ? openProject : null);
+  const sourceHidden = panelSource && s.sourceTab && s.sourceTab !== "items";
   const props = { sel: s.selection, favs: s.favs, onPick, onOpen: openItem, scrollRef };
   const title = s.q ? `“${s.q}”` : info.label;
   const typed = Object.entries(res.parsed?.filters || {});
+  const noun = GROUP_NOUN[s.group] || "groups";
+  const countText = overview && items.length ? `${plural(allGroups.length, noun === "categories" ? "category" : noun.slice(0, -1), noun)} · ${plural(items.length, "item")}`
+    : plural(shownItems.length, "item");
+  const condense = () => {
+    if (s.group === "none") setPref({ group: "project", condensed: true });
+    else setPref({ condensed: !s.condensed });
+    ui.set({ openGroup: null, sourceTab: "items", selection: [] });
+  };
   return html`<div class=${`browser${s.inspector ? " with-inspector" : ""}`}>
     <div class="browse-main">
       <div class="browse-head">
         <div class="browse-title">
           <h1>${title}</h1>
-          <span class="browse-count">${items.length} ${items.length === 1 ? "item" : "items"}${s.q ? ` · ${res.ms < 1 ? "<1" : Math.round(res.ms)} ms` : ""}</span>
+          <span class="browse-count">${countText}${s.q ? ` · ${res.ms < 1 ? "<1" : Math.round(res.ms)} ms` : ""}</span>
         </div>
         <div class="browse-tools">
           ${s.layout === "grid" ? html`<div class="seg" role="group" aria-label="Thumbnail size">
@@ -322,11 +349,12 @@ export function Browser() {
               ${SORTS.map(([v, l]) => html`<option value=${v}>${v === "default" ? "Sort: " + (s.q ? "best match" : "default") : "Sort: " + l}</option>`)}
             </select></label>
           <label class="tool-select"><span class="visually-hidden">Group</span>
-            <select value=${s.group} onChange=${(e) => { setPref({ group: e.target.value }); ui.set({ openGroup: null }); }} aria-label="Group">
+            <select value=${s.group} onChange=${(e) => { setPref({ group: e.target.value }); ui.set({ openGroup: null, sourceTab: "items" }); }} aria-label="Group">
               ${GROUPS.map(([v, l]) => html`<option value=${v}>${v === "none" ? l : "Group: " + l}</option>`)}
             </select></label>
-          ${s.group !== "none" ? html`<button type="button" class="tool-btn" aria-pressed=${s.condensed ? "true" : "false"} data-condense
-            title="Show each group as one tile" aria-label="Condense groups" onClick=${() => { setPref({ condensed: !s.condensed }); ui.set({ openGroup: null }); }}>${Icon.stack(16)}</button>` : null}
+          <button type="button" class="tool-btn condense-btn" aria-pressed=${condensing ? "true" : "false"} data-condense
+            title=${s.group === "none" ? "Group by project and show each project as one tile" : `Show each group as one tile (${noun})`}
+            onClick=${condense}>${Icon.stack(15)}<span>Condense</span></button>
           <div class="seg" role="group" aria-label="View">
             ${LAYOUTS.map(([v, l, ic]) => html`<button type="button" aria-pressed=${s.layout === v ? "true" : "false"} title=${`${l} view`}
               aria-label=${`${l} view`} data-layout=${v} onClick=${() => setLayout(v)}>${ic(16)}</button>`)}
@@ -335,24 +363,32 @@ export function Browser() {
             aria-label="Inspector" onClick=${() => setPref({ inspector: !s.inspector })}>${Icon.panel(16)}</button>
         </div>
       </div>
-      ${info.source ? html`<${SourcePanel} id=${info.source} />` : null}
+      ${condensing && s.openGroup ? html`<p class="group-crumb"><button type="button" class="link-btn" data-crumb
+        onClick=${() => ui.set({ openGroup: null, selection: [], sourceTab: "items" })}>‹ All ${noun}</button> / <b>${s.openGroup}</b></p>` : null}
+      ${panelSource ? html`<${SourcePanel} id=${panelSource} key=${panelSource} />` : null}
       ${s.scope === "attention" && isDesktop() ? html`<${AttentionList} />` : null}
       ${info.note ? html`<p class="browse-note">${info.note}</p>` : null}
       ${sourceHidden ? null : html`<div class="filters">
         ${!info.query.kind ? html`<${FilterMenu} name="kind" label="Kind" values=${res.facets.kind} selected=${s.filters.kind || []}
-          render=${(v) => (v === "part" ? "Parts" : "Generators")} onChange=${setFilter("kind")} />` : null}
+          render=${(v) => KINDS[v] || v} onChange=${setFilter("kind")} />` : null}
         ${!info.query.category ? html`<${FilterMenu} name="cat" label="Category" values=${res.facets.cat} selected=${s.filters.cat || []} onChange=${setFilter("cat")} />` : null}
         ${!info.query.project ? html`<${FilterMenu} name="project" label="Project" values=${res.facets.project} selected=${s.filters.project || []} onChange=${setFilter("project")} />` : null}
         <${FilterMenu} name="license" label="License" values=${res.facets.license} selected=${s.filters.license || []}
           render=${(v) => LICENSE_TEXT[v] || v} onChange=${setFilter("license")} />
+        ${Object.keys(res.facets.sub || {}).length > 1 || s.filters.sub?.length ? html`<${FilterMenu} name="sub" label="Type" values=${res.facets.sub}
+          selected=${s.filters.sub || []} onChange=${setFilter("sub")} />` : null}
         <${FilterMenu} name="updated" label="Updated" values=${res.facets.updated} selected=${s.filters.updated || []}
           render=${(v) => AGE_TEXT[v] || v} order=${Object.keys(AGE_TEXT)} onChange=${setFilter("updated")} />
+        ${res.facets.status?.broken || s.filters.status?.length ? html`<${FilterMenu} name="status" label="Status" values=${res.facets.status}
+          render=${(v) => STATUS_TEXT[v] || v} order=${Object.keys(STATUS_TEXT)} selected=${s.filters.status || []} onChange=${setFilter("status")} />` : null}
         ${typed.map(([k, vals]) => html`<span class="chip-btn on typed">${k}:${vals.join(",")}</span>`)}
         ${Object.entries(res.facets.fields || {}).sort(([a], [b]) => a.localeCompare(b)).slice(0, 8).map(([k, vals]) => html`<${FilterMenu} name=${`f:${k}`} label=${k}
           values=${vals} selected=${s.filters[`f:${k}`] || []} onChange=${setFilter(`f:${k}`)} />`)}
         ${s.layout === "table" ? html`<${ColumnChooser} columns=${s.columns} />` : null}
+        ${res.hidden || s.showHidden ? html`<label class="chip-btn hidden-toggle" title="Items and projects you hid">
+          <input type="checkbox" checked=${!!s.showHidden} onChange=${(e) => ui.set({ showHidden: e.target.checked })} data-show-hidden />
+          Show hidden${res.hidden ? ` (${res.hidden})` : ""}</label>` : null}
       </div>`}
-      ${condensing && s.openGroup && !sourceHidden ? html`<p class="group-crumb"><button type="button" class="link-btn" onClick=${() => ui.set({ openGroup: null, selection: [] })}>‹ All groups</button> / <b>${s.openGroup}</b></p>` : null}
       ${sourceHidden ? null : html`<div class="browse-scroll" ref=${scrollRef} onKeyDown=${onKey}>
         <div class="results" ref=${listRef} role="listbox" aria-multiselectable="true" aria-label=${`${title}: results`} tabindex="0"
           data-layout=${s.layout}>

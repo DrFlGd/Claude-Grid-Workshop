@@ -63,6 +63,8 @@ pub struct App {
     job_seq: Mutex<u64>,
     /// one library change at a time (adding, reading, merging)
     busy: tokio::sync::Mutex<()>,
+    /// one update check at a time (the daily one and a click can overlap)
+    checking: tokio::sync::Mutex<()>,
 }
 
 fn e2s(e: anyhow::Error) -> String {
@@ -71,6 +73,17 @@ fn e2s(e: anyhow::Error) -> String {
 
 fn arg<'a>(args: &'a Value, k: &str) -> Result<&'a str> {
     args[k].as_str().filter(|s| !s.is_empty()).with_context(|| format!("missing {k}"))
+}
+
+/// Where a metadata edit goes in metadata.json, from { level, target }.
+fn level_key(args: &Value) -> std::result::Result<(&'static str, Option<String>), String> {
+    let target = || arg(args, "target").map(String::from).map_err(e2s);
+    Ok(match args["level"].as_str().unwrap_or("item") {
+        "project" => ("project", None),
+        "folder" => ("folders", Some(target()?.trim_matches('/').to_string())),
+        "part" => ("parts", Some(target()?)),
+        _ => ("items", Some(target()?)),
+    })
 }
 
 impl App {
@@ -89,6 +102,7 @@ impl App {
             jobs: Mutex::new(vec![]),
             job_seq: Mutex::new(0),
             busy: tokio::sync::Mutex::new(()),
+            checking: tokio::sync::Mutex::new(()),
         }))
     }
 
@@ -269,6 +283,7 @@ impl App {
 
     /// Check GitHub projects for new commits; download and read what changed.
     async fn check_updates(self: &Arc<Self>, only: Option<String>, job: &str) -> Result<Value> {
+        let _one = self.checking.lock().await;
         let lib = self.library().map_err(|e| anyhow!(e))?;
         let token = self.config().github_token();
         let mut found = vec![];
@@ -309,8 +324,13 @@ impl App {
                         Err(e) => json!({ "error": e2s(e) }),
                     };
                     src = lib.source(&id)?;
-                    src["update"] = json!({ "state": "available", "checked": now, "from": "github", "latest": info, "changes": summary });
-                    found.push(id.clone());
+                    if src["version"] == version.as_str() {
+                        // accepted while this check was reading it
+                        src["update"] = json!({ "state": "current", "checked": now });
+                    } else {
+                        src["update"] = json!({ "state": "available", "checked": now, "from": "github", "latest": info, "changes": summary });
+                        found.push(id.clone());
+                    }
                 }
             }
             lib.save_source(&src)?;
@@ -328,6 +348,7 @@ impl App {
                 let lib = self.library();
                 let r = self.renderer().await.ok();
                 j(json!({
+                    "version": crate::VERSION,
                     "os": std::env::consts::OS,
                     "engine": engine.as_ref().ok().map(|e| e.version.clone()),
                     "engine_path": engine.as_ref().ok().map(|e| e.exe.display().to_string()),
@@ -417,7 +438,11 @@ impl App {
                 let mut cats = lib.meta()["categories"].as_object().cloned().unwrap_or_default();
                 let prev = cats.get(&id).cloned().unwrap_or(Value::Null);
                 let mut c = cats.get(&id).and_then(Value::as_object).cloned().unwrap_or_default();
-                for k in ["label", "icon"] {
+                // moved_to: remove the category, its items going to that one ("" brings it back)
+                if args["moved_to"].as_str() == Some(id.as_str()) {
+                    return Err("A category can't move to itself.".into());
+                }
+                for k in ["label", "icon", "moved_to"] {
                     match &args[k] {
                         Value::Null => {}
                         Value::String(s) if s.is_empty() => {
@@ -528,12 +553,30 @@ impl App {
                     }
                     lib.update_meta(json!({ "removed_starter": removed })).map_err(e2s)?;
                 }
-                if src["kind"] == "local" {
-                    return Err("This project is your own folder in the library's local/ folder; delete or move that folder instead.".into());
-                }
-                std::fs::remove_dir_all(lib.source_dir(id).map_err(e2s)?).map_err(|e| e.to_string())?;
+                // into the library's trash/ folder (with your own project's local/ folder), until the trash is emptied
+                let name = self.catalog().ok().and_then(|c| catalog::sorted_sources(&c).get(id).and_then(|s| s["name"].as_str().map(String::from)))
+                    .or_else(|| src["detected"]["name"].as_str().map(String::from))
+                    .unwrap_or_else(|| id.to_string());
+                let info = lib.trash_source(id, &name).map_err(e2s)?;
                 self.invalidate();
-                j(Value::Null)
+                j(info)
+            }
+            "trash_list" => j(json!(self.library()?.trash_list())),
+            "trash_restore" => {
+                let lib = self.library()?;
+                let info = lib.trash_restore(arg(&args, "entry").map_err(e2s)?).map_err(e2s)?;
+                if info["source_kind"] == "bundled" {
+                    let mut removed = lib.meta()["removed_starter"].as_array().cloned().unwrap_or_default();
+                    removed.retain(|v| *v != info["id"]);
+                    lib.update_meta(json!({ "removed_starter": if removed.is_empty() { Value::Null } else { json!(removed) } })).map_err(e2s)?;
+                }
+                self.invalidate();
+                j(info)
+            }
+            "trash_empty" => {
+                let lib = self.library()?;
+                let n = lib.trash_empty(args["entry"].as_str()).map_err(e2s)?;
+                j(json!({ "removed": n }))
             }
             "source_restore_starter" => {
                 let lib = self.library()?;
@@ -607,17 +650,37 @@ impl App {
                 lib.source(id).map_err(e2s)?;
                 let patch = args["patch"].as_object().ok_or("missing patch")?.clone();
                 let mut m = lib.metadata(id);
-                let (section, key) = match args["level"].as_str().unwrap_or("item") {
-                    "project" => ("project", None),
-                    "folder" => ("folders", Some(arg(&args, "target").map_err(e2s)?.trim_matches('/').to_string())),
-                    "part" => ("parts", Some(arg(&args, "target").map_err(e2s)?.to_string())),
-                    _ => ("items", Some(arg(&args, "target").map_err(e2s)?.to_string())),
-                };
+                let (section, key) = level_key(&args)?;
                 let prev = meta::patch_level(meta::level_mut(&mut m, section, key.as_deref()), &patch);
                 meta::prune(&mut m);
                 lib.save_metadata(id, &m).map_err(e2s)?;
                 self.invalidate();
                 j(json!({ "previous": prev }))
+            }
+            "meta_set_many" => {
+                // { edits: [{ source, level, target, patch }] } -> { previous: [same shape, for undo] }
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let edits = args["edits"].as_array().ok_or("missing edits")?;
+                let mut by_source: BTreeMap<String, Vec<&Value>> = BTreeMap::new();
+                for e in edits {
+                    by_source.entry(arg(e, "source").map_err(e2s)?.to_string()).or_default().push(e);
+                }
+                let mut previous = vec![];
+                for (id, es) in by_source {
+                    lib.source(&id).map_err(e2s)?;
+                    let mut m = lib.metadata(&id);
+                    for e in es {
+                        let (section, key) = level_key(e)?;
+                        let patch = e["patch"].as_object().ok_or("missing patch")?;
+                        let prev = meta::patch_level(meta::level_mut(&mut m, section, key.as_deref()), patch);
+                        previous.push(json!({ "source": id, "level": e["level"], "target": e["target"], "patch": prev }));
+                    }
+                    meta::prune(&mut m);
+                    lib.save_metadata(&id, &m).map_err(e2s)?;
+                }
+                self.invalidate();
+                j(json!({ "previous": previous }))
             }
             "meta_clear_items" => {
                 // remove one field from every item/part of a project ("use the project's value everywhere")

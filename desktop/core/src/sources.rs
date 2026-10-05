@@ -77,7 +77,7 @@ impl GitHub {
             .timeout_connect(std::time::Duration::from_secs(20))
             .timeout_read(std::time::Duration::from_secs(120))
             .try_proxy_from_env(true)
-            .user_agent("SCAD-Workshop")
+            .user_agent(&format!("SCAD-Workshop/{}", crate::VERSION))
             .build();
         Self { api: api.trim_end_matches('/').to_string(), token, agent }
     }
