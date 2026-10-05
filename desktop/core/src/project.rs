@@ -18,6 +18,54 @@ use std::sync::Arc;
 /// Version of the derived-data format (bump to re-read every project).
 pub const DERIVED_FORMAT: u64 = 1;
 
+/// What reading a project needs to know about libraries besides the library folder:
+/// the copies bundled with the app, which of them win over the user's own
+/// (`prefer_bundled` in library.json), and start values for modules without examples.
+#[derive(Clone, Default)]
+pub struct IngestLibs {
+    pub bundled: Vec<crate::components::ComponentLibrary>,
+    pub prefer_bundled: Vec<String>,
+    pub curated: Value,
+}
+
+impl IngestLibs {
+    /// Library folders for includes, in the order they're tried: the user's library
+    /// projects first, the bundled copies after them (before them for preferred ones).
+    pub fn search_order(&self, lib: &Library, except: &str) -> Vec<LibrarySource> {
+        let prefer = |n: &str| self.prefer_bundled.iter().any(|p| p.eq_ignore_ascii_case(n));
+        let bundled = |b: &crate::components::ComponentLibrary| LibrarySource {
+            dir: LibraryDir { name: b.info.name.clone(), path: b.root.clone() },
+            source: format!("@bundled/{}", b.info.name),
+            version: b.info.commit.as_deref().unwrap_or("").chars().take(12).collect(),
+        };
+        let mut out: Vec<LibrarySource> = self.bundled.iter().filter(|b| prefer(&b.info.name)).map(bundled).collect();
+        out.extend(library_sources(lib).into_iter().filter(|l| l.source != except));
+        out.extend(self.bundled.iter().filter(|b| !prefer(&b.info.name)).map(bundled));
+        out
+    }
+}
+
+/// What a library project is, for its components.
+pub fn project_lib_info(src: &Value, version: &str, name: &str) -> crate::components::LibInfo {
+    let det = &src["detected"];
+    let repo = match (src["origin"]["owner"].as_str(), src["origin"]["repo"].as_str()) {
+        (Some(o), Some(r)) => Some(format!("{o}/{r}")),
+        _ => None,
+    };
+    let v = src["versions"].as_array().into_iter().flatten().find(|v| v["id"] == version);
+    crate::components::LibInfo {
+        name: name.to_string(),
+        title: det["name"].as_str().unwrap_or(name).to_string(),
+        summary: det["summary"].as_str().unwrap_or("").to_string(),
+        commit: v.and_then(|v| v["commit"].as_str()).map(String::from),
+        date: src["version_date"].as_str().map(|d| d.chars().take(10).collect()),
+        license: det["license"]["spdx"].as_str().map(String::from),
+        authors: det["authors"].as_array().into_iter().flatten().filter_map(|a| a["name"].as_str().or(a.as_str()).map(String::from)).collect(),
+        docs: if name.eq_ignore_ascii_case("BOSL2") { Some("https://github.com/BelfrySCAD/BOSL2/wiki".into()) } else { None },
+        repo,
+    }
+}
+
 /// A library project that others can include from.
 #[derive(Clone, Debug)]
 pub struct LibrarySource {
@@ -62,6 +110,7 @@ pub async fn ingest(
     lib: &Library,
     renderer: &Arc<Renderer>,
     common_files: &BTreeMap<String, String>,
+    libs_ctx: &IngestLibs,
     src: &Value,
     version: &str,
     on_progress: impl Fn(String),
@@ -114,13 +163,14 @@ pub async fn ingest(
         Some(p) => ingest::load_editor_toml(&root.join(p)).unwrap_or(json!({})),
         None => json!({}),
     };
-    let libs = library_sources(lib).into_iter().filter(|l| l.source != id).collect::<Vec<_>>();
+    let libs = libs_ctx.search_order(lib, &id);
     let lib_dirs: Vec<LibraryDir> = libs.iter().map(|l| l.dir.clone()).collect();
     let mut problems: Vec<Value> = found.problems.iter().map(|p| json!({ "kind": "scan", "message": p })).collect();
     let mut blobs: BTreeMap<String, String> = BTreeMap::new();
     let mut renderable: Vec<(String, PathBuf)> = vec![];
     let mut used_ids: Vec<String> = vec![];
     let mut planned = vec![];
+    let mut used: BTreeMap<String, Value> = BTreeMap::new(); // libraries the models include, by name
     for entry in &entries {
         let mut mid = model_id(entry);
         let base = mid.clone();
@@ -138,7 +188,13 @@ pub async fn ingest(
             let sha = sha_file(host)?;
             input_bytes += std::fs::metadata(host).map(|m| m.len()).unwrap_or(0);
             let (owner, base) = match which {
-                Some(i) => (format!("{}@{}", libs[*i].source, libs[*i].version), libs[*i].dir.path.clone()),
+                Some(i) => {
+                    let l = &libs[*i];
+                    used.entry(l.dir.name.to_lowercase()).or_insert_with(|| {
+                        json!({ "name": l.dir.name, "provider": if l.source.starts_with("@bundled/") { "bundled" } else { l.source.as_str() }, "version": l.version })
+                    });
+                    (format!("{}@{}", l.source, l.version), l.dir.path.clone())
+                }
                 None => (format!("{id}@{version}"), root.clone()),
             };
             let rel = host.strip_prefix(&base).map(|r| r.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")).unwrap_or_default();
@@ -195,8 +251,28 @@ pub async fn ingest(
             Err(e) => problems.push(json!({ "kind": "settings", "model": key, "message": format!("{entry}: {e}") })),
         }
     }
+    // a library project: its modules, for Components
+    let components = if role == "library" {
+        on_progress("Reading the library's modules…".into());
+        let name = library_sources(lib).into_iter().find(|l| l.source == id).map(|l| l.dir.name).unwrap_or_else(|| id.clone());
+        let info = project_lib_info(src, version, &name);
+        let curated = libs_ctx.curated.get(&name).cloned();
+        let no_guess = libs_ctx.curated.get("$no_guess").and_then(|n| n.get(&name)).cloned();
+        let root2 = root.clone();
+        match tokio::task::spawn_blocking(move || crate::components::index_library(&info, &root2, curated.as_ref(), no_guess.as_ref())).await? {
+            Ok(v) => v,
+            Err(e) => {
+                problems.push(json!({ "kind": "scan", "message": format!("Couldn't read the library's modules: {e:#}") }));
+                Value::Null
+            }
+        }
+    } else {
+        Value::Null
+    };
     let derived = json!({
         "format": DERIVED_FORMAT,
+        "components": components,
+        "libraries_used": used.into_values().collect::<Vec<_>>(),
         "engine": renderer.engine().version,
         "made": library::now(),
         "source": id, "version": version,
@@ -223,8 +299,14 @@ pub fn category_label(id: &str) -> String {
 }
 
 /// Where a blob entry ("<source>@<version>:<path>") is on disk.
-pub fn blob_path(lib: &Library, entry: &str) -> Option<PathBuf> {
+pub fn blob_path(lib: &Library, entry: &str, bundled: &[crate::components::ComponentLibrary]) -> Option<PathBuf> {
     let (owner, rel) = entry.split_once(':')?;
+    if let Some(name) = owner.strip_prefix("@bundled/") {
+        // "@bundled/<Name>@<commit>": a library shipped with the app
+        let name = name.split('@').next()?;
+        let b = bundled.iter().find(|b| b.info.name.eq_ignore_ascii_case(name))?;
+        return Some(b.root.join(library::rel_inside(rel).ok()?));
+    }
     let (source, version) = owner.split_once('@')?;
     let src = lib.source(source).ok()?;
     let dir = lib.version_dir(&src, version).ok()?;

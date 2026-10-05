@@ -423,7 +423,13 @@ async fn site_finish(mut a: Args) -> Result<()> {
 }
 
 fn app_for(home: &std::path::Path, app_site: PathBuf, starter: Option<PathBuf>, engine: PathBuf, library_url: &str) -> Result<Arc<workshop_core::api::App>> {
+    // the bundled libraries: $WORKSHOP_LIBS, or libs/ next to the app's site folder (build/desktop/libs)
+    let libs = std::env::var_os("WORKSHOP_LIBS")
+        .map(PathBuf::from)
+        .or_else(|| app_site.parent().map(|p| p.join("libs")))
+        .filter(|l| l.join("libraries.json").is_file());
     workshop_core::api::App::new(workshop_core::api::AppPaths {
+        libs,
         config_dir: home.join("config"),
         data_dir: home.join("data"),
         site: app_site,

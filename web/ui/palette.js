@@ -13,6 +13,8 @@ function commands() {
     { label: "Go to Home", run: go("#/") },
     { label: "Go to Parametric Models", run: go(scopeHash("all")) },
     { label: "Go to the Parts Library", run: go(scopeHash("parts")) },
+    ...((catalog.components || []).length ? [{ label: "Go to Components", hint: "library modules as forms", run: go(scopeHash("components")) },
+      ...(catalog.component_groups || []).map((g) => ({ label: `Go to ${g.label} components`, run: go(scopeHash(`ccat:${g.id}`)) }))] : []),
     { label: "Go to Favourites", run: go(scopeHash("favs")) },
     { label: "Go to Recent", run: go(scopeHash("recent")) },
     ...catalog.categories.map((c) => ({ label: `Go to ${c.label}`, run: go(scopeHash(`cat:${c.id}`)) })),
@@ -28,7 +30,7 @@ function commands() {
   ];
   if (platform.kind === "desktop") {
     if (!catalog.library?.read_only) list.push({ label: "Add a project", hint: "GitHub, ZIP or folder", run: () => ui.set({ dialog: { type: "add-project" } }) });
-    list.push({ label: "Open Library settings", hint: "projects, categories, trash", run: go("#/library-settings") });
+    list.push({ label: "Open Library settings", hint: "projects, libraries, categories, trash", run: go("#/library-settings") });
     list.push({ label: "Open the library folder", run: () => platform.workspace.open() });
     list.push({ label: "Clear the render cache", run: () => platform.workspace.clearCache() });
   }
@@ -52,7 +54,7 @@ function PaletteBox() {
   useLayoutEffect(() => { input.current?.focus(); }, []);
   const rows = useMemo(() => {
     const acts = commands().filter((c) => !q || matches(c.label, q)).slice(0, q ? 6 : 8).map((c) => ({ ...c, type: "action" }));
-    const items = q ? ctx.index.query({ text: q, limit: 8 }).items.map((i) => ({ label: i.name, hint: i.project, thumb: i.thumb, type: "item", run: () => { location.hash = i.href; } })) : [];
+    const items = q ? ctx.index.query({ text: q, limit: 8 }).items.map((i) => ({ label: i.name, hint: i.kind === "component" ? `${i.project} ${i.module}()` : i.project, thumb: i.thumb, type: "item", run: () => { location.hash = i.href; } })) : [];
     return [...items, ...acts];
   }, [q]);
   const close = () => ui.set({ palette: false });

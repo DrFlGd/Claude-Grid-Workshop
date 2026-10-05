@@ -8,7 +8,9 @@ Checks: the library interface loads (including desktop-only models, with
 thumbnails), search answers quickly, native renders work (one model the browser
 engine can't render), opened models become tabs, saved settings land in the
 workspace folder, the settings page shows the workspace and engine, a
-ready-made part previews, and the night theme applies. Exits non-zero on any failure.
+ready-made part previews, Components (the bundled libraries' modules: listed by
+topic, a BOSL2 bevel gear and a threads-scad bolt render natively, the libraries
+in Library settings), and the night theme applies. Exits non-zero on any failure.
 """
 import argparse
 import json
@@ -211,6 +213,22 @@ try:
         report["part_dims"] = text("#dims")
     time.sleep(0.5)
     shot("04-part")
+
+    # Components: the libraries shipped with the app, their modules as forms, rendered natively
+    n_comp = d.execute_script("return window.__workshop.index.items.filter(i => i.kind === 'component').length")
+    heads = d.execute_script("return [...document.querySelectorAll('.sidebar .nav-head')].map(e => e.textContent.trim())")
+    report["components"] = {"count": n_comp, "menu": heads}
+    print("components:", report["components"], flush=True)
+    if n_comp < 700 or "Components" not in heads:
+        failures.append(f"components: {report['components']}")
+    open_model("@bosl2/bevel_gear")
+    time.sleep(1)
+    shot("04b-component-bevel-gear")
+    open_model("@threads-scad/MetricBolt")
+    d.execute_script("location.hash = '#/library-settings'")
+    if wait("document.querySelectorAll('#ls-libraries tbody tr').length >= 5", 30, "the libraries in Library settings"):
+        report["libraries"] = d.execute_script("return [...document.querySelectorAll('#ls-libraries tbody tr')].map(r => r.dataset.library + ':' + r.dataset.provider)")
+        print("libraries:", report["libraries"], flush=True)
 
     # every generator opened above stays open as a tab
     tabs = d.execute_script("return [...document.querySelectorAll('.tabstrip [data-tab]')].map(t => t.dataset.tab)")

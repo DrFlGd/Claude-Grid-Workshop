@@ -31,16 +31,19 @@ export function Home() {
   const attention = scopeInfo("attention").query.ids;
   const attentionProjects = [...new Set(attention.map((id) => index.get(id).project))];
   const gens = shown.filter((i) => i.kind === "generator").length;
-  const parts = shown.length - gens;
+  const parts = shown.filter((i) => i.kind === "part").length;
   /** Category tiles for one kind, in the library's category order. */
   const categories = (kind) => {
     const counts = new Map();
     for (const i of shown) if (i.kind === kind) counts.set(i.category, { label: i.categoryLabel, n: (counts.get(i.category)?.n || 0) + 1 });
-    const order = (catalog.category_choices || catalog.categories || []).map((c) => c.id);
+    const order = (kind === "component" ? catalog.component_groups || [] : catalog.category_choices || catalog.categories || []).map((c) => c.id);
     const rank = (id) => (id === "other" ? 1e6 : order.includes(id) ? order.indexOf(id) : 1e5);
+    const scope = { part: "pcat", component: "ccat" }[kind] || "cat";
+    const noun = { part: "part", component: "component" }[kind] || "model";
     return [...counts.entries()].sort((a, b) => rank(a[0]) - rank(b[0])).map(([id, c]) =>
-      tile(`${kind === "part" ? "pcat" : "cat"}:${id}`, c.label, plural(c.n, kind === "part" ? "part" : "model"), firstThumb((i) => i.kind === kind && i.category === id)));
+      tile(`${scope}:${id}`, c.label, plural(c.n, noun), firstThumb((i) => i.kind === kind && i.category === id)));
   };
+  const comps = shown.filter((i) => i.kind === "component").length;
   return html`<div class="home">
     <header class="home-head">
       <h1>Make things that fit</h1>
@@ -57,6 +60,9 @@ export function Home() {
         <span><b>${i.name}</b><span class="muted">${i.project} · ${ago(i.t)}</span></span></a>`)}
     </div></section>` : null}
     <section><h2>Parametric Models</h2><div class="home-tiles">${categories("generator")}</div></section>
+    ${comps ? html`<section data-home="components"><h2>Components</h2>
+      <p class="muted section-note">Modules from ${(catalog.component_libraries || []).filter((l) => l.active).map((l) => l.name).join(", ")}, as forms. Search for one (“bevel gear”, “threaded rod”) or pick a topic.</p>
+      <div class="home-tiles">${categories("component")}</div></section>` : null}
     ${parts ? html`<section><h2>Parts Library</h2><div class="home-tiles">${categories("part")}</div></section>` : null}
     <div class="home-pair">
       <section class="home-card"><h2>Favourites</h2>

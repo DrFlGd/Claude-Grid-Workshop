@@ -1,4 +1,5 @@
-// Sidebar: Home, Recent, Favourites; Parametric Models and the Parts Library,
+// Sidebar: Home, Recent, Favourites; Parametric Models, Components (desktop:
+// library modules by topic, with their libraries inside) and the Parts Library,
 // each as categories (collapsed until opened) with their projects inside;
 // "Needs attention"; Add a project (desktop); Settings, Library settings, Licenses.
 import { html, useState } from "../lib/html.js";
@@ -15,6 +16,11 @@ function projectName(id, kind) {
   return it?.project || sourceById(id)?.name || ctx.catalog.families?.find((f) => f.id === id)?.name || ctx.libraries?.find((l) => l.id === id)?.name || id;
 }
 
+/** A Components topic's name ("Gears & pulleys"). */
+export function groupLabel(id) {
+  return (ctx.catalog.component_groups || []).find((g) => g.id === id)?.label || categoryLabel(ctx.catalog, id);
+}
+
 /** Everything that needs a look: licenses not cleared for sharing, and models flagged as broken. */
 export const needsAttention = (i) => i.licenseStatus !== "ok" || !!i.broken;
 
@@ -25,6 +31,8 @@ export function scopeInfo(scope) {
   if (scope === "search") return { label: "Search", query: {} };
   if (scope === "all") return { label: "Parametric Models", query: { kind: "generator" } };
   if (scope === "parts") return { label: "Parts Library", query: { kind: "part" } };
+  if (scope === "components") return { label: "Components", query: { kind: "component" },
+    note: "Modules from OpenSCAD libraries, as forms: set the values, preview, download. Pin one to keep it under Parametric Models with your settings." };
   if (scope === "favs") return { label: "Favourites", query: { ids: s.favs }, sort: "given" };
   if (scope === "recent") return { label: "Recent", query: { ids: s.recent.map((r) => r.id) }, sort: "given" };
   if (scope === "attention") {
@@ -36,6 +44,8 @@ export function scopeInfo(scope) {
   if (kind === "pcat") return { label: `${categoryLabel(catalog, id)} parts`, query: { kind: "part", category: id } };
   if (kind === "project") return { label: projectName(id, "generator"), query: { kind: "generator", project: id } };
   if (kind === "lib") return { label: projectName(id, "part"), query: { kind: "part", project: id } };
+  if (kind === "ccat") return { label: groupLabel(id), query: { kind: "component", category: id } };
+  if (kind === "clib") return { label: `${projectName(id, "component")} components`, query: { kind: "component", project: id } };
   if (kind === "source") return { label: sourceById(id)?.name || projectName(id), query: { project: id }, source: id };
   return { label: scope, query: {} };
 }
@@ -59,7 +69,7 @@ function tree(kind) {
     c.n++;
     if (!c.projects.has(i.projectId)) c.projects.set(i.projectId, { id: i.projectId, name: i.project });
   }
-  const order = (ctx.catalog.category_choices || ctx.catalog.categories || []).map((c) => c.id);
+  const order = (kind === "component" ? ctx.catalog.component_groups || [] : ctx.catalog.category_choices || ctx.catalog.categories || []).map((c) => c.id);
   const rank = (id) => (id === "other" ? 1e6 : order.includes(id) ? order.indexOf(id) : 1e5);
   return [...cats.values()]
     .sort((a, b) => rank(a.id) - rank(b.id) || a.label.localeCompare(b.label))
@@ -79,13 +89,16 @@ function Row({ scope, label, n, icon, depth = 0, expand, open, onToggle, current
 }
 
 /** A section: "All …", then each category, opening to its projects. */
+const SECTION = {
+  generator: { cat: "cat", proj: "project", all: "all", allLabel: "All models", icon: () => Icon.grid(15) },
+  component: { cat: "ccat", proj: "clib", all: "components", allLabel: "All components", icon: () => Icon.cog(15) },
+  part: { cat: "pcat", proj: "lib", all: "parts", allLabel: "All parts", icon: () => Icon.box(15) },
+};
+
 function Section({ kind, current, open, toggle }) {
-  const catScope = kind === "part" ? "pcat" : "cat";
-  const projScope = kind === "part" ? "lib" : "project";
-  const all = kind === "part" ? "parts" : "all";
+  const { cat: catScope, proj: projScope, all, allLabel, icon } = SECTION[kind];
   return html`<ul class="nav-list" data-section=${kind}>
-    <${Row} scope=${all} label=${kind === "part" ? "All parts" : "All models"} n=${count({ kind })} current=${current}
-      icon=${kind === "part" ? Icon.box(15) : Icon.grid(15)} />
+    <${Row} scope=${all} label=${allLabel} n=${count({ kind })} current=${current} icon=${icon()} />
     ${tree(kind).map((c) => {
       const key = `${kind}:${c.id}`;
       return html`<${Row} scope=${`${catScope}:${c.id}`} label=${c.label} n=${c.n} current=${current} key=${key}
@@ -103,6 +116,7 @@ export function Sidebar() {
   const current = s.view === "browse" ? s.scope : null;
   const toggle = (k) => () => setOpen({ ...open, [k]: !open[k] });
   const hasParts = ctx.index.items.some((i) => i.kind === "part" && !i.hidden);
+  const hasComponents = ctx.index.items.some((i) => i.kind === "component");
   const attention = count(scopeInfo("attention").query) + (ctx.catalog.attention || []).filter((a) => a.kind !== "license" && a.kind !== "broken").length;
   const page = location.hash.replace(/^#\/?/, "").split(/[/?]/)[0];
   return html`${s.navOpen ? html`<div class="nav-backdrop" onClick=${() => ui.set({ navOpen: false })}></div>` : null}
@@ -115,6 +129,8 @@ export function Sidebar() {
     </ul>
     <h2 class="nav-head">Parametric Models</h2>
     <${Section} kind="generator" current=${current} open=${open} toggle=${toggle} />
+    ${hasComponents ? html`<h2 class="nav-head">Components</h2>
+      <${Section} kind="component" current=${current} open=${open} toggle=${toggle} />` : null}
     ${hasParts ? html`<h2 class="nav-head">Parts Library</h2>
       <${Section} kind="part" current=${current} open=${open} toggle=${toggle} />` : null}
     ${isDesktop() && !readOnly() ? html`<ul class="nav-list nav-add"><li>

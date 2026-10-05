@@ -38,7 +38,8 @@
     "resources": {
       "../../build/desktop/site/": "site/",
       "../../build/desktop/starter/": "starter/",
-      "../../build/desktop/engine/": "engine/"
+      "../../build/desktop/engine/": "engine/",
+      "../../build/desktop/libs/": "libs/"
     },
     "linux": {
       "deb": {

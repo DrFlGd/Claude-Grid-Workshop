@@ -1,5 +1,6 @@
 // The `index` seam (docs/DESKTOP_PLAN.md, section 5), in memory over the
-// built catalog. Items are parametric models (kind "generator") and parts;
+// built catalog. Items are parametric models (kind "generator"), components
+// (library modules as forms, desktop) and parts;
 // queries do free-text search (prefix, typo-tolerant, synonyms, setting names),
 // typed filters (kind:, tag:, project:, cat:, license:), facets, sorting and
 // paging. Hidden items are left out unless the scope asks for them.
@@ -10,7 +11,7 @@ const SYNONYMS = {
   pegboard: ["wall", "grid"], tag: ["label"], sign: ["label", "text"], screw: ["bolt", "fastener"], bolt: ["screw", "fastener"],
   lid: ["cover"], cover: ["lid"], base: ["baseplate"], plate: ["baseplate"], drawer: ["drawers", "kitchen"],
 };
-export const KINDS = { generator: "Parametric models", part: "Parts" };
+export const KINDS = { generator: "Parametric models", component: "Components", part: "Parts" };
 export const LICENSE_TEXT = { ok: "OK to share", review: "Check license", blocked: "License unclear" };
 export const STATUS_TEXT = { broken: "Flagged as broken", works: "Not flagged" };
 
@@ -78,6 +79,18 @@ export class LocalIndex {
         folder: m.folder || "", fields: m.fields || {}, hidden: m.hidden || null, broken: m.broken || null,
       });
     }
+    // components: library modules; their "project" is the library, their category a topic group
+    const groupLabel = Object.fromEntries((catalog.component_groups || []).map((g) => [g.id, g.label]));
+    for (const c of catalog.components || []) {
+      this.items.push({
+        id: `comp:${c.key}`, kind: "component", key: c.key, name: c.name, module: c.module, project: c.library, projectId: c.family,
+        sourceId: null, category: c.category || "other", categoryLabel: groupLabel[c.category] || c.category_label || "Other",
+        tags: c.tags || [], summary: c.summary || "", license: c.license || {}, licenseStatus: c.license?.public_use || "ok",
+        authors: [], thumb: c.thumb || null, settings: c.settings ?? null, desktopOnly: false, terms: c.terms || "",
+        href: `#/m/${c.key}`, updated: c.updated || null, updatedFrom: "upstream", folder: "", fields: {}, hidden: null, broken: null,
+        needs: c.needs || [], provider: c.provider,
+      });
+    }
     for (const lib of libraries || []) {
       for (const it of lib.items) {
         const cat = it.category_id || lib.category || "other";
@@ -98,7 +111,7 @@ export class LocalIndex {
     this.byId = new Map(this.items.map((i) => [i.id, i]));
     // search fields per item, weighted: name 6, project/tags 3, category 2, summary/authors 1, settings 1
     this.fields = this.items.map((i) => [
-      [words(i.name), 6], [words(i.project), 3], [words(i.tags.join(" ")), 3],
+      [words(`${i.name} ${(i.module || "").replace(/_/g, " ")}`), 6], [words(i.project), 3], [words(i.tags.join(" ")), 3],
       [words(`${i.categoryLabel} ${i.subcategory || ""}`), 2], [words(`${i.summary} ${i.authors.join(" ")}`), 1],
       [words(`${i.terms} ${Object.values(i.fields).join(" ")}`), 1],
     ]);
@@ -174,10 +187,15 @@ export class LocalIndex {
       customKeys.every((k) => has(k, [String(i.fields[k.slice(2)] ?? "")], skip));
 
     const scored = [];
+    const exactName = words(parsed.text).join(" ");
     this.items.forEach((item, idx) => {
       if (item.hidden && inPlace(item)) hidden++;
       if (!inScope(item)) return;
-      const s = terms.length ? this.score(idx, terms) : 1;
+      let s = terms.length ? this.score(idx, terms) : 1;
+      // the whole name typed ("bevel gear") beats names that only contain it ("bevel gear pair"),
+      // and a module's own name (bevel_gear) beats a model that happens to be called that
+      if (s && terms.length && (item.module || "").replace(/_/g, " ").toLowerCase() === exactName) s += 4;
+      else if (s && terms.length && words(item.name).join(" ") === exactName) s += 3;
       if (s) scored.push({ item, s });
     });
     // facets: counts for each filter group, ignoring that group's own selection

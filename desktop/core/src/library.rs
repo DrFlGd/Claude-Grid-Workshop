@@ -375,6 +375,7 @@ impl Library {
         match src["kind"].as_str() {
             Some("local") => Ok(self.root.join(rel_inside(src["origin"]["path"].as_str().context("local project has no path")?)?)),
             Some("linked") => Ok(PathBuf::from(src["origin"]["path"].as_str().context("linked project has no path")?)),
+            Some("pinned") => Ok(self.source_dir(id)?.join("pins")),
             _ => {
                 valid_id(version)?;
                 Ok(self.source_dir(id)?.join("files").join(version))

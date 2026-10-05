@@ -17,6 +17,7 @@ on:
       - "tests/desktop_page.py"
       - "tests/tauri_shim.js"
       - "engine.json"
+      - "libraries.json"
       - ".github/workflows/desktop.yml"
   workflow_dispatch:
 
@@ -70,6 +71,8 @@ jobs:
         run: |
           python tools/build_site.py --engine build/engine --out _site --native-engine build/native/squashfs-root/AppRun
           python tools/thumbnails.py --site _site --native-engine build/native/squashfs-root/AppRun
+          # the OpenSCAD libraries the app ships with (pinned and hash-checked), indexed into Components by build_desktop.py
+          python tools/fetch_libraries.py --out build/desktop/libs
           python tools/build_desktop.py --site _site --out build/desktop --fetch-fonts
       - uses: actions/upload-artifact@v4
         with:
@@ -116,6 +119,19 @@ jobs:
         run: |
           desktop/target/release/workshop-cli bench --app-site build/desktop/site --starter build/desktop/starter \
             --engine build/native/squashfs-root --out ci-out/bench-native-linux.json 2>&1 | tee ci-out/bench-native-linux.log
+      - name: Components (every BOSL2 module with geometry renders its first doc example)
+        run: |
+          desktop/target/release/workshop-cli components-check --libs build/desktop/libs --app-site build/desktop/site \
+            --engine build/native/squashfs-root --library BOSL2 --out ci-out/components-bosl2.json 2>&1 | tee ci-out/components-bosl2.log
+          # the other libraries: a report (start values are suggested or guessed there, so not every one makes a shape)
+          desktop/target/release/workshop-cli components-check --libs build/desktop/libs --app-site build/desktop/site \
+            --engine build/native/squashfs-root --out ci-out/components-all.json --no-fail 2>&1 | tail -3 | tee ci-out/components-all.log
+          python - <<'EOF'
+          import json
+          for name in ("bosl2", "all"):
+              s = json.load(open(f"ci-out/components-{name}.json"))["summary"]
+              print(f"::notice title=Components ({name})::" + "; ".join(f"{k}: {v if isinstance(v, int) else str(v['pass']) + ' made, ' + str(v['fail']) + ' failed'}" for k, v in s.items()))
+          EOF
       - name: Build the app (AppImage, deb)
         working-directory: desktop
         run: npx --yes @tauri-apps/cli@2 build --bundles appimage,deb 2>&1 | tee ../ci-out/tauri-build.log
@@ -206,6 +222,11 @@ jobs:
         run: |
           desktop/target/release/workshop-cli.exe bench --app-site build/desktop/site --starter build/desktop/starter \
             --engine build/desktop/engine --out ci-out/bench-native-windows.json 2>&1 | tee ci-out/bench-native-windows.log
+      - name: Components on Windows (a sample from each library)
+        run: |
+          desktop/target/release/workshop-cli.exe components-check --libs build/desktop/libs --app-site build/desktop/site \
+            --engine build/desktop/engine --out ci-out/components-windows.json --timeout 600 \
+            bevel_gear spur_gear threaded_rod cuboid knuckle_hinge MetricBolt ScrewThread polyRoundExtrude 2>&1 | tee ci-out/components-windows.log
       - uses: actions/upload-artifact@v4
         with: { name: cli-windows, path: desktop/target/release/workshop-cli.exe, retention-days: 3 }
       - name: Build the app (NSIS installer)
@@ -301,7 +322,7 @@ jobs:
               echo "### Changes since $prev"
               git log --no-merges --format='- %s' "$prev..$GITHUB_SHA"
             else
-              echo "First numbered release: Phase 2, the portable library (adding projects from GitHub, ZIP files and folders; update checks; metadata editing)."
+              echo "First numbered release of this series."
             fi
           } > notes.md
           gh release create "v$V" dist/* --title "SCAD Workshop $V" --notes-file notes.md --target "$GITHUB_SHA" --latest

@@ -547,7 +547,7 @@ pub fn apply_metadata(params: &[Value], groups: &[String], fam: &Value, model: &
                 p.insert("presets".into(), json!({ "label": label, "values": vals }));
             }
         }
-        for k in ["label", "description", "unit", "advanced", "axes", "min", "max", "profile"] {
+        for k in ["label", "description", "unit", "advanced", "axes", "min", "max", "step", "profile", "group", "placeholder"] {
             if let Some(v) = m.get(k) {
                 p.insert(k.into(), v.clone());
             }
@@ -589,6 +589,21 @@ pub fn apply_metadata(params: &[Value], groups: &[String], fam: &Value, model: &
         tabs.insert(tab.clone(), Value::Object(t));
     }
     (out, Value::Object(tabs))
+}
+
+/// [`apply_metadata`], then the groups that still have settings, in their order, with any
+/// group a `ui` entry moved a setting to added after them. Returns (parameters, groups, tabs).
+pub fn apply_form(params: &[Value], groups: &[String], fam: &Value, model: &Value, meta: &Value) -> (Vec<Value>, Vec<String>, Value) {
+    let (params, tabs) = apply_metadata(params, groups, fam, model, meta);
+    let mut out: Vec<String> = groups.iter().filter(|g| params.iter().any(|p| p["group"] == g.as_str())).cloned().collect();
+    for p in &params {
+        if let Some(g) = p["group"].as_str() {
+            if !out.iter().any(|x| x == g) {
+                out.push(g.to_string());
+            }
+        }
+    }
+    (params, out, tabs)
 }
 
 /// Python truthiness for JSON values.

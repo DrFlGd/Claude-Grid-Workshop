@@ -12,14 +12,16 @@ import { useStore } from "../lib/store.js";
 import { AddProject, MergeConflicts, makeThumbnails, dailyUpdateCheck, rescanLocal } from "./library.js";
 import { MetaEditor, undoNow } from "./metaedit.js";
 import { FlagDialog } from "./actions.js";
+import { PinDialog, FormEditor } from "./forms.js";
 
-/** Modal dialogs (desktop): adding a project, editing details, flagging as broken, merge differences. */
+/** Modal dialogs (desktop): adding a project, editing details, flagging as broken, merge differences, pinning, the form editor. */
 function Dialogs() {
   const d = useStore(ui, (s) => s.dialog);
   if (!d) return null;
   const close = (e) => { if (e.target === e.currentTarget) ui.set({ dialog: null }); };
   const body = d.type === "add-project" ? html`<${AddProject} />` : d.type === "edit" ? html`<${MetaEditor} spec=${d} key=${JSON.stringify(d)} />`
-    : d.type === "flag" ? html`<${FlagDialog} spec=${d} />` : d.type === "merge" ? html`<${MergeConflicts} result=${d.result} />` : null;
+    : d.type === "flag" ? html`<${FlagDialog} spec=${d} />` : d.type === "merge" ? html`<${MergeConflicts} result=${d.result} />`
+    : d.type === "pin" ? html`<${PinDialog} spec=${d} key=${d.key} />` : d.type === "form" ? html`<${FormEditor} spec=${d} key=${d.key} />` : null;
   return html`<div class="dialog-backdrop" onPointerDown=${close} onKeyDown=${(e) => { if (e.key === "Escape") ui.set({ dialog: null }); }}>${body}</div>`;
 }
 

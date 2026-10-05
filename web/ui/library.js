@@ -326,9 +326,36 @@ async function drawThumb(url) {
   return v.renderer.domElement.toDataURL("image/webp", 0.86);
 }
 
-/** Make thumbnails for library models and parts that have none (renders defaults). */
-export async function makeThumbnails() {
+// one thumbnail at a time: they share one hidden viewer
+let thumbLock = Promise.resolve();
+function drawThumbLocked(url) {
+  const p = thumbLock.then(() => drawThumb(url));
+  thumbLock = p.catch(() => {});
+  return p;
+}
+
+const libSlug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "");
+
+/** Keep a component's render as its thumbnail (thumbs/components/ in the library), shown at once. */
+export async function saveComponentThumb(key, blob) {
+  const it = ctx.index?.get(`comp:${key}`);
+  if (!isDesktop() || readOnly() || !it || it.thumb) return;
+  const url = URL.createObjectURL(blob);
+  try {
+    const data = await drawThumbLocked(url);
+    await api("component_thumb", { key, data });
+    it.thumb = ctx.platform.library.url(`thumbs/components/${libSlug(it.project)}/${it.module}.webp`);
+    ui.set((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+  } catch (e) {
+    console.warn("component thumbnail", key, e);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/** Make thumbnails for library models and parts that have none (renders defaults);
+ * with { components: true }, for the components that have none instead. */
+export async function makeThumbnails({ components = false } = {}) {
   if (!isDesktop() || thumbRunning || readOnly()) return;
+  if (components) return componentThumbnails();
   const todo = ctx.index.items.filter((i) => !i.thumb && (i.kind === "generator" || i.preview) && sourceById(i.sourceId || i.projectId)?.kind !== "bundled");
   if (!todo.length) return;
   thumbRunning = true;
@@ -361,6 +388,41 @@ export async function makeThumbnails() {
     thumbRunning = false;
   }
   if (made) await ctx.reloadCatalog();
+}
+
+async function componentThumbnails() {
+  const todo = ctx.index.items.filter((i) => i.kind === "component" && !i.thumb && !i.needs?.length);
+  if (!todo.length) return 0;
+  thumbRunning = true;
+  let cancelled = false;
+  const done = addJob(`Making component previews (0 of ${todo.length})`, () => { cancelled = true; });
+  let made = 0;
+  try {
+    // a few at a time: the native engine runs several renders at once
+    const queue = [...todo];
+    const worker = async () => {
+      while (queue.length && !cancelled) {
+        const it = queue.shift();
+        done.update(`Making component previews (${todo.length - queue.length} of ${todo.length})`);
+        try {
+          const { detail, values } = await ctx.loadModel(it.key);
+          const blob = (await ctx.engine.render(detail, values, () => {}).promise).blob;
+          const url = URL.createObjectURL(blob);
+          let data;
+          try { data = await drawThumbLocked(url); } finally { URL.revokeObjectURL(url); }
+          await api("component_thumb", { key: it.key, data });
+          it.thumb = ctx.platform.library.url(`thumbs/components/${libSlug(it.project)}/${it.module}.webp`);
+          made++;
+        } catch (e) { console.warn("component preview", it.key, e); }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(4, ctx.engine.concurrency || 1)) }, worker));
+  } finally {
+    done();
+    thumbRunning = false;
+  }
+  ui.set((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+  return made;
 }
 
 // ---------------------------------------------------------------- merge conflicts

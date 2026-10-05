@@ -11,6 +11,7 @@ import { setContext } from "./ui/context.js";
 import { html, render } from "./lib/html.js";
 import { LibrarySettingsPage } from "./ui/libsettings.js";
 import { unflagItems } from "./ui/actions.js";
+import { saveComponentThumb } from "./ui/library.js";
 import { ui, recordRecent, setTabs, layoutFor, isDark, setTheme, THEMES } from "./ui/state.js";
 import { scopeFromPath } from "./ui/context.js";
 import { scopeInfo } from "./ui/sidebar.js";
@@ -48,7 +49,8 @@ function route() {
   const h = location.hash.replace(/^#\/?/, "");
   const [path, query = ""] = h.split("?");
   const params = new URLSearchParams(query);
-  const m = path.match(/^m\/([a-z0-9-]+)\/([a-z0-9-]+)\/?$/);
+  // model keys: "<project>/<model>", or "@<library>/<module>" for a component
+  const m = path.match(/^m\/(@?[a-z0-9-]+)\/([A-Za-z0-9_-]+)\/?$/);
   const p = path.match(/^parts\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/);
   if (m) openModel(`${m[1]}/${m[2]}`, params.get("s"), params.get("saved"));
   else if (p) openLibrary(p[1], p[2]);
@@ -155,8 +157,17 @@ function renderModelHeader(detail) {
     });
     credit.append(". ");
   }
-  if (detail.source?.repository) credit.append(el("a", { href: detail.source.repository, target: "_blank", rel: "noopener", text: "Source" }), ". ");
-  credit.append(el("a", { href: `#/licenses/${detail.family}`, text: "License details" }), ".");
+  if (detail.kind === "component") {
+    // a library module: its library, license and docs
+    const c = detail.component || {};
+    credit.append(el("code", { text: `${c.module}()` }), ` from ${c.library}${c.provider === "project" ? " (your copy)" : ""}. License ${detail.license?.spdx || "not stated"}. `);
+    if (detail.links?.docs) credit.append(el("a", { href: detail.links.docs, target: "_blank", rel: "noopener", text: "Docs" }), ". ");
+  } else {
+    if (detail.source?.repository) credit.append(el("a", { href: detail.source.repository, target: "_blank", rel: "noopener", text: "Source" }), ". ");
+    credit.append(el("a", { href: `#/licenses/${detail.family}`, text: "License details" }), ".");
+  }
+  if (detail.pinned_from) credit.append(" Pinned from ", el("a", { href: `#/m/${detail.pinned_from}`, text: "its component" }), ".");
+  renderModelExtra(detail);
   // author notes fold away; their conditional warnings stay visible above the form
   const notesNodes = detail.description_html ? safeHTML(detail.description_html) : [];
   const holder = document.createElement("div");
@@ -176,6 +187,54 @@ function renderModelHeader(detail) {
   $("#model-notes").hidden = !hasNotes;
   $("#model-notes").open = false;
 }
+
+/** Desktop tools above the form: copy the OpenSCAD code (components), pin, edit the form. */
+function renderModelExtra(detail) {
+  const box = $("#model-extra");
+  if (!box) return;
+  box.replaceChildren();
+  if (platform.kind !== "desktop") { box.hidden = true; return; }
+  const ro = !!state.catalog?.library?.read_only;
+  const btn = (id, text, title, onclick, disabled = false) => el("button", { type: "button", class: "ghost small", id, text, title, onclick, disabled });
+  if (detail.kind === "component") {
+    box.append(btn("copy-code", "Copy code", "Copy the OpenSCAD code for these settings (includes the library, calls the module)", copyComponentCode));
+    box.append(btn("pin-component", "Pin as a model…", "Keep this component under Parametric Models, with these settings as its defaults", () =>
+      ui.set({ dialog: { type: "pin", key: detail.key, values: structuredClone(state.values) } }), ro));
+  }
+  const it = state.index?.get(`gen:${detail.key}`);
+  if (it && it.sourceId) {
+    box.append(btn("edit-form", "Edit form", "Rename settings, add help, choices and conditions, hide settings (saved with this item in the library)", () =>
+      ui.set({ dialog: { type: "form", key: detail.key } }), ro));
+  }
+  box.hidden = !box.childNodes.length;
+}
+
+async function copyComponentCode() {
+  try {
+    const code = await platform.api("component_code", { key: state.model.key, values: state.values });
+    await navigator.clipboard.writeText(code).catch(() => { throw new Error("The clipboard isn't available."); });
+    toast("OpenSCAD code copied. It needs the library in OpenSCAD's library folder.");
+  } catch (e) {
+    toast(`Couldn't copy the code: ${e.message || e}`);
+  }
+}
+
+/** Open a model again from the library (its form changed). */
+function refreshModel(key) {
+  tabStates.delete(key);
+  details.delete(key);
+  if (state.model?.key === key && ui.get().view === "model") {
+    cancelJob();
+    state.model = null;
+    openModel(key);
+  }
+}
+
+/** The settings on the open model's page (the form editor's "Add as a preset"). */
+const currentValues = (key) => (state.model?.key === key ? structuredClone(state.values) : null);
+
+/** A component that needs values before it can be made: the settings still empty. */
+const missingValues = (model, values) => (model.needs || []).filter((n) => values[n] == null || values[n] === "");
 
 async function openModel(key, shareCode = null, savedId = null) {
   if (!state.catalog) return;
@@ -214,7 +273,7 @@ async function openModel(key, shareCode = null, savedId = null) {
   }
   if (state.model) { cancelJob(); stashTab(); }
   addTab(key);
-  recordRecent(`gen:${key}`);
+  recordRecent(`${key.startsWith("@") ? "comp" : "gen"}:${key}`); // components' keys start with @
   state.viewerOwner = "model";
   $("#stage-empty").hidden = true;
   $("#log").hidden = true;
@@ -249,7 +308,12 @@ async function openModel(key, shareCode = null, savedId = null) {
   buildForm();
   if (shared) noteShared(shared);
   if (savedId) { await loadSaved(); chooseSettings(`saved:${savedId}`); }
-  else { loadSaved(); generate(); } // show the default part straight away
+  else {
+    loadSaved();
+    const missing = missingValues(detail, state.values);
+    if (missing.length) setStatus("stale", `Set ${missing.join(", ")} to make this component, then Generate.`);
+    else generate(); // show the default part straight away
+  }
   document.body.dataset.model = key; // lets tests know which model's render is on screen
 }
 
@@ -344,14 +408,22 @@ function buildField(p) {
     wrap.append(head(el("span", { class: "label", id, text: label })),
       el("div", { class: p.default.length >= 3 && axes.some((a) => a.length > 2) ? "vector named" : "vector", role: "group", "aria-labelledby": id, style: `--n:${Math.min(p.default.length, 4)}` }, inputs), ...helpNodes);
   } else {
+    // optional settings (components) can be left empty: the module's own default applies
     const t = p.type === "number" ? "number" : "text";
+    const expr = p.type === "expression";
     wrap.append(head(el("label", { for: id, text: label })),
-      el("input", { type: t, id, step: "any", min: p.min, max: p.max, maxlength: t === "text" ? 200 : null, "aria-describedby": describedby,
+      el("input", { type: t, id, step: p.step ?? "any", min: p.min, max: p.max, maxlength: t === "text" ? (expr ? 2000 : 200) : null, "aria-describedby": describedby,
+        placeholder: p.placeholder || (p.optional ? "(default)" : null), class: expr ? "expr" : null, spellcheck: expr ? "false" : null,
         oninput: (e) => {
-          if (t === "number") { if (e.target.value !== "" && e.target.checkValidity()) setValue(p, +e.target.value); }
-          else setValue(p, e.target.value);
+          const v = e.target.value;
+          if (t === "number") {
+            if (v === "" && p.optional) setValue(p, null);
+            else if (v !== "" && e.target.checkValidity()) setValue(p, +v);
+          } else setValue(p, v === "" && p.optional ? null : v);
         } }), ...helpNodes);
+    if (expr) wrap.classList.add("field-expr");
   }
+  if ((state.model.needs || []).includes(p.name)) wrap.classList.add("needed");
   if (p.presets) {
     const sel = el("select", { class: "presets", "aria-label": `${p.presets.label} for ${label}`,
       onchange: (e) => {
@@ -381,7 +453,7 @@ function syncField(p, skip) {
     });
   } else {
     const inp = $("input", wrap);
-    if (document.activeElement !== inp) inp.value = v;
+    if (document.activeElement !== inp) inp.value = v ?? "";
   }
   if (p.presets) {
     const i = p.presets.values.findIndex((x) => same(x.value, v));
@@ -698,7 +770,7 @@ function updateStatusForEdits() {
 }
 
 function friendlyName(model, values) {
-  let base = `${model.family}-${model.id}`;
+  let base = model.kind === "component" ? `${model.component?.library || "component"}-${model.id}` : `${model.family}-${model.id}`;
   const dims = [];
   for (const k of ["gridx", "gridy", "gridz", "Width", "Depth", "Height", "Width_Units", "Length_Units",
     "Board_Width", "Board_Height", "shelf_width", "shelf_depth", "GridSize", "plate_size"]) {
@@ -722,6 +794,8 @@ function setDownload(blob, name) {
 
 function generate() {
   if (!state.model || !state.engine) return;
+  const missing = missingValues(state.model, state.values);
+  if (missing.length) { setStatus("error", `Set ${missing.join(", ")} first: this component needs ${missing.length === 1 ? "it" : "them"}.`); return; }
   cancelJob();
   const values = structuredClone(state.values);
   const model = state.model;
@@ -789,6 +863,7 @@ async function showResult(result, values, restoring = false) {
     setDownload(result.blob, friendlyName(state.model, values));
     if (!restoring) {
       setStatus("ok", result.cached ? "Preview matches your settings." : `Preview matches your settings. Made in ${fmt(result.ms / 1000)} s on this device.`);
+      if (state.model?.kind === "component") saveComponentThumb(state.model.key, result.blob); // the first render becomes its thumbnail
     }
     if (!same(values, state.values)) updateStatusForEdits();
   } catch (e) {
@@ -1366,7 +1441,7 @@ async function reloadCatalog() {
     for (const l of state.libraries) state.libDetail[l.id] = l;
     state.index = new LocalIndex(state.catalog, state.libraries);
     mountShell({ platform, catalog: state.catalog, libraries: state.libraries, index: state.index, engine: state.engine,
-      loadModel, closeModelTab, openTabs, deliver, reloadCatalog, toast, route });
+      loadModel, closeModelTab, openTabs, deliver, reloadCatalog, toast, route, refreshModel, currentValues });
     ui.set({ ready: true });
   } catch (e) {
     $("#view-browse").hidden = false;

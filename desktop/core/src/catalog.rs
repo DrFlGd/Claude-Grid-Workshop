@@ -2,6 +2,7 @@
 //! applied, in the same shape as the website's data/catalog.json (so the page
 //! needs no second code path), plus the projects themselves and what needs attention.
 
+use crate::components::{self, ComponentLibrary};
 use crate::library::Library;
 use crate::meta::{self, Layers};
 use crate::project::{self, category_label};
@@ -27,9 +28,60 @@ fn obj(v: &Value) -> Map<String, Value> {
     v.as_object().cloned().unwrap_or_default()
 }
 
+/// The component libraries for a catalog: the copies in use (the user's library
+/// project or the bundled copy, see [`components::effective`]) and every bundled one.
+#[derive(Default, Clone, Copy)]
+pub struct Libs<'a> {
+    pub effective: &'a [ComponentLibrary],
+    pub bundled: &'a [ComponentLibrary],
+    pub projects: &'a [ComponentLibrary],
+    pub prefer_bundled: &'a [String],
+}
+
 /// Build the catalog. `url` is how the page reaches library files ("library://localhost/").
-pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str) -> Catalog {
+pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs: Libs) -> Catalog {
     let mut out = Catalog::default();
+    // components: the modules of the libraries in use, as model pages
+    let mut comp_list: Vec<Value> = vec![];
+    let mut group_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let comp_thumbs = lib.root().join("thumbs/components");
+    let url_of = |rel: &str| format!("{url}{}", rel.split('/').map(urlencode).collect::<Vec<_>>().join("/"));
+    for l in libs.effective {
+        for (rel, sha) in l.index["files"].as_object().into_iter().flatten() {
+            if let Some(sha) = sha.as_str() {
+                out.blobs.insert(sha.to_string(), l.root.join(rel));
+            }
+        }
+        for c in components::components_of(l) {
+            let d = components::component_model(l, &c);
+            let key = d["key"].as_str().unwrap_or("").to_string();
+            *group_counts.entry(c.group.clone()).or_default() += 1;
+            let mut summary = Map::new();
+            for k in ["key", "family", "family_name", "id", "name", "category", "category_label", "summary", "tags", "license", "browser", "terms", "settings", "updated", "kind"] {
+                if let Some(v) = d.get(k).filter(|v| !v.is_null()) {
+                    summary.insert(k.into(), v.clone());
+                }
+            }
+            summary.insert("module".into(), json!(c.module));
+            summary.insert("library".into(), json!(l.info.name));
+            summary.insert("provider".into(), json!(l.provider));
+            summary.insert("needs".into(), d["needs"].clone());
+            // a thumbnail saved after the component was first made (thumbs/components/<library>/<module>.webp)
+            let thumb = format!("{}/{}.webp", component_thumb_dir(&l.info.name), c.module);
+            let mut d = d;
+            if comp_thumbs.join(&thumb).is_file() {
+                let u = url_of(&format!("thumbs/components/{thumb}"));
+                summary.insert("thumb".into(), json!(u));
+                d["thumb"] = json!(u);
+            }
+            comp_list.push(Value::Object(summary));
+            out.models.insert(key, d);
+        }
+    }
+    let component_groups: Vec<Value> = components::GROUPS
+        .iter()
+        .filter_map(|(g, label)| group_counts.get(*g).map(|n| json!({ "id": g, "label": label, "count": n })))
+        .collect();
     let lib_meta = lib.meta();
     let lib_defaults = lib_meta.get("metadata").and_then(Value::as_object).cloned();
     let custom_cats: Map<String, Value> = lib_meta.get("categories").and_then(Value::as_object).cloned().unwrap_or_default();
@@ -69,7 +121,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str) -> Ca
             }
             d
         };
-        let derived = lib.derived(&id, &version);
+        let derived = if src["kind"] == "pinned" { Some(pinned_derived(lib, &id, &out.models)) } else { lib.derived(&id, &version) };
         let dir = lib.version_dir(&src, &version).ok();
         let mut entry = json!({
             "id": id, "kind": src["kind"], "role": src["role"], "origin": src["origin"],
@@ -90,6 +142,8 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str) -> Ca
         };
         if derived["format"].as_u64().unwrap_or(0) < project::DERIVED_FORMAT && src["kind"] != "bundled" {
             attention.push(json!({ "kind": "reread", "source": id, "message": "Read with an older version of the app; read it again." }));
+        } else if let Some(name) = libraries_changed(&derived, libs) {
+            attention.push(json!({ "kind": "libraries", "source": id, "message": format!("Uses {name}, which changed (a new copy, or the other copy is now used); read it again.") }));
         }
         // the project's own resolved metadata
         let fam = &derived["family"];
@@ -134,7 +188,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str) -> Ca
         }
         // blobs for renders
         for (sha, e) in derived["blobs"].as_object().into_iter().flatten() {
-            if let Some(p) = e.as_str().and_then(|e| project::blob_path(lib, e)) {
+            if let Some(p) = e.as_str().and_then(|e| project::blob_path(lib, e, libs.bundled)) {
                 out.blobs.insert(sha.clone(), p);
             }
         }
@@ -146,7 +200,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str) -> Ca
             let mid = d["id"].as_str().unwrap_or("").to_string();
             let key = d["key"].as_str().unwrap_or("").to_string();
             let folder = d["folder"].as_str().unwrap_or("");
-            let det_item = obj(&json!({ "name": d["name"] }));
+            let det_item = obj(&json!({ "name": d["name"], "category": d["item_category"] }));
             let (vals, from) = meta::resolve(&Layers {
                 item: edits.get("items").and_then(|i| i.get(&mid)).and_then(Value::as_object),
                 folders: meta::folder_chain(&edits, folder),
@@ -161,6 +215,9 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str) -> Ca
             }
             let mut detail = d.clone();
             apply(&mut detail, &vals, &custom_cats);
+            if let Some(form) = vals.get("form").filter(|f| f.is_object()) {
+                apply_form_overlay(&mut detail, form);
+            }
             let c = canon(detail["category"].as_str().unwrap_or("other"));
             detail["category_label"] = json!(cat_label(&c));
             detail["category"] = json!(c);
@@ -378,7 +435,24 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str) -> Ca
         .iter()
         .filter_map(|c| moved.get(c).map(|t| json!({ "id": c, "label": cat_label(c), "moved_to": t, "moved_to_label": cat_label(&canon(t)) })))
         .collect();
+    // the libraries: which copy is used, and what's bundled
+    let mut component_libraries: Vec<Value> = vec![];
+    for l in libs.bundled.iter().chain(libs.projects.iter()) {
+        let active = libs.effective.iter().any(|e| e.provider == l.provider && e.source_id == l.source_id && e.info.name == l.info.name);
+        let n = l.index["components"].as_array().map(|c| c.len()).unwrap_or(0);
+        component_libraries.push(json!({
+            "name": l.info.name, "title": l.info.title, "summary": l.info.summary, "provider": l.provider, "source_id": l.source_id,
+            "repo": l.info.repo, "commit": l.info.commit, "date": l.info.date, "license": l.info.license, "authors": l.info.authors,
+            "docs": l.info.docs, "components": n, "active": active,
+            "bundled_too": l.provider == "project" && libs.bundled.iter().any(|b| b.info.name.eq_ignore_ascii_case(&l.info.name)),
+            "preferred_bundled": libs.prefer_bundled.iter().any(|p| p.eq_ignore_ascii_case(&l.info.name)),
+        }));
+    }
     out.catalog = json!({
+        "components": comp_list,
+        "component_groups": component_groups,
+        "component_libraries": component_libraries,
+        "prefer_bundled": libs.prefer_bundled,
         "engine": engine,
         "common_files": common_files,
         "models": models,
@@ -395,6 +469,88 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str) -> Ca
         "library_meta": { "metadata": lib_meta.get("metadata").cloned().unwrap_or(json!({})), "categories": custom_cats },
     });
     out
+}
+
+/// Where a library's component thumbnails go in the library folder (under thumbs/components/).
+pub fn component_thumb_dir(library: &str) -> String {
+    crate::library::slug(library)
+}
+
+/// A project whose models include a library from somewhere else than where it would come from now
+/// (the bundled copy changed with the app, or the switch between your copy and the bundled one).
+fn libraries_changed(derived: &Value, libs: Libs) -> Option<String> {
+    for u in derived["libraries_used"].as_array().into_iter().flatten() {
+        let name = u["name"].as_str().unwrap_or("");
+        let Some(now) = libs.effective.iter().find(|l| l.info.name.eq_ignore_ascii_case(name)) else {
+            // not a component library (a library project without modules): only bundled copies can go stale
+            if u["provider"] == "bundled" && !libs.bundled.iter().any(|b| b.info.name.eq_ignore_ascii_case(name)) {
+                return Some(name.to_string());
+            }
+            continue;
+        };
+        let changed = match u["provider"].as_str() {
+            Some("bundled") => now.provider != "bundled" || !now.info.commit.as_deref().unwrap_or("").starts_with(u["version"].as_str().unwrap_or("-")),
+            Some(src) => now.source_id.as_deref() != Some(src),
+            None => false,
+        };
+        if changed {
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
+/// The "Pinned components" project's models: each pin is its component's page with
+/// the pin's name, defaults, hidden settings and form changes (shaped like a family
+/// manifest's model entry, with "component" instead of "entrypoint").
+fn pinned_derived(lib: &Library, id: &str, models: &HashMap<String, Value>) -> Value {
+    let dir = lib.source_dir(id).map(|d| d.join("pins")).ok();
+    let mut pins: Vec<Value> = dir
+        .and_then(|d| std::fs::read_dir(d).ok())
+        .map(|rd| rd.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "json")).filter_map(|e| serde_json::from_slice(&std::fs::read(e.path()).ok()?).ok()).collect())
+        .unwrap_or_default();
+    pins.sort_by(|a: &Value, b: &Value| a["created"].as_str().cmp(&b["created"].as_str()).then(a["id"].as_str().cmp(&b["id"].as_str())));
+    let mut out = vec![];
+    let mut problems = vec![];
+    for pin in pins {
+        let pid = pin["id"].as_str().unwrap_or("").to_string();
+        let comp = pin["component"].as_str().unwrap_or("");
+        let Some(base) = models.get(comp) else {
+            problems.push(json!({ "kind": "missing", "model": format!("{id}/{pid}"), "message": format!("{} is pinned from {comp}, which isn't in any library now.", pin["name"].as_str().unwrap_or(&pid)) }));
+            continue;
+        };
+        let mut d = base.clone();
+        let params: Vec<Value> = d["parameters"].as_array().cloned().unwrap_or_default();
+        let groups: Vec<String> = serde_json::from_value(d["groups"].clone()).unwrap_or_default();
+        let (params, groups, _) = crate::ingest::apply_form(&params, &groups, &json!({}), &pin, &json!({}));
+        d["parameters"] = json!(params);
+        d["groups"] = json!(groups);
+        d["fixed"] = pin["fixed"].clone();
+        d["presets"] = pin["presets"].clone();
+        d["needs"] = json!([]);
+        d["key"] = json!(format!("{id}/{pid}"));
+        d["family"] = json!(id);
+        d["id"] = json!(pid);
+        d["name"] = pin["name"].clone();
+        d["kind"] = json!("pin");
+        d["pinned_from"] = json!(comp);
+        if let Some(c) = pin["category"].as_str() {
+            d["category"] = json!(c);
+            d["item_category"] = json!(c);
+        }
+        if let Some(sm) = pin["summary"].as_str().filter(|s| !s.is_empty()) {
+            d["summary"] = json!(sm);
+        }
+        d["settings"] = json!(params.len());
+        d["terms"] = json!(crate::ingest::setting_terms(&params));
+        d["folder"] = json!("");
+        out.push(d);
+    }
+    json!({
+        "format": project::DERIVED_FORMAT, "source": id, "version": "pins",
+        "family": { "id": id, "name": "Pinned components", "category": "other", "summary": "Components pinned as models", "license": { "spdx": "NOASSERTION" }, "authors": [] },
+        "models": out, "parts": [], "blobs": {}, "problems": problems,
+    })
 }
 
 /// The user's flags on an item, for the page: "hidden" (where it was hidden: "item",
@@ -424,6 +580,31 @@ fn flags(out: &mut Map<String, Value>, vals: &Map<String, Value>, from: &Map<Str
     if let Some(t) = vals.get("project").and_then(Value::as_str).filter(|t| !t.is_empty() && *t != source) {
         out.insert("project_override".into(), json!(t));
     }
+}
+
+/// The form editor's changes (`form` on an item: a manifest-shaped `{ ui, hidden, defaults,
+/// fixed, presets }`), applied with the same code the website build uses for manifests.
+/// The page also gets the settings as they were, to edit the form again.
+pub fn apply_form_overlay(detail: &mut Value, form: &Value) {
+    let base: Vec<Value> = detail["parameters"].as_array().cloned().unwrap_or_default();
+    let groups: Vec<String> = serde_json::from_value(detail["groups"].clone()).unwrap_or_default();
+    let (params, new_groups, _) = crate::ingest::apply_form(&base, &groups, &json!({}), form, &json!({}));
+    detail["base_parameters"] = json!(base);
+    detail["base_groups"] = json!(groups);
+    detail["parameters"] = json!(params);
+    detail["groups"] = json!(new_groups);
+    if let Some(fx) = form["fixed"].as_object() {
+        let mut fixed = detail["fixed"].as_object().cloned().unwrap_or_default();
+        fixed.extend(fx.clone());
+        detail["fixed"] = Value::Object(fixed);
+    }
+    if form["presets"].is_array() {
+        detail["presets"] = form["presets"].clone();
+    }
+    detail["form"] = form.clone();
+    let visible = params.iter().filter(|p| !p.get("hidden").is_some_and(crate::ingest::truthy)).count();
+    detail["settings"] = json!(visible);
+    detail["terms"] = json!(crate::ingest::setting_terms(&params));
 }
 
 /// Apply resolved metadata to a model page's JSON.
@@ -471,4 +652,51 @@ pub fn blob_list(c: &Catalog) -> Vec<(String, PathBuf)> {
 /// Sources sorted for display.
 pub fn sorted_sources(c: &Catalog) -> BTreeMap<String, Value> {
     c.catalog["sources"].as_array().into_iter().flatten().filter_map(|s| Some((s["id"].as_str()?.to_string(), s.clone()))).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The plan's check: a form edit made in the app gives the same settings as the
+    /// same `ui` block in a family manifest (website build).
+    #[test]
+    fn form_edit_matches_a_manifest_ui_block() {
+        let raw = json!({ "parameters": [
+            { "name": "width", "group": "Size", "initial": 2, "caption": "Width in units", "min": 1, "max": 10, "step": 1 },
+            { "name": "size", "group": "Size", "initial": [10, 20, 30], "caption": "Outer size" },
+            { "name": "style", "group": "Look", "initial": "round", "options": [{ "name": "Round", "value": "round" }, { "name": "Square", "value": "square" }] },
+            { "name": "label", "group": "Look", "initial": true },
+            { "name": "text", "group": "Look", "initial": "A1" },
+            { "name": "debug", "group": "Look", "initial": false },
+        ]});
+        let ui = json!({
+            "width": { "label": "Width (units)", "max": 8, "step": 0.5 },
+            "size": { "axes": ["width", "depth", "height"], "label": "Box size" },
+            "text": { "display-condition": { "js": "label" }, "description": "Printed on the front" },
+            "style": { "options": [{ "value": "round", "label": "Rounded" }, { "value": "square", "label": "Square corners" }] },
+            "label": { "group": "Label" },
+        });
+        let form = json!({ "ui": ui, "hidden": ["debug"], "defaults": { "width": 3 } });
+        let files = BTreeMap::new();
+        // website: the block in the manifest
+        let fam = json!({ "id": "f", "name": "F", "ui": ui });
+        let m = json!({ "id": "m", "name": "M", "hidden": ["debug"], "defaults": { "width": 3 } });
+        let (_, site) = crate::sitebuild::assemble_model(&fam, &m, "f/m", "/m.scad", &files, &json!({}), &raw, 0).unwrap();
+        // app: the same block as a form edit on a model read without it
+        let plain_fam = json!({ "id": "f", "name": "F" });
+        let plain_m = json!({ "id": "m", "name": "M" });
+        let (_, mut app) = crate::sitebuild::assemble_model(&plain_fam, &plain_m, "f/m", "/m.scad", &files, &json!({}), &raw, 0).unwrap();
+        apply_form_overlay(&mut app, &form);
+        assert_eq!(site["parameters"], app["parameters"]);
+        assert_eq!(site["groups"], app["groups"]);
+        assert_eq!(app["groups"], json!(["Size", "Look", "Label"]));
+        assert_eq!(app["parameters"].as_array().unwrap().len(), 5);
+        assert_eq!(app["parameters"][0]["default"], 3);
+        assert_eq!(app["parameters"][0]["step"], 0.5);
+        assert_eq!(app["parameters"][4]["name"], "text");
+        assert_eq!(app["parameters"][4]["show_if"], "label");
+        // the settings as they were, to edit the form again
+        assert_eq!(app["base_parameters"].as_array().unwrap().len(), 6);
+    }
 }

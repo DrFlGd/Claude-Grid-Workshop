@@ -18,7 +18,9 @@ pub const INHERITED: [&str; 7] = ["summary", "category", "tags", "license", "aut
 /// Fields that belong to one level only. On an item: "broken" ({ note, date }: it
 /// doesn't work), "deleted" (left out of the library, also after updates) and
 /// "project" (listed under another project; credits stay with its own).
-pub const OWN: [&str; 6] = ["name", "notes", "icon", "broken", "deleted", "project"];
+/// "form" (an item's form changes, shaped like a family manifest's `ui`, `hidden`,
+/// `defaults`, `fixed` and `presets`; replaced as a whole).
+pub const OWN: [&str; 7] = ["name", "notes", "icon", "broken", "deleted", "project", "form"];
 
 /// Every editable field (plus open "fields": { key: value }).
 pub fn is_field(k: &str) -> bool {

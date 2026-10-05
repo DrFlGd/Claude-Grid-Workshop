@@ -50,6 +50,40 @@ function Downloads({ item }) {
   </div></section>`;
 }
 
+/** A component: a library module. Its details come from the library's docs; pin it to keep your own version. */
+function ComponentInspector({ it, fav }) {
+  const lib = (ctx.catalog.component_libraries || []).find((l) => l.active && l.name === it.project);
+  const lic = it.license?.spdx && it.license.spdx !== "NOASSERTION" ? it.license.spdx : "Not stated";
+  return html`<aside class="inspector" aria-label="Inspector" data-item=${it.id}>
+    <button type="button" class="insp-thumb" onClick=${() => ui.set({ quicklook: it.id })} title="Quick look (Space)">
+      ${it.thumb ? html`<img src=${it.thumb} alt="" />` : html`<span class="thumb-none">${Icon.cog(42)}</span>`}
+    </button>
+    <div>
+      <h2 class="insp-title">${it.name}</h2>
+      <p class="insp-sub"><code>${it.module}()</code> from <a href=${scopeHash(`clib:${it.projectId}`)}>${it.project}</a>${lib?.provider === "project" ? " (your copy)" : ""}</p>
+    </div>
+    <div class="insp-actions">
+      <a class="button primary" href=${it.href} data-open=${it.id}>Open</a>
+      <button type="button" class="ghost" aria-pressed=${fav ? "true" : "false"} aria-label=${fav ? "Remove from favourites" : "Add to favourites"}
+        title="Favourite (F)" onClick=${() => toggleFav([it.id])}>${Icon.star(17, fav)}</button>
+      ${it.needs?.length ? null : html`<button type="button" class="ghost" onClick=${() => ui.set({ quicklook: it.id })} title="Quick look (Space)">${Icon.eye(16)} Quick look</button>`}
+    </div>
+    ${it.summary ? html`<p class="insp-summary">${it.summary}</p>` : null}
+    ${it.needs?.length ? html`<p class="insp-flag" role="note">Needs values before it can be made: ${it.needs.join(", ")}.</p>` : null}
+    <dl class="insp-dl">
+      <dt>Kind</dt><dd>Component (a module of ${it.project})</dd>
+      <dt>Topic</dt><dd>${it.categoryLabel}</dd>
+      ${it.tags.length ? html`<dt>Library topics</dt><dd>${it.tags.join(", ")}</dd>` : null}
+      <dt>License</dt><dd>${lic} <a class="insp-more" href="#/licenses">credits</a></dd>
+      ${it.settings != null ? html`<dt>Settings</dt><dd>${it.settings}</dd>` : null}
+      ${lib ? html`<dt>Library</dt><dd>${lib.title || lib.name}${lib.commit ? html` <span class="muted">@ ${lib.commit.slice(0, 7)}</span>` : null}${lib.provider === "bundled" ? html` <span class="muted">(comes with the app)</span>` : null}</dd>` : null}
+    </dl>
+    ${canEdit() ? html`<div class="insp-actions">
+      <button type="button" class="ghost" data-act="pin" onClick=${() => ui.set({ dialog: { type: "pin", key: it.key } })}>${Icon.pin(15)} Pin as a model…</button>
+    </div>` : null}
+  </aside>`;
+}
+
 export function Inspector() {
   const s = useStore(ui, (st) => ({ selection: st.selection, favs: st.favs, scope: st.scope, group: st.group, v: st.catalogVersion }));
   const sel = s.selection.map((id) => ctx.index.get(id)).filter(Boolean);
@@ -60,7 +94,8 @@ export function Inspector() {
     </div></aside>`;
   }
   if (sel.length > 1) {
-    const gens = sel.filter((i) => i.kind === "generator");
+    const gens = sel.filter((i) => i.kind === "generator" || i.kind === "component");
+    const editable = sel.filter((i) => i.kind !== "component");
     const allFav = sel.every((i) => s.favs.includes(i.id));
     return html`<aside class="inspector" aria-label="Inspector">
       <h2 class="insp-title">${sel.length} selected</h2>
@@ -71,12 +106,13 @@ export function Inspector() {
           Open ${gens.length > 8 ? "the first 8" : gens.length === 1 ? "it" : `all ${gens.length}`} in tabs</button>` : null}
         <button type="button" class="ghost" onClick=${() => ui.set({ selection: [] })}>Clear selection</button>
       </div>
-      ${canEdit() ? html`<button type="button" class="ghost" data-act="bulk-edit" onClick=${() => ui.set({ dialog: { type: "edit", level: "bulk", items: sel.map((i) => i.id) } })}>
-        ${Icon.edit(15)} Edit details of ${plural(sel.length, "item")}</button>
-        <${ItemActions} items=${sel} />` : html`<p class="muted insp-later">${isDesktop() ? "This library is read-only." : "Editing details is in the desktop app."}</p>`}
+      ${canEdit() && editable.length ? html`<button type="button" class="ghost" data-act="bulk-edit" onClick=${() => ui.set({ dialog: { type: "edit", level: "bulk", items: editable.map((i) => i.id) } })}>
+        ${Icon.edit(15)} Edit details of ${plural(editable.length, "item")}</button>
+        <${ItemActions} items=${editable} />` : canEdit() ? null : html`<p class="muted insp-later">${isDesktop() ? "This library is read-only." : "Editing details is in the desktop app."}</p>`}
     </aside>`;
   }
   const it = sel[0];
+  if (it.kind === "component") return html`<${ComponentInspector} it=${it} fav=${s.favs.includes(it.id)} />`;
   const fav = s.favs.includes(it.id);
   const siblings = it.kind === "generator" ? ctx.index.items.filter((x) => x.kind === "generator" && x.projectId === it.projectId && x.id !== it.id) : [];
   const lic = it.license?.spdx && it.license.spdx !== "NOASSERTION" ? it.license.spdx : "Not stated";

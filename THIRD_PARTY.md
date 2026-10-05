@@ -19,6 +19,22 @@ Everything under `vendor/` is third-party work, vendored unmodified at the commi
 | Gridfinity Bin for Pred Labels | 3DLG; base by ABDELat; gridfinity-rebuilt by kennetek | owner-supplied file (2026-10-03) | CC-BY-NC-SA (base, per header) | `vendor/pred-label-bin` |
 | Gridfinity Kitchen | ostat (Gridfinity Extended) | owner-supplied ZIP (2026-10-03) + 1 file from ostat/gridfinity_extended_openscad @ `ee7d25f` | MIT | `vendor/gridfinity-kitchen` |
 
+## Libraries shipped with the desktop app
+
+Bundled unmodified at these commits (`libraries.json`, fetched and hash-checked by `tools/fetch_libraries.py`; only the OpenSCAD and data files, with each library's license and readme). Their modules are the app's Components; each component shows its library's license and authors.
+
+| Library | Authors | Upstream @ commit | License |
+| --- | --- | --- | --- |
+| BOSL2 | Revar Desmera, Adrian Mariano and contributors | [BelfrySCAD/BOSL2](https://github.com/BelfrySCAD/BOSL2) @ `e173fa0` | BSD-2-Clause |
+| MCAD | OpenSCAD MCAD contributors | [openscad/MCAD](https://github.com/openscad/MCAD) @ `bd0a7ba` | LGPL-2.1 (some files more permissive; see their headers) |
+| NopSCADlib | Chris Palmer (nophead) | [nophead/NopSCADlib](https://github.com/nophead/NopSCADlib) @ `00ec289` | GPL-3.0-or-later |
+| Round-Anything | Kurt Hutten | [Irev-Dev/Round-Anything](https://github.com/Irev-Dev/Round-Anything) @ `061fef7` | MIT |
+| threads-scad | Ryan A. Colyer | [rcolyer/threads-scad](https://github.com/rcolyer/threads-scad) @ `4ae9aeb` | CC0-1.0 |
+
+Notes
+- Models made from NopSCADlib (GPL) and MCAD (LGPL) components: the license applies to the code; check it before sharing the generated files commercially.
+- `catalog/components.json` holds start values for modules whose docs have no example (written for this project).
+
 ## Site runtime
 
 | Component | Use | License |

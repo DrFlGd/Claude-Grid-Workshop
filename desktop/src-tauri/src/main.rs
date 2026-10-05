@@ -184,7 +184,7 @@ fn main() {
         })
         .setup(|app| {
             let resources = app.path().resource_dir()?;
-            // development overrides: WORKSHOP_SITE, WORKSHOP_STARTER, WORKSHOP_ENGINE
+            // development overrides: WORKSHOP_SITE, WORKSHOP_STARTER, WORKSHOP_ENGINE, WORKSHOP_LIBS
             let env = |k: &str, d: PathBuf| std::env::var_os(k).map(PathBuf::from).unwrap_or(d);
             let starter = env("WORKSHOP_STARTER", resources.join("starter"));
             let paths = AppPaths {
@@ -193,6 +193,7 @@ fn main() {
                 site: env("WORKSHOP_SITE", resources.join("site")),
                 starter: starter.is_dir().then_some(starter),
                 engine: env("WORKSHOP_ENGINE", resources.join("engine")),
+                libs: Some(env("WORKSHOP_LIBS", resources.join("libs"))).filter(|l| l.is_dir()),
                 library_url: if cfg!(windows) { "http://library.localhost/".into() } else { "library://localhost/".into() },
             };
             let core = App::new(paths)?;

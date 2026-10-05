@@ -1,5 +1,6 @@
 // Library settings (desktop, #/library-settings): the library folder; projects
-// (add, hide, delete); categories (add, rename, remove); hidden and deleted
+// (add, hide, delete); OpenSCAD libraries (bundled or your copy, for Components
+// and includes); categories (add, rename, remove); hidden and deleted
 // items; the trash folder; defaults; GitHub. Everything here is stored in the
 // library folder, so it moves with it (except the GitHub token, kept on this computer).
 import { html, useState, useEffect } from "../lib/html.js";
@@ -7,7 +8,7 @@ import { useStore } from "../lib/store.js";
 import { ui, pushUndo } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
-import { api, runJob, kindText, rescanLocal, when } from "./library.js";
+import { api, runJob, kindText, rescanLocal, when, makeThumbnails } from "./library.js";
 import { hideItems, hideProject, deleteProject, restoreItems } from "./actions.js";
 import { undoNow } from "./metaedit.js";
 import { bytes, plural } from "../lib/util.js";
@@ -137,6 +138,46 @@ function Categories({ ro }) {
   </${Section}>`;
 }
 
+// ---------------------------------------------------------------- OpenSCAD libraries
+function Libraries({ ro }) {
+  const libs = ctx.catalog?.component_libraries || [];
+  const [busy, setBusy] = useState(null);
+  const prefer = async (name, bundled) => {
+    setBusy(name);
+    try {
+      const r = await runJob(api("library_prefer", { name, bundled }), bundled ? `Switching to the bundled ${name}` : `Switching to your ${name}`);
+      await ctx.reloadCatalog();
+      ctx.toast(`${name}: ${bundled ? "the copy that comes with the app" : "your copy"} is used now${r?.read?.length ? `; ${plural(r.read.length, "project")} read again` : ""}.`);
+    } catch (e) { fail(e); } finally { setBusy(null); }
+  };
+  const missing = ctx.index.items.filter((i) => i.kind === "component" && !i.thumb && !i.needs?.length).length;
+  const names = [...new Set(libs.map((l) => l.name))];
+  return html`<${Section} id="libraries" title="OpenSCAD libraries"
+    intro="The modules of these libraries are the Components, and projects that include them (include <BOSL2/…>) find them. The app comes with a copy of each; a library you add as a project (Add a project → “It's a library”) is used instead of the app's copy with the same name, unless you switch back here.">
+    <table class="table-view ls-table" id="ls-libraries"><thead><tr><th>Library</th><th>Copy</th><th>Version</th><th>License</th><th class="num">Components</th><th></th></tr></thead><tbody>
+      ${names.map((name) => {
+        const copies = libs.filter((l) => l.name === name);
+        const bundled = copies.find((l) => l.provider === "bundled");
+        const own = copies.find((l) => l.provider === "project");
+        return copies.map((l) => html`<tr key=${`${name}/${l.provider}`} data-library=${name} data-provider=${l.provider} data-active=${l.active ? "" : null}>
+          <td>${l === copies[0] ? html`<b>${name}</b>${l.summary ? html`<br /><span class="muted">${l.summary}</span>` : null}` : null}</td>
+          <td>${l.provider === "bundled" ? "Comes with the app" : html`Your project <a href=${scopeHash(`source:${l.source_id}`)}>${l.title || l.source_id}</a>`}
+            ${l.active ? html` <span class="badge-mini ok">in use</span>` : null}</td>
+          <td class="nowrap">${l.commit ? html`<code>${l.commit.slice(0, 7)}</code>` : "–"} <span class="muted">${l.date || ""}</span></td>
+          <td>${l.license || "not stated"}</td>
+          <td class="num">${l.components}</td>
+          <td class="ls-actions">${bundled && own && !l.active ? html`<button type="button" class="ghost small" disabled=${ro || busy === name} data-act="prefer"
+            onClick=${() => prefer(name, l.provider === "bundled")}>${busy === name ? "Switching…" : "Use this copy"}</button>` : null}
+            ${l.docs ? html`<a class="button ghost small" href=${l.docs} target="_blank" rel="noopener">Docs</a>` : null}</td>
+        </tr>`);
+      })}
+    </tbody></table>
+    ${libs.some((l) => l.provider === "project") ? null : html`<p class="muted">To use your own copy of a library (a newer BOSL2, say), add it as a project and tick “It's a library”.</p>`}
+    ${missing ? html`<p><button type="button" class="ghost" disabled=${ro} id="component-previews" onClick=${async () => { const n = await makeThumbnails({ components: true }); if (n) ctx.toast(`Made ${plural(n, "preview")}.`); }}>
+      Make previews for ${plural(missing, "component")}</button> <span class="muted">Each component also gets one the first time you make it.</span></p>` : null}
+  </${Section}>`;
+}
+
 // ---------------------------------------------------------------- hidden and deleted items
 function HiddenAndDeleted({ ro }) {
   const hidden = ctx.index.items.filter((i) => i.hidden === "item");
@@ -207,10 +248,11 @@ export function LibrarySettingsPage() {
   const lib = info.library || ctx.catalog?.library || {};
   const ro = !!lib.read_only;
   return html`<div class="library-settings" data-v=${v}>
-    <nav class="ls-toc" aria-label="On this page">${[["folder", "Folder"], ["projects", "Projects"], ["categories", "Categories"], ["items", "Hidden and deleted"], ["trash", "Trash"], ["defaults", "Defaults"], ["github", "GitHub"]]
+    <nav class="ls-toc" aria-label="On this page">${[["folder", "Folder"], ["projects", "Projects"], ["libraries", "Libraries"], ["categories", "Categories"], ["items", "Hidden and deleted"], ["trash", "Trash"], ["defaults", "Defaults"], ["github", "GitHub"]]
       .map(([id, label]) => html`<a href=${`#/library-settings`} onClick=${(e) => { e.preventDefault(); document.getElementById(`ls-${id}`)?.scrollIntoView({ behavior: "smooth" }); }}>${label}</a>`)}</nav>
     <${Folder} info=${info} lib=${lib} ro=${ro} />
     <${Projects} ro=${ro} />
+    <${Libraries} ro=${ro} />
     <${Categories} ro=${ro} />
     <${HiddenAndDeleted} ro=${ro} />
     <${Trash} ro=${ro} v=${v} />

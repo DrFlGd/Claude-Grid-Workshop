@@ -4,6 +4,7 @@
 //! the page polls.
 
 use crate::catalog::{self, Catalog};
+use crate::components::{self, ComponentLibrary};
 use crate::config::{AppConfig, Prefs};
 use crate::library::{self, Library};
 use crate::meta;
@@ -30,6 +31,8 @@ pub struct AppPaths {
     pub starter: Option<PathBuf>,
     /// bundled OpenSCAD (folder or executable)
     pub engine: PathBuf,
+    /// OpenSCAD libraries shipped with the app (libs/: libraries.json, <Name>/, index/)
+    pub libs: Option<PathBuf>,
     /// how the page reaches library files: "library://localhost/", "/library/"...
     pub library_url: String,
 }
@@ -65,6 +68,10 @@ pub struct App {
     busy: tokio::sync::Mutex<()>,
     /// one update check at a time (the daily one and a click can overlap)
     checking: tokio::sync::Mutex<()>,
+    /// the bundled libraries and their components (read once)
+    bundled: std::sync::OnceLock<Vec<ComponentLibrary>>,
+    /// components of library projects read before 0.3 (no index in their derived data): (source, version) -> index
+    project_indexes: Mutex<BTreeMap<(String, String), Value>>,
 }
 
 fn e2s(e: anyhow::Error) -> String {
@@ -103,6 +110,8 @@ impl App {
             job_seq: Mutex::new(0),
             busy: tokio::sync::Mutex::new(()),
             checking: tokio::sync::Mutex::new(()),
+            bundled: std::sync::OnceLock::new(),
+            project_indexes: Mutex::new(BTreeMap::new()),
         }))
     }
 
@@ -173,12 +182,72 @@ impl App {
         *self.catalog.lock().unwrap() = None;
     }
 
+    /// The libraries shipped with the app.
+    pub fn bundled(&self) -> &[ComponentLibrary] {
+        self.bundled.get_or_init(|| self.paths.libs.as_deref().map(components::bundled).unwrap_or_default())
+    }
+
+    /// Start values for modules without examples (shipped with the libraries).
+    fn curated(&self) -> Value {
+        self.paths.libs.as_deref().map(components::curated).unwrap_or(json!({}))
+    }
+
+    /// Library projects (role "library") with their components.
+    fn project_libraries(&self, lib: &Library) -> Vec<ComponentLibrary> {
+        let mut out = vec![];
+        for ls in project::library_sources(lib) {
+            let Ok(src) = lib.source(&ls.source) else { continue };
+            let index = match lib.derived(&ls.source, &ls.version).map(|d| d["components"].clone()).filter(|c| c.is_object()) {
+                Some(i) => i,
+                None => {
+                    let key = (ls.source.clone(), ls.version.clone());
+                    let cached = self.project_indexes.lock().unwrap().get(&key).cloned();
+                    match cached {
+                        Some(i) => i,
+                        None => {
+                            let info = project::project_lib_info(&src, &ls.version, &ls.dir.name);
+                            let cur = self.curated();
+                            let i = components::index_library(&info, &ls.dir.path, cur.get(&ls.dir.name), cur.get("$no_guess").and_then(|n| n.get(&ls.dir.name)))
+                                .unwrap_or(Value::Null);
+                            self.project_indexes.lock().unwrap().insert(key, i.clone());
+                            i
+                        }
+                    }
+                }
+            };
+            if !index.is_object() {
+                continue;
+            }
+            out.push(ComponentLibrary {
+                info: project::project_lib_info(&src, &ls.version, &ls.dir.name),
+                provider: "project".into(),
+                source_id: Some(ls.source.clone()),
+                root: ls.dir.path.clone(),
+                index,
+            });
+        }
+        out
+    }
+
+    fn prefer_bundled(lib: &Library) -> Vec<String> {
+        lib.meta()["prefer_bundled"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(String::from)).collect()
+    }
+
+    /// What reading a project needs about libraries.
+    fn ingest_libs(&self, lib: &Library) -> project::IngestLibs {
+        project::IngestLibs { bundled: self.bundled().to_vec(), prefer_bundled: Self::prefer_bundled(lib), curated: self.curated() }
+    }
+
     pub fn catalog(&self) -> Result<Arc<Catalog>, String> {
         if let Some(c) = self.catalog.lock().unwrap().as_ref() {
             return Ok(c.clone());
         }
         let lib = self.library()?;
-        let c = Arc::new(catalog::build(&lib, &self.engine_version_site, &self.common_files, &self.paths.library_url));
+        let projects = self.project_libraries(&lib);
+        let prefer = Self::prefer_bundled(&lib);
+        let effective = components::effective(self.bundled(), &projects, &prefer);
+        let libs = catalog::Libs { effective: &effective, bundled: self.bundled(), projects: &projects, prefer_bundled: &prefer };
+        let c = Arc::new(catalog::build(&lib, &self.engine_version_site, &self.common_files, &self.paths.library_url, libs));
         if let Ok(g) = self.renderer.try_lock() {
             if let Some(r) = g.as_ref() {
                 r.add_blobs(catalog::blob_list(&c));
@@ -261,12 +330,17 @@ impl App {
     pub async fn read_project(self: &Arc<Self>, id: &str, version: Option<&str>, job: Option<&str>) -> Result<Value> {
         let lib = self.library().map_err(|e| anyhow!(e))?;
         let src = lib.source(id)?;
+        if src["kind"] == "pinned" {
+            self.invalidate(); // pins are read when the catalog is made
+            return Ok(json!({ "source": id, "version": "pins" }));
+        }
         let version = version.map(String::from).unwrap_or_else(|| src["version"].as_str().unwrap_or("").to_string());
         let renderer = self.renderer().await.map_err(|e| anyhow!(e))?;
         let common: BTreeMap<String, String> = serde_json::from_value(self.common_files.clone()).unwrap_or_default();
         let app = self.clone();
         let jid = job.map(String::from);
-        let derived = project::ingest(&lib, &renderer, &common, &src, &version, move |s| {
+        let libs_ctx = self.ingest_libs(&lib);
+        let derived = project::ingest(&lib, &renderer, &common, &libs_ctx, &src, &version, move |s| {
             if let Some(j) = &jid {
                 app.job_stage(j, s);
             }
@@ -462,6 +536,74 @@ impl App {
                 self.invalidate();
                 j(json!({ "previous": prev }))
             }
+            "library_prefer" => {
+                // { name, bundled: bool }: use the bundled copy of a library instead of your own (or back);
+                // projects that include it are read again
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let name = arg(&args, "name").map_err(e2s)?.to_string();
+                let mut list = Self::prefer_bundled(&lib);
+                list.retain(|n| !n.eq_ignore_ascii_case(&name));
+                if args["bundled"].as_bool() == Some(true) {
+                    list.push(name.clone());
+                }
+                lib.update_meta(json!({ "prefer_bundled": if list.is_empty() { Value::Null } else { json!(list) } })).map_err(e2s)?;
+                self.invalidate();
+                Ok(Reply::Json(self.spawn(&format!("Switching {name}"), move |app, job| async move {
+                    let c = app.catalog().map_err(|e| anyhow!(e))?;
+                    let ids: Vec<String> = c.catalog["attention"].as_array().into_iter().flatten()
+                        .filter(|a| a["kind"] == "libraries").filter_map(|a| a["source"].as_str().map(String::from)).collect();
+                    for id in &ids {
+                        app.read_project(id, None, Some(&job)).await?;
+                    }
+                    Ok(json!({ "read": ids }))
+                })))
+            }
+            "component_code" => {
+                // { key, values } -> the OpenSCAD file a render of this component uses
+                let c = self.catalog()?;
+                let key = arg(&args, "key").map_err(e2s)?;
+                let model = c.models.get(key).ok_or_else(|| format!("no model {key}"))?;
+                let call: components::Call = serde_json::from_value(model["call"].clone()).map_err(|_| format!("{key} isn't a component"))?;
+                let mut values: BTreeMap<String, Value> = serde_json::from_value(args["values"].clone()).unwrap_or_default();
+                for (k, v) in model["fixed"].as_object().into_iter().flatten() {
+                    values.insert(k.clone(), v.clone());
+                }
+                j(json!(components::call_source(&call, &values).map_err(e2s)?))
+            }
+            "pin_create" => {
+                // { component, name, category?, summary?, defaults, hidden: [names], fixed: {name: value} } -> { key }
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let comp = arg(&args, "component").map_err(e2s)?.to_string();
+                let c = self.catalog()?;
+                let model = c.models.get(&comp).filter(|m| m["kind"] == "component").ok_or_else(|| format!("no component {comp}"))?;
+                let name = args["name"].as_str().map(str::trim).filter(|n| !n.is_empty()).unwrap_or_else(|| model["name"].as_str().unwrap_or("Pinned component")).to_string();
+                let src = ensure_pinned(&lib).map_err(e2s)?;
+                let dir = lib.source_dir(&src).map_err(e2s)?.join("pins");
+                std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+                let base = library::slug(&name);
+                let base = if base.is_empty() { "pin".to_string() } else { base };
+                let mut pid = base.clone();
+                let mut n = 2;
+                while dir.join(format!("{pid}.json")).exists() {
+                    pid = format!("{base}-{n}");
+                    n += 1;
+                }
+                let group = model["category"].as_str().unwrap_or("other");
+                let pin = json!({
+                    "id": pid, "name": name, "component": comp,
+                    "category": args["category"].as_str().filter(|c| !c.is_empty()).unwrap_or(components::model_category(group)),
+                    "summary": args["summary"].as_str().map(String::from).unwrap_or_else(|| model["summary"].as_str().unwrap_or("").to_string()),
+                    "defaults": args["defaults"].as_object().cloned().unwrap_or_default(),
+                    "hidden": args["hidden"].as_array().cloned().unwrap_or_default(),
+                    "fixed": args["fixed"].as_object().cloned().unwrap_or_default(),
+                    "created": library::now(),
+                });
+                crate::config::write_atomic(&dir.join(format!("{pid}.json")), &serde_json::to_vec_pretty(&pin).map_err(|e| e.to_string())?).map_err(e2s)?;
+                self.invalidate();
+                j(json!({ "key": format!("{src}/{pid}"), "source": src, "id": pid }))
+            }
             "github_token" => {
                 let mut cfg = self.config();
                 cfg.github_token = args["token"].as_str().map(str::trim).filter(|t| !t.is_empty()).map(String::from);
@@ -506,9 +648,17 @@ impl App {
                 Ok(Reply::Json(self.spawn("Looking for changed projects", move |app, job| async move {
                     let lib = app.library().map_err(|e| anyhow!(e))?;
                     let changed = sources::sync_local(&lib)?;
-                    let unread: Vec<String> = lib.source_ids().into_iter().filter(|id| {
-                        lib.source(id).ok().is_some_and(|s| s["kind"] != "bundled" && lib.derived(id, s["version"].as_str().unwrap_or("")).is_none())
+                    let mut unread: Vec<String> = lib.source_ids().into_iter().filter(|id| {
+                        lib.source(id).ok().is_some_and(|s| s["kind"] != "bundled" && s["kind"] != "pinned" && lib.derived(id, s["version"].as_str().unwrap_or("")).is_none())
                     }).collect();
+                    // and those whose libraries changed (the app's copy, or which copy is used)
+                    if let Ok(c) = app.catalog() {
+                        for a in c.catalog["attention"].as_array().into_iter().flatten().filter(|a| a["kind"] == "libraries") {
+                            if let Some(id) = a["source"].as_str() {
+                                unread.push(id.to_string());
+                            }
+                        }
+                    }
                     let mut read = vec![];
                     for id in changed.iter().chain(unread.iter()) {
                         if read.contains(id) {
@@ -732,6 +882,24 @@ impl App {
                 self.invalidate();
                 j(Value::Null)
             }
+            "component_thumb" => {
+                // { key: "@lib/module", data: webp data URL }: a thumbnail made after the component was rendered
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let key = arg(&args, "key").map_err(e2s)?;
+                let c = self.catalog()?;
+                let m = c.models.get(key).filter(|m| m["kind"] == "component").ok_or_else(|| format!("no component {key}"))?;
+                let module = m["id"].as_str().unwrap_or("");
+                let libname = m["component"]["library"].as_str().unwrap_or("");
+                if !module.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+                    return Err("invalid module name".into());
+                }
+                let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
+                let p = lib.root().join("thumbs/components").join(catalog::component_thumb_dir(libname)).join(format!("{module}.webp"));
+                crate::config::write_atomic(&p, &data).map_err(e2s)?;
+                self.invalidate();
+                j(Value::Null)
+            }
             "library_merge" => {
                 let from = PathBuf::from(arg(&args, "path").map_err(e2s)?);
                 Ok(Reply::Json(self.spawn("Merging a library", move |app, job| async move {
@@ -805,6 +973,19 @@ impl App {
         let rel = percent_decode(rel.trim_start_matches('/'));
         Ok(std::fs::read(lib.resolve(&rel)?)?)
     }
+}
+
+/// The library's "Pinned components" project (made on first use; a trashed one is made again).
+fn ensure_pinned(lib: &Library) -> Result<String> {
+    let id = "pinned";
+    if lib.source(id).is_ok() {
+        return Ok(id.into());
+    }
+    lib.save_source(&json!({
+        "id": id, "kind": "pinned", "role": "project", "added": library::now(), "version": "pins",
+        "origin": {}, "detected": { "name": "Pinned components", "summary": "Components from libraries, pinned as models.", "category": "other" },
+    }))?;
+    Ok(id.into())
 }
 
 /// What changed between two read versions of a project: models added or removed,

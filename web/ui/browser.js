@@ -18,7 +18,7 @@ const GROUPS = [["none", "No grouping"], ["project", "Project"], ["cat", "Catego
 export const COLUMNS = {
   project: { label: "Project", get: (i) => i.project, sort: "project" },
   categoryLabel: { label: "Category", get: (i) => i.subcategory ? `${i.categoryLabel} › ${i.subcategory}` : i.categoryLabel },
-  kind: { label: "Kind", get: (i) => (i.kind === "part" ? "Part" : "Parametric model"), sort: "kind" },
+  kind: { label: "Kind", get: (i) => (i.kind === "part" ? "Part" : i.kind === "component" ? "Component" : "Parametric model"), sort: "kind" },
   license: { label: "License", get: (i) => i.license?.spdx && i.license.spdx !== "NOASSERTION" ? i.license.spdx : "Not stated", sort: "license", badge: true },
   settings: { label: "Settings", get: (i) => (i.settings ?? ""), sort: "settings", num: true },
   updated: { label: "Updated", get: (i) => i.updated || "", sort: "updated", nowrap: true },
@@ -68,6 +68,7 @@ function groupItems(items, group) {
 // ---------------------------------------------------------------- small parts
 function Thumb({ item, cls = "thumb" }) {
   if (item.thumb) return html`<span class=${cls}><img src=${item.thumb} alt="" loading="lazy" decoding="async" /></span>`;
+  if (item.kind === "component") return html`<span class=${`${cls} thumb-none thumb-comp`} aria-hidden="true">${Icon.cog(28)}<small>${item.module}()</small></span>`;
   const letters = item.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2);
   return html`<span class=${`${cls} thumb-none`} aria-hidden="true">${letters}</span>`;
 }
@@ -77,7 +78,8 @@ function Badges({ item, favs }) {
     ${item.broken ? html`<span class="badge-mini broken" title=${item.broken.note ? `Flagged as broken: ${item.broken.note}` : "Flagged as broken"}>broken</span>` : null}
     ${item.hidden ? html`<span class="badge-mini hidden" title="Hidden">hidden</span>` : null}
     ${item.desktopOnly ? html`<span class="badge-mini" title="Needs native OpenSCAD (desktop app)">desktop</span>` : null}
-    ${item.kind === "part" ? html`<span class="badge-mini">part</span>` : null}`;
+    ${item.kind === "part" ? html`<span class="badge-mini">part</span>` : null}
+    ${item.needs?.length ? html`<span class="badge-mini" title=${`Set ${item.needs.join(", ")} first`}>needs values</span>` : null}`;
 }
 
 /** Close a dropdown on a click outside it or on Escape. */
@@ -371,8 +373,8 @@ export function Browser() {
       ${sourceHidden ? null : html`<div class="filters">
         ${!info.query.kind ? html`<${FilterMenu} name="kind" label="Kind" values=${res.facets.kind} selected=${s.filters.kind || []}
           render=${(v) => KINDS[v] || v} onChange=${setFilter("kind")} />` : null}
-        ${!info.query.category ? html`<${FilterMenu} name="cat" label="Category" values=${res.facets.cat} selected=${s.filters.cat || []} onChange=${setFilter("cat")} />` : null}
-        ${!info.query.project ? html`<${FilterMenu} name="project" label="Project" values=${res.facets.project} selected=${s.filters.project || []} onChange=${setFilter("project")} />` : null}
+        ${!info.query.category ? html`<${FilterMenu} name="cat" label=${info.query.kind === "component" ? "Topic" : "Category"} values=${res.facets.cat} selected=${s.filters.cat || []} onChange=${setFilter("cat")} />` : null}
+        ${!info.query.project ? html`<${FilterMenu} name="project" label=${info.query.kind === "component" ? "Library" : "Project"} values=${res.facets.project} selected=${s.filters.project || []} onChange=${setFilter("project")} />` : null}
         <${FilterMenu} name="license" label="License" values=${res.facets.license} selected=${s.filters.license || []}
           render=${(v) => LICENSE_TEXT[v] || v} onChange=${setFilter("license")} />
         ${Object.keys(res.facets.sub || {}).length > 1 || s.filters.sub?.length ? html`<${FilterMenu} name="sub" label="Type" values=${res.facets.sub}

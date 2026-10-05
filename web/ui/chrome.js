@@ -68,7 +68,7 @@ export function Tabs() {
     <a role="tab" class=${`tab tab-lib${libActive ? " active" : ""}`} aria-selected=${libActive ? "true" : "false"}
       href=${ui.get().lastBrowse || "#/"}>${Icon.grid(14)} Library</a>
     ${s.tabs.map((key) => {
-      const it = ctx.index.get(`gen:${key}`);
+      const it = ctx.index.get(`${key.startsWith("@") ? "comp" : "gen"}:${key}`);
       const on = s.view === "model" && s.active === key;
       return html`<a role="tab" class=${`tab${on ? " active" : ""}`} aria-selected=${on ? "true" : "false"} href=${`#/m/${key}`} key=${key}
         data-tab=${key} title=${it ? `${it.name}, ${it.project}` : key}
@@ -93,9 +93,10 @@ export function StatusBar() {
   if (!s.ready) return null;
   const shown = ctx.index.items.filter((i) => !i.hidden);
   const gens = shown.filter((i) => i.kind === "generator").length;
+  const comps = shown.filter((i) => i.kind === "component").length;
   const latest = s.jobs[s.jobs.length - 1];
   return html`<div class="statusbar-inner">
-    <span>${plural(gens, "parametric model")} · ${plural(shown.length - gens, "part")}${ctx.index.hiddenCount ? ` · ${ctx.index.hiddenCount} hidden` : ""}</span>
+    <span>${plural(gens, "parametric model")}${comps ? ` · ${plural(comps, "component")}` : ""} · ${plural(shown.length - gens - comps, "part")}${ctx.index.hiddenCount ? ` · ${ctx.index.hiddenCount} hidden` : ""}</span>
     <span class="status-jobs">
       ${latest ? html`<button type="button" class="status-job" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>
         <span class="dot busy"></span>${latest.label}… <${Elapsed} since=${latest.started} />${s.jobs.length > 1 ? ` · ${s.jobs.length} running` : ""}</button>`

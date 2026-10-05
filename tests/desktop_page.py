@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 2 acceptance test: the desktop app's page against its real backend
+"""Phase 2 and 3 acceptance test: the desktop app's page against its real backend
 (`workshop-cli serve`, the same command table as the Tauri app), in Chromium.
 
     python3 tests/desktop_page.py --cli desktop/target/release/workshop-cli --ui build/desktop/ui \\
@@ -13,8 +13,11 @@ summarised, accepted, with edits surviving; a project-wide license with one item
 keeping its own; a condensed group showing the icon chosen for it; hiding,
 flagging as broken, deleting (undo, restore) and moving items to another
 project; categories added, removed and brought back; a hidden project; a deleted
-project through the trash; and the library opening the same after being moved
-(library-summary). Writes
+project through the trash; Components (Phase 3): the bevel-gear flow (search,
+the doc example's values, change teeth and module, preview, download, in under a
+minute), pinning a component as a model, the OpenSCAD code, a form edit stored in
+the shape of a manifest's ui block, and switching between your BOSL2 and the
+app's; and the library opening the same after being moved (library-summary). Writes
 <out>/library-summary.json and <out>/library.zip for the cross-platform check.
 """
 import argparse
@@ -109,7 +112,9 @@ async def main():
             check("starter library installed", n == 58 and parts == 44 and projects == 19, f"{n} generators, {parts} parts, {projects} projects")
             heads = await pg.eval_on_selector_all(".sidebar .nav-head", "els => els.map(e => e.textContent.trim())")
             pcats = await pg.locator('.sidebar [data-scope^="pcat:"]').count()
-            check("left menu: Parametric Models and Parts Library by category", heads[:2] == ["Parametric Models", "Parts Library"] and pcats >= 1, (heads, pcats))
+            ccats = await pg.locator('.sidebar [data-scope^="ccat:"]').count()
+            check("left menu: Parametric Models, Components and Parts Library by category",
+                  heads[:3] == ["Parametric Models", "Components", "Parts Library"] and pcats >= 1 and ccats >= 8, (heads, pcats, ccats))
             await pg.screenshot(path=str(out / "p2-00-home.png"))
 
             # 2. three public projects by URL
@@ -142,7 +147,7 @@ async def main():
             # 4. search finds the new generators
             await pg.fill("#global-search", "bevel gear")
             await pg.wait_for_function("()=>/ms$/.test(document.querySelector('.browse-count')?.textContent || '')")
-            top = await pg.eval_on_selector_all(".results [data-item]", "els=>els.slice(0,5).map(e=>e.dataset.item)")
+            top = await pg.eval_on_selector_all('.results [data-item^="gen:"]', "els=>els.slice(0,5).map(e=>e.dataset.item)")
             check("search 'bevel gear' finds the new generators", any("local-bevel" in t for t in top) and any(ids["gears"] in t for t in top), top)
             await pg.fill("#global-search", "silverware")
             await pg.wait_for_function("()=>/ms$/.test(document.querySelector('.browse-count')?.textContent || '')")
@@ -157,6 +162,83 @@ async def main():
             status = await pg.inner_text("#status")
             check("a model that includes BOSL2 renders", "matches" in status, status)
             await pg.screenshot(path=str(out / "p2-03-bevel.png"))
+
+            # 5b. Components: the libraries' modules as forms (your BOSL2, added above, wins over the app's)
+            comps = await pg.evaluate("() => window.__workshop.index.items.filter((i) => i.kind === 'component').length")
+            libs = await pg.evaluate("() => window.__workshop.catalog.component_libraries.map((l) => [l.name, l.provider, l.active])")
+            check("Components: modules of the bundled libraries, your BOSL2 in use", comps > 700 and ["BOSL2", "project", True] in libs
+                  and ["BOSL2", "bundled", False] in libs and ["NopSCADlib", "bundled", True] in libs, (comps, libs))
+            # the bevel-gear flow: search, open the first result (a doc example's values), change teeth and module, preview, download
+            t0 = time.time()
+            await pg.goto(B + "#/")
+            await pg.fill("#global-search", "bevel gear")
+            await pg.wait_for_function("()=>/ms$/.test(document.querySelector('.browse-count')?.textContent || '')")
+            first = await pg.eval_on_selector(".results [data-item]", "e => e.dataset.item")
+            check("search 'bevel gear': BOSL2 bevel_gear() is the first result", first == "comp:@bosl2/bevel_gear", first)
+            await pg.dblclick(f'.results [data-item="{first}"]')
+            await pg.wait_for_function("()=>document.body.dataset.model==='@bosl2/bevel_gear'")
+            await pg.wait_for_function(DONE, timeout=120000)
+            start = {k: await pg.input_value(f"#p-{k}") for k in ("teeth", "mate_teeth", "circ_pitch")}
+            await pg.fill("#p-teeth", "24")
+            await pg.fill("#p-circ_pitch", "")
+            await pg.fill("#p-mod", "2")
+            await pg.click("#generate")
+            await pg.wait_for_function("()=>!document.querySelector('#generate').disabled", timeout=120000)
+            await pg.wait_for_function(DONE, timeout=120000)
+            status = await pg.inner_text("#status")
+            await pg.click("#download")
+            saved_stl = home / "saved-files"
+            for _ in range(50):
+                if saved_stl.is_dir() and any(saved_stl.glob("*.stl")):
+                    break
+                await pg.wait_for_timeout(200)
+            took = time.time() - t0
+            stl = next(iter(saved_stl.glob("*.stl")), None) if saved_stl.is_dir() else None
+            check("bevel gear: form from the docs' example, teeth and module changed, preview, download, under a minute",
+                  start == {"teeth": "36", "mate_teeth": "36", "circ_pitch": "5"} and "matches" in status and stl and stl.stat().st_size > 10000 and took < 60,
+                  (start, status, stl.name if stl else None, round(took, 1)))
+            await pg.screenshot(path=str(out / "p3-01-bevel-component.png"))
+            code = await pg.evaluate("() => window.__workshop.platform.api('component_code', { key: '@bosl2/bevel_gear', values: { teeth: 24, mod: 2, mate_teeth: 36 } })")
+            check("the component's OpenSCAD code", "include <BOSL2/gears.scad>" in code and "bevel_gear(teeth=24, mate_teeth=36" in code and "mod=2" in code, code.replace("\n", " | "))
+            # pin it as a model (the settings it has now become its defaults)
+            await pg.click("#pin-component")
+            await pg.wait_for_selector(".pin-dialog #pin-name")
+            await pg.fill("#pin-name", "Bevel gear 24T")
+            await pg.click("#pin-go")
+            await pg.wait_for_function("() => location.hash === '#/m/pinned/bevel-gear-24t'", timeout=60000)
+            await pg.wait_for_function(DONE, timeout=120000)
+            pin = await pg.evaluate("() => { const i = window.__workshop.index.get('gen:pinned/bevel-gear-24t'); return i && [i.kind, i.category, i.project]; }")
+            pinned_teeth = await pg.input_value("#p-teeth")
+            check("pinned as a model under Parametric Models, with its settings", pin == ["generator", "mechanical", "Pinned components"] and pinned_teeth == "24"
+                  and (library / "sources/pinned/pins/bevel-gear-24t.json").is_file(), (pin, pinned_teeth))
+            # the form editor: stored in the shape of a family manifest's model entry
+            await pg.click("#edit-form")
+            await pg.wait_for_selector(".form-editor")
+            await pg.click("[data-fe=teeth] .fe-name")
+            await pg.fill("[data-form='teeth.label']", "Tooth count")
+            await pg.fill("[data-form='teeth.min']", "8")
+            await pg.click("[data-fe=mate_teeth] .fe-name")
+            await pg.fill("[data-form='mate_teeth.when']", "teeth > 10")
+            await pg.click("[data-form='spiral.show']")
+            await pg.screenshot(path=str(out / "p3-02-form-editor.png"))
+            await pg.click("#fe-save")
+            await pg.wait_for_selector(".form-editor", state="detached")
+            await pg.wait_for_function("() => document.querySelector('[data-name=teeth] label')?.textContent === 'Tooth count'", timeout=60000)
+            stored = json.loads((library / "sources/pinned/metadata.json").read_text())["items"]["bevel-gear-24t"]["form"]
+            want = {"ui": {"teeth": {"label": "Tooth count", "min": 8}, "mate_teeth": {"display-condition": {"js": "teeth > 10"}}}, "hidden": ["spiral"]}
+            spiral_gone = await pg.evaluate("() => !document.querySelector('[data-name=spiral]')")
+            check("form edit stored as a manifest ui block, and applied", stored == want and spiral_gone, stored)
+            # your BOSL2 or the app's: switch, projects that include it are read again, and back
+            await pg.goto(B + "#/library-settings")
+            await pg.click('#ls-libraries [data-library="BOSL2"][data-provider="bundled"] [data-act=prefer]')
+            await pg.wait_for_selector('#ls-libraries [data-library="BOSL2"][data-provider="bundled"][data-active]', timeout=300000)
+            switched = await pg.evaluate("""() => [window.__workshop.catalog.components.find((c) => c.key === '@bosl2/bevel_gear')?.provider,
+                window.__workshop.catalog.attention.filter((a) => a.kind === 'libraries').length]""")
+            await pg.click('#ls-libraries [data-library="BOSL2"][data-provider="project"] [data-act=prefer]')
+            await pg.wait_for_selector('#ls-libraries [data-library="BOSL2"][data-provider="project"][data-active]', timeout=300000)
+            back = await pg.evaluate("() => window.__workshop.catalog.components.find((c) => c.key === '@bosl2/bevel_gear')?.provider")
+            prefer = json.loads((library / "library.json").read_text()).get("prefer_bundled")
+            check("switch between your BOSL2 and the app's (projects read again)", switched == ["bundled", 0] and back == "project" and not prefer, (switched, back, prefer))
 
             # 6. upstream change: edit first, then detect, summarise, accept; edits survive
             v76 = ids["vector76-gridfinity"]

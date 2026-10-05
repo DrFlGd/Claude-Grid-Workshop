@@ -118,6 +118,7 @@ class DesktopEngine {
         files: { ...this.common, ...model.files },
         values: { ...values, ...(model.fixed || {}) },
         defines: (model.parameters || []).filter((p) => p.define).map((p) => p.name),
+        call: model.call || null, // a component: the app writes the call with these values
       };
       invoke("render", { job, req, onEvent: channel }).then((buf) => {
         settled = true;

@@ -38,6 +38,8 @@ export function QuickLook() {
           if (!item.preview) { setMsg("No 3D preview: this part comes as CAD files."); return; }
           setMsg("Loading…");
           await show(await (await ctx.platform.fetch(item.preview)).blob());
+        } else if (item.needs?.length) {
+          setMsg(`This component needs values first (${item.needs.join(", ")}): open it to set them.`);
         } else {
           setMsg("Making it with default settings…");
           const { detail, values } = await ctx.loadModel(item.key);

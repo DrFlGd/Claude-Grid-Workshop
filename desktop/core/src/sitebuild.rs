@@ -245,8 +245,7 @@ pub fn assemble_model(
             groups.push(group);
         }
     }
-    let (params, tabs) = ingest::apply_metadata(&params, &groups, fam, m, editor);
-    let groups: Vec<String> = groups.into_iter().filter(|g| params.iter().any(|p| p["group"] == *g)).collect();
+    let (params, groups, tabs) = ingest::apply_form(&params, &groups, fam, m, editor);
     let category = fam["category"].as_str().unwrap_or("other");
     let mut summary = Map::new();
     summary.insert("key".into(), json!(key));
