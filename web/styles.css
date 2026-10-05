@@ -583,17 +583,20 @@ body.show-help .field .help { display: block; }
 .home-card a { color: var(--focus); }
 
 /* tabs */
-.tabstrip { display: flex; gap: 2px; padding: 6px 10px 0; background: var(--steel); border-bottom: 1px solid var(--steel-2); overflow-x: auto; flex: none; scrollbar-width: thin; }
+.tabstrip { display: flex; gap: 2px; padding: 6px 10px 0; background: var(--steel); border-bottom: 1px solid var(--steel-2); overflow-x: auto; flex: none; scrollbar-width: none; }
+.tabstrip::-webkit-scrollbar { display: none; } /* tabs shrink first; past that the wheel scrolls the strip */
 .tab { display: flex; align-items: center; gap: 7px; padding: 6px 6px 7px 10px; border-radius: 8px 8px 0 0; text-decoration: none; font-size: 13px; color: var(--graphite);
-  white-space: nowrap; max-width: 280px; border: 1px solid transparent; border-bottom: 0; flex: none; }
+  white-space: nowrap; max-width: 280px; min-width: 140px; border: 1px solid transparent; border-bottom: 0; flex: 0 1 auto; }
+.tab img, .tab-close { flex: none; }
 .tab:hover { color: var(--ink); background: var(--panel); }
 .tab img { width: 26px; height: 20px; object-fit: contain; }
 .tab.active { background: var(--panel); color: var(--ink); border-color: var(--steel-2); font-weight: 700; margin-bottom: -1px; }
-.tab-name { overflow: hidden; text-overflow: ellipsis; }
-.tab-project { font-size: 11.5px; color: var(--graphite); font-weight: 400; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+.tab-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tab-project { font-size: 11.5px; color: var(--graphite); font-weight: 400; overflow: hidden; text-overflow: ellipsis; max-width: 120px; min-width: 0; flex: 0 1000 auto; }
 .tab-close { padding: 3px; border: 0; background: transparent; border-radius: 4px; color: inherit; }
 .tab-close:hover { background: var(--steel-2); }
-.tab-lib { font-weight: 700; padding-right: 12px; }
+.tab-lib { font-weight: 700; padding-right: 12px; flex: none; min-width: 0; position: sticky; left: 0; z-index: 1; background: var(--steel); box-shadow: -10px 0 0 var(--steel); } /* stays in view when the strip scrolls; the shadow covers the strip padding */
+.tab-lib.active { background: var(--panel); }
 
 /* status bar */
 .statusbar { flex: none; border-top: 1px solid var(--steel-2); background: var(--panel); font-size: 12.5px; color: var(--graphite); }

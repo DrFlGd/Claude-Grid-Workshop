@@ -49,14 +49,21 @@ export function TopButtons() {
 
 export function Tabs() {
   const s = useStore(ui, (st) => ({ tabs: st.tabs, active: st.activeTab, view: st.view }));
+  const strip = useRef();
+  useEffect(() => { strip.current?.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [s.active, s.view, s.tabs.length]);
   if (!s.tabs.length) return null;
+  // a mouse wheel scrolls the strip sideways when there are more tabs than fit
+  const onWheel = (e) => {
+    const el = strip.current;
+    if (el && el.scrollWidth > el.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { el.scrollLeft += e.deltaY; e.preventDefault(); }
+  };
   const close = (key, e) => {
     e.preventDefault();
     e.stopPropagation();
     ctx.closeModelTab(key);
   };
   const libActive = s.view !== "model";
-  return html`<div class="tabstrip" role="tablist" aria-label="Open generators">
+  return html`<div class="tabstrip" role="tablist" aria-label="Open generators" ref=${strip} onWheel=${onWheel}>
     <a role="tab" class=${`tab tab-lib${libActive ? " active" : ""}`} aria-selected=${libActive ? "true" : "false"}
       href=${ui.get().lastBrowse || "#/"}>${Icon.grid(14)} Library</a>
     ${s.tabs.map((key) => {
