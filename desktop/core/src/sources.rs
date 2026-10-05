@@ -368,7 +368,9 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
             let license = repo["license"]["spdx_id"].as_str().filter(|s| *s != "NOASSERTION" && !s.is_empty()).map(String::from)
                 .or_else(|| scan::survey_license(&root));
             let summary = repo["description"].as_str().filter(|s| !s.is_empty()).map(String::from).unwrap_or_else(|| scan::readme_text(&root).map(|t| scan::readme_summary(&t)).unwrap_or_default());
-            let name = if u.subdir.is_empty() { u.repo.clone() } else { format!("{} ({})", u.repo, u.subdir) };
+            // "gridfinity_openscad" -> "Gridfinity openscad" (names like "BOSL2" stay as they are)
+            let pretty = scan::humanize(&u.repo);
+            let name = if u.subdir.is_empty() { pretty } else { format!("{pretty} ({})", u.subdir) };
             let owner = &repo["owner"];
             let authors = json!([{ "name": owner["login"].as_str().unwrap_or(&u.owner), "url": owner["html_url"] }]);
             let tags = repo["topics"].clone();
