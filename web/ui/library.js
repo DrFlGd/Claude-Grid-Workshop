@@ -108,6 +108,8 @@ export function AddProject() {
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    // the field itself, not state: a link pasted and submitted at once may not have re-rendered yet
+    const url = e.currentTarget.querySelector("#add-url")?.value ?? "";
     const args = tab === "github" ? { kind: "github", url } : tab === "zip" ? { kind: "zip", path } : { kind: "folder", path, link };
     if (asLibrary) args.role = "library";
     if (tab === "github" ? !url.trim() : !path) { setError(tab === "github" ? "Paste a GitHub link first." : "Choose a file or folder first."); return; }

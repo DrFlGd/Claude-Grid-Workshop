@@ -150,6 +150,8 @@ try:
             if not n:
                 failures.append("the project added from GitHub has no items")
             shot("00-added-project")
+        else:  # leave the page usable for the rest of the checks
+            d.execute_script("document.querySelector('.dialog [aria-label=Close]')?.click()")
 
     open_model("gridfinity-rebuilt/bin")
     time.sleep(1)

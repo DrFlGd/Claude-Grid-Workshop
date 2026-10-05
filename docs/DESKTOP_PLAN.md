@@ -2,7 +2,7 @@
 
 The project was called Claude Grid Workshop until Phase 1.5. The repository and website addresses keep the old name for now.
 
-Status (2026-10-04):
+Status (2026-10-05):
 
 - **Phase 0 done:** engine and storage seams, saved settings, share links, OpenSCAD parameter-file import/export.
 - **Phase 1 done:** see "Phase 1 notes" at the end.
