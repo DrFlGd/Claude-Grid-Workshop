@@ -11,6 +11,9 @@
   starter/  the starter library: every generator and parts pack of the site,
             packaged as library projects (workshop-cli bundle). The app copies
             them into the user's library on first start.
+  libs/     the OpenSCAD libraries the app ships with (fetched beforehand by
+            tools/fetch_libraries.py --out build/desktop/libs); this adds the index
+            of their modules (Components), libs/index/<Name>.json
 The native engine goes in build/desktop/engine (tools/fetch_native_engine.py).
 """
 import argparse
@@ -57,6 +60,13 @@ for sha in catalog["common_files"].values():
 # everything else becomes the starter library
 subprocess.run([str(find_cli(a.cli)), "bundle", "--site", str(a.site), "--out", str(a.out / "starter")], check=True)
 
+# the bundled libraries' modules (Components)
+if (a.out / "libs/libraries.json").exists():
+    shutil.copy2(ROOT / "catalog/components.json", a.out / "libs/components.json")  # start values for modules without examples
+    subprocess.run([str(find_cli(a.cli)), "libs-index", "--libs", str(a.out / "libs")], check=True)
+else:
+    print("no bundled libraries (run tools/fetch_libraries.py --out build/desktop/libs first): the app will have no Components", file=sys.stderr)
+
 # The app works offline: no Google Fonts request. Bundle Archivo if asked (CI does),
 # otherwise fall back to system fonts.
 FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/archivo/"
@@ -83,4 +93,5 @@ index.write_text("\n".join(out_lines) + "\n")
 
 size = lambda p: sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
 print(f"ui {size(a.out / 'ui') / 1e6:.1f} MB, site {size(a.out / 'site') / 1e6:.1f} MB, "
-      f"starter library {size(a.out / 'starter') / 1e6:.1f} MB -> {a.out}")
+      f"starter library {size(a.out / 'starter') / 1e6:.1f} MB, "
+      f"libraries {size(a.out / 'libs') / 1e6 if (a.out / 'libs').exists() else 0:.1f} MB -> {a.out}")

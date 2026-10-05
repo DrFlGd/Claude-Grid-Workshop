@@ -1,0 +1,160 @@
+{
+  "$comment": "Start values for library modules whose docs have no example to start from (docs/DESKTOP_PLAN.md, Components). Values are OpenSCAD expressions as written in a call. Keyed by library name, then module.",
+  "threads-scad": {
+    "ScrewThread": {
+      "outer_diam": "8",
+      "height": "12",
+      "pitch": "1.25"
+    },
+    "AugerThread": {
+      "outer_diam": "20",
+      "inner_diam": "10",
+      "height": "30",
+      "pitch": "10"
+    },
+    "MetricBolt": {
+      "diameter": "8",
+      "length": "20"
+    },
+    "MetricCountersunkBolt": {
+      "diameter": "6",
+      "length": "20"
+    },
+    "MetricWoodScrew": {
+      "diameter": "5",
+      "length": "30"
+    },
+    "MetricNut": {
+      "diameter": "8"
+    },
+    "MetricWasher": {
+      "diameter": "8"
+    },
+    "MetricBoltSet": {
+      "diameter": "6",
+      "length": "16"
+    },
+    "RodStart": {
+      "diameter": "20",
+      "height": "30"
+    },
+    "RodEnd": {
+      "diameter": "20",
+      "height": "30"
+    },
+    "RodExtender": {
+      "diameter": "20",
+      "height": "30"
+    }
+  },
+  "MCAD": {
+    "gear": {
+      "number_of_teeth": "20",
+      "circular_pitch": "200"
+    },
+    "bolt": {
+      "dia": "3",
+      "len": "16"
+    },
+    "cap_bolt": {
+      "dia": "3",
+      "len": "16"
+    },
+    "csk_bolt": {
+      "dia": "3",
+      "len": "16"
+    },
+    "flat_nut": {
+      "dia": "3"
+    },
+    "boltHole": {
+      "size": "3",
+      "length": "16"
+    },
+    "nutHole": {
+      "size": "3"
+    },
+    "stepper_motor_mount": {
+      "nema_standard": "17"
+    },
+    "auger": {
+      "pitch": "20",
+      "length": "40",
+      "outside_radius": "15",
+      "inner_radius": "5"
+    },
+    "ball_groove": {
+      "pitch": "10",
+      "length": "30",
+      "diameter": "4"
+    },
+    "helix": {
+      "pitch": "10",
+      "length": "30"
+    },
+    "washer": {
+      "position": "[0, 0, 0]"
+    },
+    "alignds420": {
+      "position": "[0, 0, 0]",
+      "rotation": "[0, 0, 0]"
+    },
+    "futabas3003": {
+      "position": "[0, 0, 0]",
+      "rotation": "[0, 0, 0]"
+    }
+  },
+  "Round-Anything": {
+    "polyRoundExtrude": {
+      "radiiPoints": "[[0, 0, 2], [30, 0, 5], [30, 20, 2], [0, 20, 8]]",
+      "length": "5",
+      "r1": "1",
+      "r2": "1"
+    },
+    "internalSq": {
+      "size": "[20, 10]",
+      "r": "2"
+    },
+    "isosphere": {
+      "r": "10"
+    },
+    "polyline": {
+      "p": "[[0, 0], [20, 10], [40, 0]]",
+      "width": "2"
+    },
+    "line": {
+      "p1": "[0, 0]",
+      "p2": "[20, 10]",
+      "width": "2"
+    }
+  },
+  "$no_guess": {
+    "$comment": "Modules whose guessed start values don't make a shape (workshop-cli components-check): they wait for input instead.",
+    "MCAD": [
+      "ball_screw",
+      "egg",
+      "epitrochoid",
+      "grid",
+      "hypotrochoid",
+      "involute_gear_tooth",
+      "list",
+      "oval_torus",
+      "polyhole",
+      "square_pyramid",
+      "torus",
+      "triangle_pyramid",
+      "xBolt",
+      "yBolt",
+      "zBolt"
+    ],
+    "NopSCADlib": [
+      "drill",
+      "poly_cylinder",
+      "poly_drill",
+      "sector",
+      "slot",
+      "strap",
+      "strap_assembly"
+    ]
+  }
+}

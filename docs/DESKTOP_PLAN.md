@@ -9,7 +9,7 @@ Status (2026-10-05):
 - **Phase 1.5 done:** the library interface (section 5); see "Phase 1.5 notes" at the end.
 - **Phase 2 done:** the portable library, adding projects, update checks, metadata editing; see "Phase 2 notes" at the end.
 - **0.2.x (Phase 2 follow-ups):** numbered releases, the left menu by category (Parametric Models and Parts Library), Library settings, hide / delete / flag as broken, the trash; see "0.2 notes" at the end.
-- **Next:** Phase 3 (0.3), bundled libraries and library modules as generators.
+- **Now:** Phase 3 (0.3), bundled libraries and their modules as **Components**; see "Components" in section 2.
 
 ## Goal
 
@@ -173,6 +173,27 @@ Pinned and hash-checked like `vendor/`:
 | threads-scad | rcolyer/threads-scad @ 4ae9aeb (2021-12-01) | CC0-1.0 |
 
 More can be added the same way, or ingested as ordinary sources.
+
+**As built in 0.3:**
+
+- **With the app, not in the library.** The libraries ship inside the installer as app resources (`libs/`), pinned in `libraries.json` (commit, license, and a SHA-256 over the file list so a download and a git checkout check the same way), fetched by `tools/fetch_libraries.py`. They're updated with the app, so they don't show as projects and don't need update checks; Library settings lists them with their version.
+- **Which copy is used.** A library you added as a project (role "library", say your own BOSL2 checkout) wins over the bundled copy with the same name, both for Components and for `include <BOSL2/...>` in your projects. Library settings → Libraries has a switch per library to go back to the bundled copy; it's stored in `library.json`, so it moves with the library. Projects that use the library are read again when it changes.
+- **Includes resolve everywhere.** A project that includes `<BOSL2/...>`, `<MCAD/...>`, `<NopSCADlib/...>`, `<Round-Anything/...>` or `<threads-scad/...>` finds them on every install, even without the library added as a project.
+
+### Components
+
+A third section in the left menu, between Parametric Models and the Parts Library: **Components**, the modules inside libraries (gears, threads, bearings, hinges, shapes, fasteners) as forms. Grouped by topic (collapsed, like the other sections), with the libraries inside each topic.
+
+- **What a component is:** one public module that makes geometry on its own (not an operator that needs children). BOSL2: modules and function-modules whose docs say they make geometry ("SynTags: Geom") and that don't need children. Other libraries: public modules (not starting with `_`, not tests) that don't need children; for NopSCADlib, the documented ones (`//!` comments).
+- **Rendering:** a generated file: the library's includes, then one call with the values you set, named (`bevel_gear(teeth=36, mate_teeth=36, circ_pitch=5, shaft_diam=5)`). Settings you leave empty aren't passed, so the module's own default applies. The file is written for each render; the library's files are laid out once and shared. "Copy code" gives the same OpenSCAD text.
+- **Settings types:** a number, checkbox, text or vector when the module's default (or the docs example) is one; otherwise an OpenSCAD expression field (`[10, 20, 5]`, `BOTTOM`, `circle(5)`), empty by default. `anchor` and `orient` are choices of BOSL2's directions and the module's named anchors. Detail (`$fa`, `$fs`, `$fn`) is its own group.
+- **Start values:** the first doc example that is a plain call of the module; every such example is a "Start from" preset.
+- **Desktop only** (the website stays the light version).
+- **Keys:** `@<library>/<module>` (`@bosl2/bevel_gear`), by library name, so favourites, recent and pins survive switching between your copy and the bundled one.
+
+**Pinning:** "Pin as a model" on a component makes it a Parametric Model: a name, a category, the settings to show (the rest hidden at their current values or defaults), and the current values as its defaults. Pins are files in the library (`sources/pinned/pins/<id>.json`, shaped like a family manifest's model entry with `component` instead of `entrypoint`), listed under a "Pinned components" project, and edited, hidden, deleted and moved like any other model.
+
+**Form editor:** "Edit form" on a model page (desktop) changes how its settings look: label, help text, box names (axes), min/max/step, choices, show-when condition, hidden, group, printer-profile link, and presets. The edits are stored with the item's metadata (`items.<id>.form` in the project's `metadata.json`), in the same shape as a family manifest: `{ ui: { <setting>: {...} }, hidden: [...], defaults: {...}, presets: [...] }`, and applied with the same code the website build uses for manifests, so a form made in the app can be pasted into `catalog/families/*.json` unchanged.
 
 ### Module → generator
 

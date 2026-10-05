@@ -6,6 +6,10 @@
 //!   workshop-cli site-prepare --repo . --out _site [--desktop] [--public] [--hide-blocked]
 //!   workshop-cli site-finish  --repo . --out _site --params raw.json --engine-version V [--native-engine <dir|exe>]
 //!   workshop-cli bundle  --site <built site> --out <starter dir>
+//!   workshop-cli libs-index --libs <dir>        (components of the bundled libraries, written to <dir>/index/)
+//!   workshop-cli components --libs <dir> [--library NAME] [--json]   (what the libraries' modules become)
+//!   workshop-cli components-check --libs <dir> --app-site <dir> --engine <dir|exe> [--library NAME] [--jobs N] [--out f.json] [modules...]
+//!       (renders each component with its start values: the first doc example that is a plain call)
 //!   workshop-cli bench   --app-site <dir> --starter <dir> --engine <dir|exe> [--out f.json]   (renders from a library)
 //!   workshop-cli library-summary --library <dir> --app-site <dir> [--starter <dir>]
 //!   workshop-cli library-call --library <dir> --app-site <dir> --engine <dir|exe> <command> '<json args>'   (waits for jobs)
@@ -84,6 +88,15 @@ async fn run() -> Result<()> {
             eprintln!("starter library: {} projects in {}", ids.len(), out.display());
             return Ok(());
         }
+        "libs-index" => {
+            let libs = PathBuf::from(a.need("--libs")?);
+            for (name, n) in workshop_core::components::write_bundled_indexes(&libs)? {
+                eprintln!("{name}: {n} components");
+            }
+            return Ok(());
+        }
+        "components" => return components_list(a),
+        "components-check" => return components_check(a).await,
         "library-summary" => return library_summary(a).await,
         "library-call" => return library_call(a).await,
         "serve" => return serve(a).await,
@@ -232,6 +245,127 @@ async fn bench(engine: NativeEngine, mut a: Args) -> Result<()> {
     Ok(())
 }
 
+/// The components of the bundled libraries, as a list (or JSON model pages with --json).
+fn components_list(mut a: Args) -> Result<()> {
+    use workshop_core::components as wc;
+    let libs = PathBuf::from(a.need("--libs")?);
+    let only = a.flag("--library");
+    let as_json = a.rest.iter().any(|x| x == "--json");
+    let mut pages = vec![];
+    for lib in wc::bundled(&libs) {
+        if only.as_deref().is_some_and(|o| !o.eq_ignore_ascii_case(&lib.info.name)) {
+            continue;
+        }
+        let comps = wc::components_of(&lib);
+        let mut groups: std::collections::BTreeMap<String, usize> = Default::default();
+        for c in &comps {
+            *groups.entry(c.group.clone()).or_default() += 1;
+            let m = wc::component_model(&lib, c);
+            if as_json {
+                pages.push(m);
+            } else {
+                let ex = c.examples.iter().position(|e| !e.calls.is_empty());
+                println!("{:<14} {:<34} {:<12} {:>2} args  example:{:<6} {}", lib.info.name, c.module, c.group, c.args.len(),
+                    ex.map(|i| if i == 0 { "first".to_string() } else { format!("#{}", i + 1) }).unwrap_or_else(|| "-".into()), c.synopsis.chars().take(60).collect::<String>());
+            }
+        }
+        eprintln!("{}: {} components {:?}; problems: {}", lib.info.name, comps.len(), groups, lib.index["problems"]);
+    }
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&pages)?);
+    }
+    Ok(())
+}
+
+/// Render every component (of one library, or all) with its start values.
+async fn components_check(mut a: Args) -> Result<()> {
+    use workshop_core::components as wc;
+    let libs = PathBuf::from(a.need("--libs")?);
+    let site = SiteDir::new(a.need("--app-site")?)?;
+    let engine = NativeEngine::locate(&PathBuf::from(a.need("--engine")?)).await?;
+    let only = a.flag("--library");
+    let out = a.flag("--out");
+    let jobs: usize = a.flag("--jobs").map(|j| j.parse()).transpose()?.unwrap_or_else(workshop_core::render::default_concurrency);
+    let timeout = Duration::from_secs(a.flag("--timeout").map(|t| t.parse()).transpose()?.unwrap_or(300));
+    let pick: Vec<String> = a.rest.iter().filter(|x| !x.starts_with("--")).cloned().collect();
+    let cache = std::env::temp_dir().join(format!("workshop-components-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&cache);
+    let common = site.catalog()?["common_files"].clone();
+    let mut r = Renderer::new(engine, site, cache.clone(), jobs)?;
+    r.use_cache = false;
+    let renderer = Arc::new(r);
+    // one render per engine slot at a time, so the time limit counts rendering, not waiting
+    let slots = Arc::new(tokio::sync::Semaphore::new(jobs));
+    let mut handles = vec![];
+    for lib in wc::bundled(&libs) {
+        if only.as_deref().is_some_and(|o| !o.eq_ignore_ascii_case(&lib.info.name)) {
+            continue;
+        }
+        renderer.add_blobs(lib.index["files"].as_object().into_iter().flatten().filter_map(|(rel, sha)| Some((sha.as_str()?.to_string(), lib.root.join(rel)))));
+        for c in wc::components_of(&lib) {
+            if !pick.is_empty() && !pick.contains(&c.module) {
+                continue;
+            }
+            let model = wc::component_model(&lib, &c);
+            let req = default_request(&model, &common)?;
+            let needs = model["needs"].as_array().map(|n| !n.is_empty()).unwrap_or(false);
+            let start = match c.examples.iter().position(|e| !e.calls.is_empty()) {
+                Some(i) if c.examples[i].title == "Suggested start" => "suggested",
+                Some(i) if c.examples[i].title == "Guessed start values" => "guessed",
+                Some(0) => "first example",
+                Some(_) => "later example",
+                None if needs => "needs input",
+                None => "no example",
+            };
+            if start == "needs input" {
+                eprintln!("skip  {:<46} needs input: {}", model["key"].as_str().unwrap_or(""), model["needs"]);
+                handles.push(tokio::spawn(async move { json!({ "key": model["key"], "status": "skipped", "start": start }) }));
+                continue;
+            }
+            let key = model["key"].as_str().unwrap_or("").to_string();
+            let renderer = renderer.clone();
+            let slots = slots.clone();
+            handles.push(tokio::spawn(async move {
+                let _slot = slots.acquire_owned().await;
+                let job = format!("check-{}", key.replace(['/', '@'], "-"));
+                let t0 = Instant::now();
+                let r = tokio::time::timeout(timeout, renderer.render(&job, &req, |_| {})).await;
+                let (status, tris, error) = match r {
+                    Ok(Ok(o)) => ("pass", stl_triangles(&o.stl).unwrap_or(0), None),
+                    Ok(Err(e)) => ("fail", 0, Some(e.message)),
+                    Err(_) => {
+                        renderer.cancel(&job);
+                        ("fail", 0, Some(format!("timed out after {} s", timeout.as_secs())))
+                    }
+                };
+                let secs = (t0.elapsed().as_millis() as f64 / 10.0).round() / 100.0;
+                eprintln!("{status:<5} {key:<46} {start:<14} {secs:>6}s {tris:>8} tris {}", error.clone().unwrap_or_default());
+                json!({ "key": key, "status": status, "start": start, "seconds": secs, "triangles": tris, "error": error })
+            }));
+        }
+    }
+    let mut results = vec![];
+    for h in handles {
+        results.push(h.await?);
+    }
+    let count = |start: &str, status: &str| results.iter().filter(|r| r["start"] == start && r["status"] == status).count();
+    let mut summary = serde_json::Map::new();
+    for start in ["first example", "later example", "suggested", "guessed", "no example"] {
+        summary.insert(start.into(), json!({ "pass": count(start, "pass"), "fail": count(start, "fail") }));
+    }
+    summary.insert("needs input".into(), json!(count("needs input", "skipped")));
+    eprintln!("{}", serde_json::to_string(&summary)?);
+    if let Some(out) = out {
+        std::fs::write(&out, serde_json::to_string_pretty(&json!({ "summary": summary, "results": results }))? + "\n")?;
+    }
+    let _ = std::fs::remove_dir_all(&cache);
+    // the plan's check: every component whose first doc example is a plain call renders it
+    if count("first example", "fail") > 0 && a.rest.iter().all(|x| x != "--no-fail") {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
 /// Files and model stubs for every catalog model; writes <out>/.build/plan.json.
 fn site_prepare(mut a: Args) -> Result<()> {
     let repo = PathBuf::from(a.need("--repo")?);
@@ -270,7 +404,7 @@ async fn site_finish(mut a: Args) -> Result<()> {
         for m in native {
             let mut files = plan.common_files.clone();
             files.extend(m.files.clone());
-            let req = workshop_core::RenderRequest { model: m.key.clone(), entry: m.entry.clone(), files, values: Default::default(), defines: vec![] };
+            let req = workshop_core::RenderRequest { model: m.key.clone(), entry: m.entry.clone(), files, values: Default::default(), defines: vec![], call: None };
             let v = match r.export_params(&req).await {
                 Ok(v) => v,
                 Err(e) => json!({ "error": format!("{}\n{}", e.message, e.logs.join("\n")) }),

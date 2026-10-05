@@ -27,6 +27,10 @@ pub struct RenderRequest {
     /// Settings passed with -D instead of the parameter file (values the file computes).
     #[serde(default)]
     pub defines: Vec<String>,
+    /// A component (a library module): the entry file is written for this render,
+    /// calling the module with `values` (see [`crate::components::call_source`]).
+    #[serde(default)]
+    pub call: Option<crate::components::Call>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -268,7 +272,8 @@ impl Renderer {
         let mut defines = req.defines.clone();
         defines.sort();
         let defines = defines.join("\n");
-        sha_hex(&[self.engine.version.as_bytes(), req.entry.as_bytes(), &files, &values, defines.as_bytes()])
+        let call = req.call.as_ref().map(|c| serde_json::to_vec(c).unwrap_or_default()).unwrap_or_default();
+        sha_hex(&[self.engine.version.as_bytes(), req.entry.as_bytes(), &files, &values, defines.as_bytes(), &call])
     }
 
     /// Ask a running or queued job to stop. Returns false if it isn't known (already finished).
@@ -307,7 +312,27 @@ impl Renderer {
         }
         let cancel = Arc::new(Notify::new());
         self.jobs.lock().unwrap().insert(job.to_string(), cancel.clone());
-        let result = self.render_uncached(job, req, &on_event, &cancel).await;
+        let mut result = self.render_uncached(job, req, &on_event, &cancel).await;
+        // a component that turned out to be a 2D shape: show it extruded (and a 3D one
+        // the docs drew flat: without the extrusion)
+        if let (Err(e), Some(call)) = (&result, &req.call) {
+            let said = |t: &str| e.logs.iter().any(|l| l.contains(t)) || e.message.contains(t);
+            let retry = if e.cancelled {
+                None
+            } else if call.extrude.is_none() && (said("not a 3D object") || said("is a 2D object")) {
+                on_event(RenderEvent::Log { line: "This is a 2D shape: extruding it 1 mm to show it.".into() });
+                Some(crate::components::Call { extrude: Some(crate::components::EXTRUDE.into()), ..call.clone() })
+            } else if call.extrude.is_some() && said("object is empty") {
+                Some(crate::components::Call { extrude: None, ..call.clone() })
+            } else {
+                None
+            };
+            if let Some(c) = retry {
+                let mut again = req.clone();
+                again.call = Some(c);
+                result = self.render_uncached(job, &again, &on_event, &cancel).await;
+            }
+        }
         self.jobs.lock().unwrap().remove(job);
         result
     }
@@ -348,19 +373,25 @@ impl Renderer {
         std::fs::create_dir_all(&job_dir).map_err(|e| RenderFailure::failed(format!("Couldn't create a job folder: {e}"), vec![]))?;
         let params = job_dir.join("params.json");
         let out = job_dir.join("out.stl");
-        std::fs::write(&params, parameter_set(&req.values, &req.defines))
-            .map_err(|e| RenderFailure::failed(format!("Couldn't write settings: {e}"), vec![]))?;
-
         let mut cmd = self.engine.command();
-        cmd.arg(tree.join(&entry));
-        for d in &req.defines {
-            if let Some(v) = req.values.get(d) {
-                cmd.arg("-D").arg(format!("{d}={v}"));
+        if let Some(call) = &req.call {
+            // a component: this render's own file (includes the library, calls the module)
+            let source = crate::components::call_source(call, &req.values).map_err(|e| RenderFailure::failed(format!("{e:#}"), vec![]))?;
+            let file = job_dir.join("component.scad");
+            std::fs::write(&file, source).map_err(|e| RenderFailure::failed(format!("Couldn't write the component file: {e}"), vec![]))?;
+            cmd.arg(&file);
+        } else {
+            std::fs::write(&params, parameter_set(&req.values, &req.defines))
+                .map_err(|e| RenderFailure::failed(format!("Couldn't write settings: {e}"), vec![]))?;
+            cmd.arg(tree.join(&entry));
+            for d in &req.defines {
+                if let Some(v) = req.values.get(d) {
+                    cmd.arg("-D").arg(format!("{d}={v}"));
+                }
             }
+            cmd.args(["-P", "site"]).arg("-p").arg(&params);
         }
-        cmd.args(["--backend=Manifold", "--export-format=binstl", "-P", "site"])
-            .arg("-p")
-            .arg(&params)
+        cmd.args(["--backend=Manifold", "--export-format=binstl"])
             .arg("-o")
             .arg(&out)
             .current_dir(&tree)
@@ -621,6 +652,7 @@ pub fn default_request(model: &Value, common_files: &Value) -> Result<RenderRequ
         files,
         values,
         defines,
+        call: serde_json::from_value(model["call"].clone()).ok(),
     })
 }
 

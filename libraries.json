@@ -1,0 +1,77 @@
+{
+  "$comment": "OpenSCAD libraries shipped with the desktop app (tools/fetch_libraries.py). content_sha256: see that script.",
+  "libraries": [
+    {
+      "name": "BOSL2",
+      "title": "BOSL2",
+      "summary": "The Belfry OpenSCAD Library: shapes, rounding, attachments, gears, threads, screws, hinges, joiners and more.",
+      "repo": "BelfrySCAD/BOSL2",
+      "commit": "e173fa0ae45f9e2082e0d8c0382dae98621b7c20",
+      "date": "2026-10-02",
+      "license": "BSD-2-Clause",
+      "authors": [
+        "Revar Desmera",
+        "Adrian Mariano",
+        "BOSL2 contributors"
+      ],
+      "docs": "https://github.com/BelfrySCAD/BOSL2/wiki",
+      "content_sha256": "a33fa2d7df198cb26eac3b38adc92b209b9f8cc63c7604d34de036843dbf2a3d"
+    },
+    {
+      "name": "MCAD",
+      "title": "MCAD",
+      "summary": "OpenSCAD's original parts library: gears, nuts and bolts, bearings, motors, shapes.",
+      "repo": "openscad/MCAD",
+      "commit": "bd0a7ba3f042bfbced5ca1894b236cea08904e26",
+      "date": "2021-10-25",
+      "license": "LGPL-2.1-only",
+      "authors": [
+        "OpenSCAD MCAD contributors"
+      ],
+      "docs": "https://github.com/openscad/MCAD",
+      "content_sha256": "72223aecb03f739f5dbf299b42d08be73d8673984242284a3cea49b12a9a1f42"
+    },
+    {
+      "name": "NopSCADlib",
+      "title": "NopSCADlib",
+      "summary": "Library of parts for 3D printers and electronic enclosures: screws, nuts, bearings, motors, PCBs, printed parts.",
+      "repo": "nophead/NopSCADlib",
+      "commit": "00ec2898c0a2cdebd446f0175671b633d5ae7d5f",
+      "date": "2026-09-24",
+      "license": "GPL-3.0-or-later",
+      "authors": [
+        "Chris Palmer (nophead)"
+      ],
+      "docs": "https://github.com/nophead/NopSCADlib",
+      "content_sha256": "2473d4120a8bc4ade4595161cf48779220440ff672a0caaa758229be463fa4c3"
+    },
+    {
+      "name": "Round-Anything",
+      "title": "Round-Anything",
+      "summary": "Rounding and filleting for polygons and extrusions (polyRound).",
+      "repo": "Irev-Dev/Round-Anything",
+      "commit": "061fef7c429628808e847696bb345a9b0ec6e279",
+      "date": "2023-08-07",
+      "license": "MIT",
+      "authors": [
+        "Kurt Hutten"
+      ],
+      "docs": "https://github.com/Irev-Dev/Round-Anything",
+      "content_sha256": "945824a06cfe8b510d1caa5dc3e15743793a1ba6beea905f47ec2ca88577a10d"
+    },
+    {
+      "name": "threads-scad",
+      "title": "threads-scad",
+      "summary": "Metric threads, bolts, nuts, washers and threaded holes.",
+      "repo": "rcolyer/threads-scad",
+      "commit": "4ae9aeb3b136f9858200f77a304b909a000ce3b4",
+      "date": "2021-12-01",
+      "license": "CC0-1.0",
+      "authors": [
+        "Ryan A. Colyer"
+      ],
+      "docs": "https://github.com/rcolyer/threads-scad",
+      "content_sha256": "536bde4980593e64a4e87fdcbfd9c1aa42ae82a41e68d838dd95e5aa829e5136"
+    }
+  ]
+}

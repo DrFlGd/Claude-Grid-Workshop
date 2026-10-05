@@ -166,7 +166,7 @@ pub async fn ingest(
     for (i, (mid, _, fmap, _, _, entry)) in planned.iter().enumerate() {
         let mut files = common_files.clone();
         files.extend(fmap.clone());
-        let req = RenderRequest { model: format!("{id}/{mid}"), entry: format!("/{entry}"), files, values: Default::default(), defines: vec![] };
+        let req = RenderRequest { model: format!("{id}/{mid}"), entry: format!("/{entry}"), files, values: Default::default(), defines: vec![], call: None };
         let r = renderer.clone();
         set.spawn(async move { (i, r.export_params(&req).await) });
     }
