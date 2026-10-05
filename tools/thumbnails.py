@@ -172,4 +172,6 @@ for k in missing:
     print("NO STL:", k, file=sys.stderr)
 for f in failed:
     print("FAILED:", f, file=sys.stderr)
+    if os.environ.get("GITHUB_ACTIONS"):
+        print(f"::error title=thumbnails::{f[:900]}")
 sys.exit(1 if failed else 0)

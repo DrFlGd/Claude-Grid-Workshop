@@ -133,6 +133,10 @@ def main():
                           *(["--native-engine", str(args.native_engine.resolve())] if args.native_engine else [])],
                          capture_output=True, text=True)
     sys.stderr.write(fin.stderr)
+    if os.environ.get("GITHUB_ACTIONS"):  # CI logs aren't always reachable; annotations are
+        for line in (prep.stderr + fin.stderr).splitlines():
+            if line.startswith(("PROBLEM", "error")):
+                print(f"::error title=build_site::{line[:900]}")
     if fin.returncode not in (0, 1):
         raise SystemExit(fin.returncode)
     catalog = json.loads((out / "data/catalog.json").read_text())
@@ -146,4 +150,9 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except subprocess.CalledProcessError as e:
+        if os.environ.get("GITHUB_ACTIONS"):
+            print(f"::error title=build_site::{' '.join(map(str, e.cmd))[:300]} failed: {(e.stderr or '')[-900:]}".replace("\n", "%0A"))
+        raise
