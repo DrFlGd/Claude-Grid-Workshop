@@ -581,7 +581,7 @@ fn read_request(stream: &mut std::net::TcpStream) -> Result<Http> {
 fn respond(stream: &mut std::net::TcpStream, code: u16, ctype: &str, extra: &[(&str, String)], body: &[u8]) -> Result<()> {
     use std::io::Write;
     let mut head = format!(
-        "HTTP/1.1 {code} {}\r\ncontent-type: {ctype}\r\ncontent-length: {}\r\naccess-control-allow-origin: *\r\naccess-control-expose-headers: x-events\r\ncache-control: no-store\r\nconnection: close\r\n",
+        "HTTP/1.1 {code} {}\r\ncontent-type: {ctype}\r\ncontent-length: {}\r\naccess-control-allow-origin: *\r\naccess-control-expose-headers: x-events, x-failed\r\ncache-control: no-store\r\nconnection: close\r\n",
         if code < 400 { "OK" } else { "Error" },
         body.len()
     );
@@ -655,7 +655,12 @@ async fn serve(mut a: Args) -> Result<()> {
                                     evs.push(json!({ "type": "done", "ms": out.ms, "cached": out.cached, "logs": out.logs.iter().rev().take(50).rev().collect::<Vec<_>>() }));
                                     respond(&mut stream, 200, "application/octet-stream", &[("x-events", serde_json::to_string(&evs)?)], &out.stl)
                                 }
-                                Err(e) => respond(&mut stream, 500, "application/json", &[], &serde_json::to_vec(&e)?),
+                                // a cancelled render isn't a server error (the page cancels when you move on)
+                                Err(e) if e.cancelled => respond(&mut stream, 200, "application/json", &[("x-failed", "1".into())], &serde_json::to_vec(&e)?),
+                                Err(e) => {
+                                    eprintln!("render {job} ({}): {}", rq.model, e.message);
+                                    respond(&mut stream, 500, "application/json", &[], &serde_json::to_vec(&e)?)
+                                }
                             }
                         }
                         "render_cancel" => {

@@ -255,14 +255,21 @@ async def main():
             await pg.fill("#meta-name", "My cup")
             await pg.click("#meta-save")
             await pg.wait_for_selector(".dialog", state="detached")
+            # (no other background work: the daily check may still be reading the new version)
+            await pg.wait_for_selector(".status-idle", timeout=600000)
             await pg.click("[data-act=check]")
             await pg.wait_for_selector(".update-banner", timeout=600000)
+            await pg.wait_for_selector(".status-idle", timeout=600000)
             banner = await pg.inner_text(".update-banner")
             check("upstream change detected and summarised", "Update ready" in banner, banner.replace("\n", " | ")[:300])
             await pg.screenshot(path=str(out / "p2-04-update.png"))
             before = await pg.evaluate(f"() => window.__workshop.catalog.sources.find((s) => s.id === '{v76}').version")
             await pg.click("[data-update=apply]")
-            await pg.wait_for_selector(".update-banner", state="detached", timeout=60000)
+            try:
+                await pg.wait_for_selector(".update-banner", state="detached", timeout=60000)
+            except Exception:
+                toasts = await pg.eval_on_selector_all(".toast", "els => els.map(e => e.textContent)")
+                raise SystemExit(f"the update wasn't applied; the page said: {toasts}")
             after = await pg.evaluate(f"() => window.__workshop.catalog.sources.find((s) => s.id === '{v76}').version")
             items = {i["id"]: i for i in await index_items(pg, v76)}
             check("update accepted", before != after, f"{before} -> {after}")

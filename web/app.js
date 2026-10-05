@@ -17,7 +17,8 @@ import { scopeFromPath } from "./ui/context.js";
 import { scopeInfo } from "./ui/sidebar.js";
 
 // page errors, for the desktop UI test (tests/desktop_ui.py)
-window.addEventListener("error", (e) => { (window.__errors ||= []).push(String(e.message)); });
+// (not the browser's harmless "ResizeObserver loop completed with undelivered notifications")
+window.addEventListener("error", (e) => { if (!/ResizeObserver loop/.test(String(e.message))) (window.__errors ||= []).push(String(e.message)); });
 window.addEventListener("unhandledrejection", (e) => { (window.__errors ||= []).push(String(e.reason?.message || e.reason)); });
 
 const platform = await createPlatform();
