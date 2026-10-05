@@ -37,7 +37,7 @@ web/  (shared UI: catalog, search, forms, viewer, library pages)
   │
   ├── in a browser ──> engine: OpenSCAD WebAssembly worker  storage: IndexedDB
   │
-  └── in Tauri ──────> engine: native OpenSCAD (render queue)  storage: workspace folder
+  └── in Tauri ──────> engine: native OpenSCAD (render queue)  storage: library folder
                          │
 desktop/src-tauri (Rust) ├── jobs: run openscad, N in parallel, cancel, cache
                          ├── sources: download, pin, check for updates
@@ -49,7 +49,7 @@ desktop/src-tauri (Rust) ├── jobs: run openscad, N in parallel, cancel, ca
 **Seams in the front end** make one UI work in both places:
 
 - `engine`: `render(model, files, settings) -> STL/3MF` plus progress and cancel. Today's `engine-client.js` becomes the browser implementation; the desktop one calls a Tauri command.
-- `store`: saved settings, projects and library. Browser: IndexedDB. Desktop: files in the workspace folder.
+- `store`: saved settings, projects and library. Browser: IndexedDB. Desktop: files in the library folder.
 - `index` (added for the new interface, section 5): `query({ text, filters, sort, group, offset, limit }) -> { total, items, facets }`, `get(id)`, `update(id, patch)`. Browser: in memory over `catalog.json`, read-only. Desktop: SQLite in Rust, so the page never loads the whole catalog.
 
 The page detects Tauri at start-up and picks the implementation. Everything above the seams is shared.
@@ -58,25 +58,65 @@ The page detects Tauri at start-up and picks the implementation. Everything abov
 
 - The pinned OpenSCAD snapshot (same version as `engine.json`, today 2026.10.02) ships inside the app. On Windows that's the snapshot's ZIP folder. On Linux it's the AppImage contents, extracted at build time so there's no AppImage inside an AppImage. Both are bundled as Tauri resources and launched by path. CI downloads them and checks their SHA-256, like the WebAssembly engine.
 - **Render queue:** one OpenSCAD process per job, up to (cores − 1) at once; cancel kills the process.
-- **Cache:** results are stored under `cache/` keyed by a hash of (engine version, model files, settings). Repeating a render is instant.
-- **Fonts and libraries:** native OpenSCAD sees system fonts, and `OPENSCADPATH` points at the bundled and workspace libraries.
+- **Cache:** results are stored in the app's data folder on the computer (not in the library), keyed by a hash of (engine version, model files, settings). Repeating a render is instant.
+- **Fonts and libraries:** native OpenSCAD sees system fonts, and `OPENSCADPATH` points at the bundled libraries and those in the library folder.
 - **Benchmark:** `tools/engine/cli.mjs bench` gets a native mode, so CI records native vs WebAssembly times side by side.
 
-### Workspace folder
+### Library folder
 
-You choose it on first run (default `~/SCAD Workshop`; a `~/Claude Grid Workshop` folder from before the rename keeps being used). It's plain files so it can be synced or put in git:
+Everything you add, make or edit lives in one **library folder**. You choose it on first run and can change it in Settings. The default is `~/SCAD Workshop`: today's workspace folder becomes the library in Phase 2, without moving anything. The folder is self-contained and portable:
+
+- move or copy it to another disk or computer, sync it (Syncthing, OneDrive, Dropbox) or put it in git, then point any build of the app at it with **Open library…**;
+- it holds the files and all their metadata; nothing about the library lives only inside the app;
+- paths inside it are relative, and its JSON files are small, pretty-printed with sorted keys and written atomically (write, then rename), so sync tools and git diffs stay clean;
+- it holds no database. The search index is rebuilt from the folder (a few seconds per thousand items) and kept on the computer, because SQLite files and file-sync tools don't mix well.
 
 ```
-workspace/
-  sources/<id>/<commit>/        downloaded projects, one folder per pinned version
-  sources/<id>/source.json      origin, license, pinned version, update state
-  libraries/                    bundled libraries (read-only) + your own
-  collections/<name>/           collection.json + premade files + generated outputs
-  settings/                     saved settings, printer profile, preferences
-  metadata/<item id>.json       your edits: names, tags, categories, form overlays (section 5)
-  cache/                        render cache and thumbnails (safe to delete)
-  index.sqlite                  search index (rebuilt from the above if deleted)
+My SCAD Library/
+  library.json                        name, id, format version, library-wide defaults
+  sources/<source>/                   one folder per project you added
+    source.json                       origin (GitHub repo + pinned commit, Printables page, ZIP or folder),
+                                      what ingest detected (license, authors, dates), update state
+    metadata.json                     your edits: project, folder and file level (see "Metadata levels")
+    files/<version>/...               the downloaded or extracted files, untouched, one folder per version
+  local/<project>/                    your own projects: drop .scad or model files here and the app picks them up
+                                      (edited in place, not versioned)
+  collections/<name>/collection.json  items by id (not copies), quantities, notes, status, icon
+  recipes/<id>.json (+ output file)   saved settings, with their output format and last output
+  builtin/metadata.json               your edits to the app's built-in generators and parts
+  profiles/                           printer profiles (bed size, nozzle)
+  thumbs/                             thumbnails, so a moved library shows at once (rebuildable)
 ```
+
+**How files get in:**
+
+- **GitHub:** not a git clone. The app downloads the repository at one commit (GitHub's tarball) into `files/<commit>/`: plain files exactly as upstream has them, which open in OpenSCAD directly, with no git needed and each version pinned. An update downloads the new commit beside the old one. The old one is kept while a saved recipe uses it; "Clean up" removes unused versions.
+- **Printables or any ZIP:** extracted unchanged into `files/<version>/`. What the PDF or README says goes into `source.json` as detected metadata.
+- **A folder elsewhere on disk:** copied in by default. A project you are still developing can instead be **linked** (left where it is). A linked folder isn't portable, so if it's missing after a move it shows under "Needs attention" to relink.
+
+**On this computer only** (the app's data folder, not the library): the search index, the render cache, the unpacked OpenSCAD engine, window layout and view preferences, and the list of libraries you've opened. Deleting any of it loses nothing.
+
+**Moving the library or installing a new build:** install, choose **Open library…** and pick the folder. A newer app upgrades an older library format when it opens it (after backing up the JSON files it changes). An older app opens a newer library read-only and says why. **Merge library…** copies another library's sources, collections and recipes into the open one: a source with the same origin and version is kept once, and conflicting metadata is shown side by side to choose from.
+
+**From Phase 1:** today's workspace holds `settings/saved/`, `settings/prefs.json` and `cache/`. On the first start of the Phase 2 app, saved settings move to `recipes/`, the printer profile to `profiles/`, and view preferences and the cache to the computer's app data.
+
+### Metadata levels
+
+Metadata is layered, so one edit can cover a whole project, part of it, or a single item:
+
+| Level | Stored in | Example |
+| --- | --- | --- |
+| Library | `library.json` | default license and author for your own `local/` projects |
+| Project | `sources/<source>/metadata.json` → `project` | license CC-BY-4.0 for the whole project; author; category; icon |
+| Folder in a project | same file → `groups["<folder>"]` | tag "lids" for everything in `lids/` |
+| Item (one name, all its formats) | same file → `items["<item>"]` | a different license or name for one part |
+
+- **Which value wins:** your edits beat detected values, and among your edits the most specific level wins (item, then folder, then project). Detected values (README, LICENSE, Printables PDF, family manifest) come next, and library defaults only fill fields nothing else set.
+- **Changing a whole project** is one edit at project level. Items with their own value keep it, and the inspector says how many do and offers to clear them.
+- **Provenance:** every field shows its value and where it came from ("License: CC-BY-4.0, set on the project; detected: none"). "Revert" removes your value at that level.
+- **Updates:** detected values live in `source.json` and are refreshed by a source update; your edits live in `metadata.json` and are never touched by one. Edits that no longer match anything (a renamed file or setting) go to "Needs attention".
+- **Cross-project groups** (categories, collections) have their own name, description and icon. Editing them doesn't change the license or author of the items inside; for that, select the items and bulk-edit them at item level.
+- **Form overlays** (renamed settings, conditions, presets; section 5) are stored per generator in the same project file.
 
 ## 1. Sources (ingest)
 
@@ -139,7 +179,7 @@ Most mechanical parts (gears, threads, hinges, bearings) are modules inside libr
   - presets, from the doc examples (`bevel_gear(mod=3, teeth=35, mate_teeth=35, face_width=20)`).
 - **Other libraries:** the form comes from the module signature (`module name(a=1, b=[2,3])`): names, defaults and types inferred from the defaults. Comments directly above the module become its description.
 - **Rendering:** a generated wrapper file (`include <BOSL2/std.scad>` + `include <BOSL2/gears.scad>` + one call with the form's values), rendered like any other model.
-- A module can be **pinned as a generator**, with a nicer name, chosen settings and hidden extras. Pinned generators are stored as small JSON files in the workspace, in the same shape as `catalog/families/*.json`.
+- A module can be **pinned as a generator**, with a nicer name, chosen settings and hidden extras. Pinned generators are stored as small JSON files in the library folder, in the same shape as `catalog/families/*.json`.
 
 ## 3. Index and search
 
@@ -157,7 +197,7 @@ Most mechanical parts (gears, threads, hinges, bearings) are modules inside libr
 - settings (names and descriptions, so "tooth count" finds gears);
 - source and version, and license;
 - creator and origin URL;
-- dates: updated upstream (the pinned commit, or the date on a downloaded page), added to the workspace, last used;
+- dates: updated upstream (the pinned commit, or the date on a downloaded page), added to the library, last used;
 - thumbnail and size;
 - any further fields a source supplies (print settings, material, a model site's own category), kept as open key/value metadata so new filters don't need a schema change.
 
@@ -185,7 +225,7 @@ Ingest suggests a category from keywords, BOSL2 topics, file and module names, a
 
 ## 4. Model library
 
-**Collections** are folders with a `collection.json`. Each item is either:
+**Collections** are lists, not folders of copies: a `collection.json` refers to items by id, so one part can be in several collections. Imported files live in `sources/` like any other project (see "Library folder"). Each item is either:
 
 - **premade:** STL, 3MF, OBJ or STEP (files with the same name are one item; see "Files and formats" below), plus origin URL, author and license; or
 - **recipe:** a generated model, stored as source, version, model and settings, with its last output file. Recipes can be re-opened in their form, changed, or re-rendered after a source update.
@@ -302,10 +342,11 @@ All views share selection, sorting and grouping. The app remembers the view per 
 
 ### Metadata editing
 
-Everything from a source can be adjusted without touching the source files. Edits are stored as small override files in the workspace (`metadata/<item id>.json`), so they survive upstream updates and sync with the rest of the workspace.
+Everything from a source can be adjusted without touching the source files. Edits are stored in the library folder beside the project they belong to (`sources/<source>/metadata.json`, at project, folder or item level; see "Metadata levels" in the architecture section), so they survive upstream updates and travel with the library.
 
-**In the inspector** (one item or many at once):
+**In the inspector** (one item, many at once, or a whole group):
 
+- **Level:** selecting a project or folder (in the sidebar, a group heading or a condensed group tile) edits that level, so "license for the whole project" is one change. Each field says which level its value comes from.
 - **Item details:**
   - display name, description (Markdown), category (tree picker), tags (autocomplete), favourite, personal notes;
   - author, origin URL and license, with a note of where the information came from.
@@ -377,7 +418,7 @@ Each phase ends with something usable and with checks in CI.
 | **0. Seams** | Engine and store interfaces in `web/`; saved settings and share links on the website (browser storage) | Website unchanged for users, plus saved settings; all 55 models still pass in Chromium |
 | **1. Desktop shell** | Tauri app (Windows + Linux) with native engine, render queue, cache, workspace folder, built-in catalog offline, saved settings as files, workspace profile (bed size, tolerances, font) | Installers built in CI; all 55 models render natively (including the 3 Underware channels the browser can't); native vs WebAssembly benchmark published |
 | **1.5 Interface** | Mockup first. Then: front end split into modules (Preact + htm); app layout with sidebar, browser, inspector, workbench tabs, status bar; grid, list, table and grouped views; search with filters and command palette; `index` seam (in-memory over `catalog.json` for now); thumbnails for the 58 models; favourites, recent; light/dark/night themes; "Updated" filter and sort from source dates | All 58 models and the parts library browsable in all four views; search and filters answer in under 100 ms; the website keeps working with the new browser views; WebDriver tests updated |
-| **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; SQLite index behind the `index` seam, with open metadata fields that become filters, sorts and columns; source pages; "Needs attention"; metadata editing (inspector, overlays, bulk edit, undo, provenance); condensed groups in the browser, with editable group icons | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update; a condensed project shows the icon chosen for it |
+| **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; SQLite index behind the `index` seam, with open metadata fields that become filters, sorts and columns; source pages; "Needs attention"; portable library folder (choose, open, move, merge; versioned format; workspace migrated); layered metadata editing at library, project, folder and item level (inspector, overlays, bulk edit, undo, provenance); condensed groups in the browser, with editable group icons | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update; a project-level license change shows on all its items except those with their own; the library folder, moved to another path and opened on the other operating system's CI runner, shows the same items and metadata; a condensed project shows the icon chosen for it |
 | **3. Libraries + modules** | Bundled libraries; BOSL2 doc parser; signature parser; module → form; pinned generators; form editor (labels, box names, conditions, presets as overlays); category editor | The bevel-gear acceptance test passes; every BOSL2 module with geometry gets a form that renders its first doc example; a form edit made in the app matches what a family manifest `ui` block produces |
 | **4. Model library + file formats** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); one item per file name with a download format picker (built-in parts, imports and generator output); multi-colour and multi-part 3MF export; recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection; a pack with STL, 3MF and STEP copies of each part imports as one item per name; a two-colour label and the Rugged Box download as 3MF files that open in Bambu Studio and OrcaSlicer with their colours and separate parts |
 | **5. Productivity** | Batch from CSV, multi-setting sweeps, multi-part 3MF arranged on the bed for the printer profile, send to slicer (open the file in Bambu Studio / OrcaSlicer / PrusaSlicer), live reload when a watched .scad file is saved | As listed |
