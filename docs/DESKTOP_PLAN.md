@@ -187,7 +187,7 @@ Ingest suggests a category from keywords, BOSL2 topics, file and module names, a
 
 **Collections** are folders with a `collection.json`. Each item is either:
 
-- **premade:** STL, 3MF, OBJ or STEP (files with the same name are grouped, as `tools/import_library.py` does now), plus origin URL, author and license; or
+- **premade:** STL, 3MF, OBJ or STEP (files with the same name are one item; see "Files and formats" below), plus origin URL, author and license; or
 - **recipe:** a generated model, stored as source, version, model and settings, with its last output file. Recipes can be re-opened in their form, changed, or re-rendered after a source update.
 
 **Per item:** quantity, notes, print settings (material, nozzle, infill and so on, free text to start with), status (to print / printed), and tags.
@@ -197,6 +197,24 @@ Ingest suggests a category from keywords, BOSL2 topics, file and module names, a
 **Export:** a collection as a ZIP (files × quantity, with a parts list), or as a 3MF with parts arranged on the plate (Phase 5).
 
 **Search:** library items are in the same index as generators, so "case latch" finds your saved latch and the generator that made it.
+
+### Files and formats
+
+**One item per name.** Files in the same folder whose names differ only by extension (`latch.stl`, `latch.3mf`, `latch.step`, `latch.f3d`) are one item, wherever they come from: the built-in parts libraries (as `tools/import_library.py` does now), imported folders and ZIPs, Printables downloads, and your own generated outputs. Matching ignores case. Near misses (`latch_v2.stl` beside `latch.3mf`) are listed after an import so you can merge them, and any selection can be merged or split by hand.
+
+- The item lists the formats it has (STL · 3MF · STEP). **Download** has a format picker. The default is your preferred format from Settings (for example "3MF where there is one, otherwise STL"), and the last choice is remembered.
+- The preview and thumbnail use the best format the viewer reads: 3MF, then STL, then OBJ; STEP goes through OpenCascade.
+- A collection export (ZIP) applies one rule for items with several formats ("3MF where available"), or lets you choose per item.
+- Generators get the same picker for their output: STL or 3MF. Saved settings and recipes remember the format.
+
+**Multi-colour and multi-part 3MF**, when a model calls for it:
+
+- **When:** the model colours its parts with `color()` (a label with raised text in a second colour, an inlay), or makes several separate parts at once (the Rugged Box's case, lid and latches; a batch of labels). The render reports how many objects and colours it produced, and the picker offers "3MF, 2 colours" or "3MF, 12 parts" only then. One-part, one-colour models stay a plain choice of STL or 3MF.
+- **How:** OpenSCAD keeps top-level objects separate when lazy union is on, and its 3MF export can write colours. Each object becomes a named object in the 3MF with its colour as a material, so Bambu Studio, OrcaSlicer and PrusaSlicer can give each part its own filament. Both need checking against the pinned snapshot, in the WebAssembly and the native engine, before the app relies on them.
+- **Projects with a part picker:** many generators make one part at a time, chosen by a setting ("part to print: base / lid / latch"). A family manifest can name that setting, and the download then offers "All parts in one 3MF": the app renders each choice and combines them, laid out side by side.
+- **Preview:** the 3D view shows each object in its own colour, with a parts list to show, hide or recolour them, so what you see is what the slicer gets.
+- **Batch:** the batch download gains "one 3MF with every variant as a separate object".
+- Arranging the parts on the print bed for your printer profile comes in Phase 5.
 
 ## 5. Interface
 
@@ -253,6 +271,12 @@ All views share selection, sorting and grouping. The app remembers the view per 
 
 **Group by:** category, project/source, kind, license or none.
 
+**Condensed groups:** whenever a grouping is chosen, a "Condense" switch beside the Group menu shows each group as a single tile instead of a section. It works in every view and every place: generators, parts, collections and search results.
+
+- The tile shows the group's icon, name and item count. Opening it shows that group's items, with a path back ("Generators › Gridfinity Extended").
+- Searching still finds items inside condensed groups; each matching group shows how many of its items match.
+- **Group icon:** by default a collage of the first few items' thumbnails. Once metadata is editable (see "Metadata editing" below), you can choose it: one item's thumbnail, a render of a saved setting, or an image of your own. The same icon then appears for that project or category on the home page and in the sidebar.
+
 **Quick look:** Space opens a large preview that you can spin, without leaving the list. For a generator it shows its default render; for a part, the part.
 
 **Multi-select:** Shift/Ctrl-click, or drag a box, then act on all of them:
@@ -286,6 +310,7 @@ Everything from a source can be adjusted without touching the source files. Edit
   - display name, description (Markdown), category (tree picker), tags (autocomplete), favourite, personal notes;
   - author, origin URL and license, with a note of where the information came from.
 - **Thumbnail:** re-render from the current or a saved setting, choose the camera angle and colour, or use an image.
+- **Groups:** a project's, category's or collection's name, description and icon (the tile shown when groups are condensed, also used on the home page and in the sidebar).
 - **Provenance:** each field shows whether it came from the source or from you, with "Revert to source".
 - **Undo:** for every edit.
 
@@ -352,10 +377,10 @@ Each phase ends with something usable and with checks in CI.
 | **0. Seams** | Engine and store interfaces in `web/`; saved settings and share links on the website (browser storage) | Website unchanged for users, plus saved settings; all 55 models still pass in Chromium |
 | **1. Desktop shell** | Tauri app (Windows + Linux) with native engine, render queue, cache, workspace folder, built-in catalog offline, saved settings as files, workspace profile (bed size, tolerances, font) | Installers built in CI; all 55 models render natively (including the 3 Underware channels the browser can't); native vs WebAssembly benchmark published |
 | **1.5 Interface** | Mockup first. Then: front end split into modules (Preact + htm); app layout with sidebar, browser, inspector, workbench tabs, status bar; grid, list, table and grouped views; search with filters and command palette; `index` seam (in-memory over `catalog.json` for now); thumbnails for the 58 models; favourites, recent; light/dark/night themes; "Updated" filter and sort from source dates | All 58 models and the parts library browsable in all four views; search and filters answer in under 100 ms; the website keeps working with the new browser views; WebDriver tests updated |
-| **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; SQLite index behind the `index` seam, with open metadata fields that become filters, sorts and columns; source pages; "Needs attention"; metadata editing (inspector, overlays, bulk edit, undo, provenance) | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update |
+| **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; SQLite index behind the `index` seam, with open metadata fields that become filters, sorts and columns; source pages; "Needs attention"; metadata editing (inspector, overlays, bulk edit, undo, provenance); condensed groups in the browser, with editable group icons | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update; a condensed project shows the icon chosen for it |
 | **3. Libraries + modules** | Bundled libraries; BOSL2 doc parser; signature parser; module → form; pinned generators; form editor (labels, box names, conditions, presets as overlays); category editor | The bevel-gear acceptance test passes; every BOSL2 module with geometry gets a form that renders its first doc example; a form edit made in the app matches what a family manifest `ui` block produces |
-| **4. Model library** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection |
-| **5. Productivity** | Batch from CSV, multi-setting sweeps, arranged multi-colour 3MF, send to slicer (open the file in Bambu Studio / OrcaSlicer / PrusaSlicer), live reload when a watched .scad file is saved | As listed |
+| **4. Model library + file formats** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); one item per file name with a download format picker (built-in parts, imports and generator output); multi-colour and multi-part 3MF export; recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection; a pack with STL, 3MF and STEP copies of each part imports as one item per name; a two-colour label and the Rugged Box download as 3MF files that open in Bambu Studio and OrcaSlicer with their colours and separate parts |
+| **5. Productivity** | Batch from CSV, multi-setting sweeps, multi-part 3MF arranged on the bed for the printer profile, send to slicer (open the file in Bambu Studio / OrcaSlicer / PrusaSlicer), live reload when a watched .scad file is saved | As listed |
 
 ## Testing
 
@@ -372,6 +397,7 @@ Each phase ends with something usable and with checks in CI.
 | Unsigned installers | Fine for private use (Windows shows a SmartScreen prompt the first time) |
 | Ingested projects with unusual layouts | Ingest reports what it couldn't resolve; per-source overrides in the same JSON form as `catalog/families` |
 | License mix in a collection | Each item keeps its license; export includes a credits file |
+| 3MF colour or object export behaves differently in the WebAssembly and native builds | Check both engines in CI with a coloured and a multi-part model; fall back to one STL per colour or part in a ZIP |
 
 ## Still open
 
