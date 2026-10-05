@@ -84,7 +84,6 @@ My SCAD Library/
   collections/<name>/collection.json  items by id (not copies), quantities, notes, status, icon
   recipes/<id>.json (+ output file)   saved settings, with their output format and last output
   builtin/metadata.json               your edits to the app's built-in generators and parts
-  profiles/                           printer profiles (bed size, nozzle)
   thumbs/                             thumbnails, so a moved library shows at once (rebuildable)
 ```
 
@@ -94,11 +93,11 @@ My SCAD Library/
 - **Printables or any ZIP:** extracted unchanged into `files/<version>/`. What the PDF or README says goes into `source.json` as detected metadata.
 - **A folder elsewhere on disk:** copied in by default. A project you are still developing can instead be **linked** (left where it is). A linked folder isn't portable, so if it's missing after a move it shows under "Needs attention" to relink.
 
-**On this computer only** (the app's data folder, not the library): the search index, the render cache, the unpacked OpenSCAD engine, window layout and view preferences, and the list of libraries you've opened. Deleting any of it loses nothing.
+**With the app, on this computer** (the app's data folder, not the library): printer profiles, the search index, the render cache, the unpacked OpenSCAD engine, window layout and view preferences, and the list of libraries you've opened. Apart from the printer profiles, all of it can be rebuilt, so deleting it loses nothing else.
 
 **Moving the library or installing a new build:** install, choose **Open library…** and pick the folder. A newer app upgrades an older library format when it opens it (after backing up the JSON files it changes). An older app opens a newer library read-only and says why. **Merge library…** copies another library's sources, collections and recipes into the open one: a source with the same origin and version is kept once, and conflicting metadata is shown side by side to choose from.
 
-**From Phase 1:** today's workspace holds `settings/saved/`, `settings/prefs.json` and `cache/`. On the first start of the Phase 2 app, saved settings move to `recipes/`, the printer profile to `profiles/`, and view preferences and the cache to the computer's app data.
+**From Phase 1:** today's workspace holds `settings/saved/`, `settings/prefs.json` and `cache/`. On the first start of the Phase 2 app, saved settings move to `recipes/`, and the printer profile, view preferences and the cache move to the app's data folder.
 
 ### Metadata levels
 
