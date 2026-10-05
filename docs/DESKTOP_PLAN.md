@@ -7,7 +7,8 @@ Status (2026-10-04):
 - **Phase 0 done:** engine and storage seams, saved settings, share links, OpenSCAD parameter-file import/export.
 - **Phase 1 done:** see "Phase 1 notes" at the end.
 - **Phase 1.5 done:** the library interface (section 5); see "Phase 1.5 notes" at the end.
-- **Next:** Phase 2, ingest and the SQLite index.
+- **Phase 2 done:** the portable library, adding projects, update checks, metadata editing; see "Phase 2 notes" at the end.
+- **Next:** Phase 3, bundled libraries and library modules as generators.
 
 ## Goal
 
@@ -69,7 +70,7 @@ Everything you add, make or edit lives in one **library folder**. You choose it 
 - move or copy it to another disk or computer, sync it (Syncthing, OneDrive, Dropbox) or put it in git, then point any build of the app at it with **Open library…**;
 - it holds the files and all their metadata; nothing about the library lives only inside the app;
 - paths inside it are relative, and its JSON files are small, pretty-printed with sorted keys and written atomically (write, then rename), so sync tools and git diffs stay clean;
-- it holds no database. The search index is rebuilt from the folder (a few seconds per thousand items) and kept on the computer, because SQLite files and file-sync tools don't mix well.
+- it holds no database. What the app needs to search is rebuilt from the folder when it opens, and the render cache is kept on the computer, because database files and file-sync tools don't mix well.
 
 ```
 My SCAD Library/
@@ -79,11 +80,13 @@ My SCAD Library/
                                       what ingest detected (license, authors, dates), update state
     metadata.json                     your edits: project, folder and file level (see "Metadata levels")
     files/<version>/...               the downloaded or extracted files, untouched, one folder per version
+    derived/<version>.json            what reading the project found: models, settings, parts, problems
+                                      (rebuildable, kept so a moved library opens at once)
+    thumbs/, previews/                thumbnails and part previews (rebuildable)
   local/<project>/                    your own projects: drop .scad or model files here and the app picks them up
                                       (edited in place, not versioned)
   collections/<name>/collection.json  items by id (not copies), quantities, notes, status, icon
-  recipes/<id>.json (+ output file)   saved settings, with their output format and last output
-  thumbs/                             thumbnails, so a moved library shows at once (rebuildable)
+  recipes/<id>.json (+ output file)   saved settings (output format and last output: Phase 4)
 ```
 
 **How files get in:**
@@ -91,10 +94,10 @@ My SCAD Library/
 - **The starter library:** the generators and parts that used to be built into the app (Gridfinity, openGrid, the openGrid parts pack and the rest) are packaged as library projects and shipped with the installer as a starter library beside the program. On first start the app copies them into your library, where they are ordinary projects: editable, relicensable, removable. A later app version with changed projects offers them as updates, like a GitHub update; your edits are kept. The website still builds from the repository as before.
 
 - **GitHub:** not a git clone. The app downloads the repository at one commit (GitHub's tarball) into `files/<commit>/`: plain files exactly as upstream has them, which open in OpenSCAD directly, with no git needed and each version pinned. An update downloads the new commit beside the old one. The old one is kept while a saved recipe uses it; "Clean up" removes unused versions.
-- **Printables or any ZIP:** extracted unchanged into `files/<version>/`. What the PDF or README says goes into `source.json` as detected metadata.
+- **Printables or any ZIP:** extracted unchanged into `files/<version>/`. What the README and license file say goes into `source.json` as detected metadata (reading Printables' PDFs: Phase 4).
 - **A folder elsewhere on disk:** copied in by default. A project you are still developing can instead be **linked** (left where it is). A linked folder isn't portable, so if it's missing after a move it shows under "Needs attention" to relink.
 
-**With the app, on this computer** (the app's data folder, not the library): printer profiles, the search index, the render cache, the unpacked OpenSCAD engine, window layout and view preferences, and the list of libraries you've opened. Apart from the printer profiles, all of it can be rebuilt, so deleting it loses nothing else.
+**With the app, on this computer** (the app's data folder, not the library): printer profiles, the render cache, the unpacked OpenSCAD engine, window layout and view preferences, and the list of libraries you've opened. Apart from the printer profiles, all of it can be rebuilt, so deleting it loses nothing else.
 
 **Moving the library or installing a new build:** install, choose **Open library…** and pick the folder. A newer app upgrades an older library format when it opens it (after backing up the JSON files it changes). An older app opens a newer library read-only and says why. **Merge library…** copies another library's sources, collections and recipes into the open one: a source with the same origin and version is kept once, and conflicting metadata is shown side by side to choose from.
 
@@ -419,7 +422,7 @@ Each phase ends with something usable and with checks in CI.
 | **0. Seams** | Engine and store interfaces in `web/`; saved settings and share links on the website (browser storage) | Website unchanged for users, plus saved settings; all 55 models still pass in Chromium |
 | **1. Desktop shell** | Tauri app (Windows + Linux) with native engine, render queue, cache, workspace folder, built-in catalog offline, saved settings as files, workspace profile (bed size, tolerances, font) | Installers built in CI; all 55 models render natively (including the 3 Underware channels the browser can't); native vs WebAssembly benchmark published |
 | **1.5 Interface** | Mockup first. Then: front end split into modules (Preact + htm); app layout with sidebar, browser, inspector, workbench tabs, status bar; grid, list, table and grouped views; search with filters and command palette; `index` seam (in-memory over `catalog.json` for now); thumbnails for the 58 models; favourites, recent; light/dark/night themes; "Updated" filter and sort from source dates | All 58 models and the parts library browsable in all four views; search and filters answer in under 100 ms; the website keeps working with the new browser views; WebDriver tests updated |
-| **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; SQLite index behind the `index` seam, with open metadata fields that become filters, sorts and columns; source pages; "Needs attention"; portable library folder (choose, open, move, merge; versioned format; workspace migrated); the built-in projects packaged as a starter library installed with the app and copied into the library; layered metadata editing at library, project, folder and item level (inspector, overlays, bulk edit, undo, provenance); condensed groups in the browser, with editable group icons | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update; a project-level license change shows on all its items except those with their own; the library folder, moved to another path and opened on the other operating system's CI runner, shows the same items and metadata; a condensed project shows the icon chosen for it |
+| **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; the index rebuilt from the library behind the `index` seam (SQLite deferred, see Phase 2 notes), with open metadata fields that become filters, sorts and columns; source pages; "Needs attention"; portable library folder (choose, open, move, merge; versioned format; workspace migrated); the built-in projects packaged as a starter library installed with the app and copied into the library; layered metadata editing at library, project, folder and item level (inspector, overlays, bulk edit, undo, provenance); condensed groups in the browser, with editable group icons | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update; a project-level license change shows on all its items except those with their own; the library folder, moved to another path and opened on the other operating system's CI runner, shows the same items and metadata; a condensed project shows the icon chosen for it |
 | **3. Libraries + modules** | Bundled libraries; BOSL2 doc parser; signature parser; module → form; pinned generators; form editor (labels, box names, conditions, presets as overlays); category editor | The bevel-gear acceptance test passes; every BOSL2 module with geometry gets a form that renders its first doc example; a form edit made in the app matches what a family manifest `ui` block produces |
 | **4. Model library + file formats** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); one item per file name with a download format picker (built-in parts, imports and generator output); multi-colour and multi-part 3MF export; recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection; a pack with STL, 3MF and STEP copies of each part imports as one item per name; a two-colour label and the Rugged Box download as 3MF files that open in Bambu Studio and OrcaSlicer with their colours and separate parts |
 | **5. Productivity** | Batch from CSV, multi-setting sweeps, multi-part 3MF arranged on the bed for the printer profile, send to slicer (open the file in Bambu Studio / OrcaSlicer / PrusaSlicer), live reload when a watched .scad file is saved | As listed |
@@ -485,3 +488,20 @@ What was built, and where it differs from section 5.
 - **Rename:** SCAD Workshop. The app's identifier stays the same, so settings carry over; the workspace default is `~/SCAD Workshop`, with an existing `~/Claude Grid Workshop` folder kept in use.
 - **Not yet (later phases):** metadata editing (the inspector's "Edit details" is a placeholder), saved searches as smart lists, drag-select, and resizable table columns.
 - **Testing:** `tests/interface.py` (33 checks in Chromium: views, parts, filters, search speed and relevance, inspector, quick look, favourites, palette, tabs, themes, phone width) runs in the Site workflow; `tests/desktop_ui.py` gained the library, thumbnails, search, tabs and night-theme checks for both app builds.
+
+## Phase 2 notes
+
+What was built, and where it differs from the plan above.
+
+- **One project reader, in Rust** (`desktop/core`: `ingest.rs`, `sitebuild.rs`, `scan.rs`, `project.rs`). The website build runs its catalog steps through `workshop-cli site-prepare` / `site-finish`; their output matches the earlier Python build exactly (every data file and fs/). The app reads added projects with the same code: models are `.scad` files that make geometry at top level, settings come from OpenSCAD's own export run natively, and README, license (SPDX), preset files, editor.toml and ready-made model files (one item per name, every format) are picked up.
+- **The library** (`library.rs`, format 1) is laid out as in "Library folder" above, with `derived/`, `thumbs/` and `previews/` per project. A Phase 1 workspace upgrades itself when opened (saved settings to `recipes/`; preferences and the printer profile to the app). A library from a newer app opens read-only.
+- **Starter library:** the website build's 58 generators and the openGrid parts pack are packaged by `workshop-cli bundle` into 19 library projects that ship with the installer; the app copies them into the library on first start and offers changed ones as updates later. CI renders all 58 models from the starter library on Linux and Windows.
+- **Adding projects:** from a GitHub link (a pinned commit's tarball; branch, tag, commit and subfolder links work), a ZIP, a folder (copied or linked) or the library's `local/` folder (read when it changes). Projects can be marked as libraries: `<BOSL2/std.scad>` then resolves to them, so a project that includes BOSL2 works once BOSL2 is in the library.
+- **Updates:** GitHub projects are checked at most daily (and on request). A newer commit is downloaded and read beside the current version, and summarised: commits, models added or removed, settings added, removed or with new defaults. Accept or skip; edits live separately and survive either way.
+- **Metadata:** edited at item, folder, project or library level, several items at once, with where each value comes from, undo, and an offer to clear items' own values after a project-wide change. Open fields ("material: PETG") become filters, sort keys, table columns and search terms. Categories can be added and given icons; a project's icon is one of its items' thumbnails.
+- **Condensed groups:** any grouping can show one tile per group (an icon, or a collage of its items), on the website too.
+- **Search stays in the page.** The plan had SQLite behind the `index` seam for the app. The in-memory index answers in a few milliseconds for the current library and is the same code as the website's, so the app and the site search identically; it gained open fields and is rebuilt from the library on each change. SQLite can come back behind the same seam if libraries grow past tens of thousands of items.
+- **The app's backend** is one command table (`api.rs`) behind the Tauri app and `workshop-cli serve`, a local stand-in that serves the page and the same commands over HTTP. Library files reach the page through a `library://` protocol.
+- **Not yet:** reading Printables' PDFs (Phase 4, with ZIP packs of ready-made parts); re-rendering saved settings to compare before accepting an update (with recipes in Phase 4); GitLab and other hosts.
+- **Testing:** Rust unit tests for the reader, library, metadata and sources; `tests/desktop_page.py`, the Phase 2 acceptance test, drives the page against the real backend in CI: the starter library, three public GitHub projects added by URL (one pinned to an older commit, one a library), a local project that includes BOSL2, search, a render from library files, the upstream change detected, summarised and accepted with edits surviving, a project-wide license with one item keeping its own, a condensed group's icon, and the library opening the same after moving it. CI then opens that Linux-made library on Windows and compares (`library-summary`). Locally the same test runs against `tests/github_mock.py`.
+

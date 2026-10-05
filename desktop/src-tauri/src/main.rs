@@ -100,8 +100,9 @@ async fn save_file(app: AppHandle, request: Request<'_>) -> Result<Option<String
 }
 
 /// Pick a folder (opening a library, adding a project folder). None if cancelled.
+/// (async: blocking dialogs must not run on the main thread)
 #[tauri::command]
-fn pick_folder(app: AppHandle, title: Option<String>) -> Result<Option<String>, String> {
+async fn pick_folder(app: AppHandle, title: Option<String>) -> Result<Option<String>, String> {
     let picked = app.dialog().file().set_title(title.unwrap_or_else(|| "Choose a folder".into())).blocking_pick_folder();
     match picked {
         Some(p) => Ok(Some(p.into_path().map_err(err)?.display().to_string())),
@@ -111,7 +112,7 @@ fn pick_folder(app: AppHandle, title: Option<String>) -> Result<Option<String>, 
 
 /// Pick a file (a ZIP to add). None if cancelled.
 #[tauri::command]
-fn pick_file(app: AppHandle, title: Option<String>, extensions: Option<Vec<String>>) -> Result<Option<String>, String> {
+async fn pick_file(app: AppHandle, title: Option<String>, extensions: Option<Vec<String>>) -> Result<Option<String>, String> {
     let mut d = app.dialog().file().set_title(title.unwrap_or_else(|| "Choose a file".into()));
     if let Some(exts) = extensions.filter(|e| !e.is_empty()) {
         let refs: Vec<&str> = exts.iter().map(String::as_str).collect();

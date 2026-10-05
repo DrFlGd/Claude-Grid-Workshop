@@ -129,6 +129,7 @@ jobs:
           ls -la desktop/target/release | head -40 > ci-out/release-dir.txt
           ls -la "$HOME/.local/share" "$HOME/SCAD Workshop" "$HOME/SCAD Workshop/sources" >> ci-out/release-dir.txt 2>&1 || true
       - name: Drive the app (WebDriver)
+        env: { GITHUB_TOKEN: "${{ github.token }}" }
         run: |
           cargo install tauri-driver --locked 2>&1 | tail -3
           export HOME="$RUNNER_TEMP/home" && mkdir -p "$HOME"
@@ -216,6 +217,7 @@ jobs:
             --title "Desktop app (latest build)" --notes "Built automatically from main. Linux: AppImage or .deb. Windows: setup .exe." || true
           gh release upload desktop-latest dist/* --clobber
       - name: Drive the app (WebDriver)
+        env: { GITHUB_TOKEN: "${{ github.token }}" }
         run: |
           pip install selenium
           cargo install tauri-driver --locked 2>&1 | tail -3

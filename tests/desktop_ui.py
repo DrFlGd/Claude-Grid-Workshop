@@ -131,6 +131,26 @@ try:
     if float(ms.lstrip("<")) >= 100:
         failures.append(f"search took {report['search_channel']}")
 
+    # the starter library is installed into the library folder on first start
+    sources = sorted(p.name for p in (library / "sources").iterdir()) if (library / "sources").is_dir() else []
+    report["library_sources"] = len(sources)
+    if len(sources) < 19:
+        failures.append(f"starter library not installed in {library}: {sources}")
+
+    # adding a project from GitHub: the app's own network access (TLS, GitHub's API, tarball)
+    d.execute_script("document.querySelector('#add-project').click()")
+    if wait("document.querySelector('#add-url')", 15, "the add dialog"):
+        d.execute_script("""const i = document.querySelector('#add-url'); i.value = 'https://github.com/chrisspen/gears';
+          i.dispatchEvent(new Event('input', {bubbles: true})); document.querySelector('#add-go').click();""")
+        if wait("location.hash.includes('/source/')", 600, "the added project"):
+            time.sleep(1)
+            n = d.execute_script("return window.__workshop.index.items.filter(i => i.projectId === location.hash.split('/source/')[1]).length")
+            report["added_from_github"] = n
+            print("added from GitHub:", n, "items", flush=True)
+            if not n:
+                failures.append("the project added from GitHub has no items")
+            shot("00-added-project")
+
     open_model("gridfinity-rebuilt/bin")
     time.sleep(1)
     shot("01-rebuilt-bin")

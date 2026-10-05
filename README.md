@@ -70,7 +70,7 @@ Repository **Settings → Pages → Build and deployment → Source: GitHub Acti
 | Path | What it holds |
 | --- | --- |
 | `web/` | The front end (no build step): `app.js` (routing, model pages, forms), `ui/` (sidebar, browser views, inspector, tabs, status bar, palette, quick look, the search index), `lib/` (Preact + htm helpers, a small state store), render worker, three.js preview. `platform.js` picks browser or desktop behaviour. |
-| `desktop/` | The desktop app: `core/` (Rust: native renders, cache, workspace, `workshop-cli`) and `src-tauri/` (window and commands). |
+| `desktop/` | The desktop app: `core/` (Rust: project reading shared with the website build, the library, native renders, cache, the app's commands, `workshop-cli`) and `src-tauri/` (window, dialogs, `library://`). |
 | `vendor/` | Unmodified upstream SCAD projects, pinned to exact commits. |
 | `adapters/` | Small SCAD wrappers/fixes where an upstream file can't be used directly (openGrid Snap, Anylid fix). |
 | `catalog/families/` | **Generator registry.** One JSON manifest per project. Adding a file here adds a generator. |
@@ -123,18 +123,23 @@ Files with the same name (`part.3mf`, `part.step`) become one item with several 
 
 ## Desktop app
 
-Plan and phases: [docs/DESKTOP_PLAN.md](docs/DESKTOP_PLAN.md). Done so far: the app shell with native rendering (Phase 1) and the library-style interface (Phase 1.5). Adding projects from GitHub and model-site downloads, the SQLite index with metadata editing, library modules and the model library come next.
+Plan and phases: [docs/DESKTOP_PLAN.md](docs/DESKTOP_PLAN.md). Done so far: the app shell with native rendering (Phase 1), the library-style interface (Phase 1.5), and the portable library with projects added from GitHub, ZIPs and folders, update checks and metadata editing (Phase 2). Library modules as generators (BOSL2's `bevel_gear()` and friends) and the model library come next.
 
 ```
-web/ (shared UI) --platform.js--> platform-desktop.js --Tauri IPC--> desktop/src-tauri (commands)
+web/ (shared UI) --platform.js--> platform-desktop.js --Tauri IPC--> desktop/src-tauri (window, dialogs, library://)
                                                                        └─> desktop/core (Rust, no GUI)
-                                                                           native OpenSCAD, render queue + cache,
-                                                                           workspace folder, saved settings as files
+                                                                           api.rs: the app's commands; native OpenSCAD,
+                                                                           render queue + cache, library folder, project
+                                                                           reading, metadata, updates, merging
 ```
 
 - **Install:** download from the [desktop-latest pre-release](https://github.com/DrFlGd/Claude-Grid-Workshop/releases/tag/desktop-latest). Windows: the `-setup.exe` (unsigned, so SmartScreen asks once: More info → Run anyway). Linux: the `.deb` (pulls in the OpenGL libraries OpenSCAD needs) or the `.AppImage` (needs `libopengl0 libegl1 libglx0`, present on most desktops).
 - **Engine:** the official OpenSCAD snapshot of the same version as the website's (pinned in `engine.json` → `native`). On Linux the app unpacks OpenSCAD's AppImage on first start (a few seconds, once).
-- **Workspace:** `~/SCAD Workshop` by default (change it under Settings; an existing `~/Claude Grid Workshop` folder keeps being used). Saved settings and preferences are plain files there; `cache/` holds finished renders and can be deleted.
+- **Library:** everything you add, save or edit lives in one folder, `~/SCAD Workshop` by default (an existing `~/Claude Grid Workshop` folder keeps being used). It's portable: move it, sync it or keep it in git, then use Settings → Library → Open another library, here or on another computer; Merge combines two libraries. The render cache, preferences and printer profile stay with the app on each computer. Layout: `sources/<project>/` (source.json, metadata.json with your edits, files/<version>/ untouched, derived/ what reading found), `local/` (your own projects, read when they change), `recipes/` (saved settings), `library.json`.
+- **Starter library:** the generators and parts the website has are packaged as 19 library projects that ship with the installer; the app copies them into your library on first start, where you can edit, relicense or remove them like any other project.
+- **Adding projects:** the + beside Projects in the sidebar takes a GitHub link (pinned to a commit and downloaded as plain files; branch, tag, commit and subfolder links work), a ZIP, or a folder (copied, or linked if you're still editing it). Tick "library" for code other projects include (BOSL2, say): `include <BOSL2/std.scad>` then resolves to it. The app finds the models (`.scad` files that make something on their own), reads their settings with OpenSCAD, picks up the README, license, presets and ready-made model files, and draws thumbnails.
+- **Updates:** GitHub projects are checked at most once a day (or from the project's page). A newer version is downloaded and read beside the current one and summarised (commits, models added or removed, settings changed) for you to accept or skip; your edits are kept either way. A GitHub token in Settings raises GitHub's hourly limit.
+- **Editing details:** Edit details in the inspector or on a project's page changes the name, description, category, tags, license, authors, origin, notes or your own fields (material, print time…) for one item, several, a folder, a whole project or the library's defaults. Each field shows where its value comes from; Ctrl+Z undoes. Your own fields become filters and table columns.
 - **Desktop-only models:** Underware T, I-bridge and Mitre channels, which crash the browser engine, work in the app.
 - **Speed:** CI renders every model with default settings on both systems (`bench-native-*.json` on the `desktop-ci-linux` / `desktop-ci-windows` branches). On Linux the 55 website models take 28 s natively against 188 s in WebAssembly; the slowest browser models gain most (Minimalist Kitchen bin 25 s → 0.1 s, Pred-label bin 11 s → 0.1 s, Underware wood-texture channel 36 s → 4 s).
 - **Windows:** native OpenSCAD on Windows is unusually slow with projects split into many `use`d files: Gridfinity Extended models take 10–15 s natively there, against about 1 s in WebAssembly (it isn't antivirus scanning or the library path; parsing the same code as one file takes 0.2 s). So on Windows the app also carries the website's WebAssembly engine: the first render of each model runs both, keeps the faster result and remembers the winner (Settings shows the count and can forget it). Heavy geometry such as the Underware channels still goes native.
@@ -144,18 +149,26 @@ Build it yourself (needs Rust, Node, Python and on Linux the WebKitGTK developme
 ```sh
 python3 tools/fetch_engine.py --out build/engine
 python3 tools/fetch_native_engine.py --out build/desktop/engine --extract build/native
+(cd desktop && cargo build --release -p workshop-core)
 python3 tools/build_site.py --engine build/engine --out _site --native-engine build/native/squashfs-root/AppRun
-python3 tools/build_desktop.py --site _site --out build/desktop --fetch-fonts
+python3 tools/thumbnails.py --site _site --native-engine build/native/squashfs-root/AppRun
+python3 tools/build_desktop.py --site _site --out build/desktop --fetch-fonts   # ui/, site/, starter/
 cd desktop && npx @tauri-apps/cli@2 build          # installers in desktop/target/release/bundle/
 ```
 
-`workshop-cli` renders with the app's own code from the command line (`cargo build --release -p workshop-core`):
+`workshop-cli` runs the app's own code from the command line:
 
 ```sh
-desktop/target/release/workshop-cli bench  --site build/desktop/site --engine build/native/squashfs-root
-desktop/target/release/workshop-cli render --site build/desktop/site --engine build/native/squashfs-root \
-    --model gridfinity-rebuilt/bin --set gridx=3 --out bin.stl
+cli=desktop/target/release/workshop-cli
+$cli bench --app-site build/desktop/site --starter build/desktop/starter --engine build/native/squashfs-root   # every model, from the starter library
+$cli render --site _site --engine build/native/squashfs-root --model gridfinity-rebuilt/bin --set gridx=3 --out bin.stl
+$cli serve --ui build/desktop/ui --app-site build/desktop/site --starter build/desktop/starter \
+    --engine build/native/squashfs-root --home /tmp/workshop-home     # the app's page and backend in a browser
+$cli library-call --library ~/"SCAD Workshop" --app-site build/desktop/site --engine build/native/squashfs-root \
+    source_add '{"kind": "github", "url": "https://github.com/chrisspen/gears"}'
 ```
+
+`serve` is for testing: open http://127.0.0.1:8790/ with `tests/tauri_shim.js` loaded (as `tests/desktop_page.py` does) to use the app's page in an ordinary browser.
 
 ## Server version (on hold)
 
