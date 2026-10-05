@@ -23,8 +23,8 @@ export function Home() {
   const { index, catalog, platform } = ctx;
   const recent = s.recent.map((r) => ({ ...index.get(r.id), t: r.t })).filter((i) => i.id).slice(0, 8);
   const favs = s.favs.map((id) => index.get(id)).filter(Boolean);
-  const tile = (scope, label, sub, thumb) => html`<a class="tile" href=${scopeHash(scope)} data-scope=${scope}>
-    <span class="thumb">${thumb ? html`<img src=${thumb} alt="" loading="lazy" />` : null}</span>
+  const tile = (scope, label, sub, thumb, fallback = null) => html`<a class="tile" href=${scopeHash(scope)} data-scope=${scope}>
+    <span class=${`thumb${thumb ? "" : fallback ? " thumb-comp" : ""}`}>${thumb ? html`<img src=${thumb} alt="" loading="lazy" />` : fallback}</span>
     <b>${label}</b><span class="muted">${sub}</span></a>`;
   const shown = index.items.filter((i) => !i.hidden);
   const firstThumb = (pred) => shown.find((i) => pred(i) && i.thumb)?.thumb;
@@ -41,7 +41,7 @@ export function Home() {
     const scope = { part: "pcat", component: "ccat" }[kind] || "cat";
     const noun = { part: "part", component: "component" }[kind] || "model";
     return [...counts.entries()].sort((a, b) => rank(a[0]) - rank(b[0])).map(([id, c]) =>
-      tile(`${scope}:${id}`, c.label, plural(c.n, noun), firstThumb((i) => i.kind === kind && i.category === id)));
+      tile(`${scope}:${id}`, c.label, plural(c.n, noun), firstThumb((i) => i.kind === kind && i.category === id), kind === "component" ? Icon.cog(40) : null));
   };
   const comps = shown.filter((i) => i.kind === "component").length;
   return html`<div class="home">

@@ -482,7 +482,8 @@ async fn bench_library(mut a: Args) -> Result<()> {
     let r = app.renderer().await.map_err(|e| anyhow::anyhow!(e))?;
     let mut keys: Vec<String> = a.rest.iter().filter(|k| k.contains('/')).cloned().collect();
     if keys.is_empty() {
-        keys = c.models.keys().cloned().collect();
+        // the library's models (components have their own check: components-check)
+        keys = c.catalog["models"].as_array().into_iter().flatten().filter_map(|m| m["key"].as_str().map(String::from)).collect();
     }
     keys.sort();
     let mut results = vec![];
