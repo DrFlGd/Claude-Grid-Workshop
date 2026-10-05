@@ -49,18 +49,18 @@ pub fn list_files(root: &Path) -> Vec<FileInfo> {
     out
 }
 
-/// A quick fingerprint of a folder's contents (paths, sizes, modification times),
-/// to notice when a project edited in place has changed.
+/// A fingerprint of a folder's contents (paths and file contents), to notice when
+/// a project edited in place has changed. Content, not modification times, so a
+/// library copied or unzipped elsewhere keeps the same versions.
 pub fn fingerprint(root: &Path) -> String {
     let mut h = Sha256::new();
     for f in list_files(root) {
-        let mtime = std::fs::metadata(root.join(&f.rel))
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        h.update(format!("{}\0{}\0{}\n", f.rel, f.bytes, mtime));
+        h.update(f.rel.as_bytes());
+        h.update([0]);
+        match std::fs::read(root.join(&f.rel)) {
+            Ok(data) => h.update(Sha256::digest(&data)),
+            Err(_) => h.update(f.bytes.to_le_bytes()),
+        }
     }
     hex::encode(h.finalize())[..12].to_string()
 }

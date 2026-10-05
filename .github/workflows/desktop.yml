@@ -13,6 +13,8 @@ on:
       - "tools/**"
       - "catalog/**"
       - "tests/desktop_ui.py"
+      - "tests/desktop_page.py"
+      - "tests/tauri_shim.js"
       - "engine.json"
       - ".github/workflows/desktop.yml"
   workflow_dispatch:
@@ -138,6 +140,23 @@ jobs:
           sleep 2
           timeout 1200 python tests/desktop_ui.py \
             --app desktop/target/release/scad-workshop --out ci-out/shots 2>&1 | tee ci-out/desktop-ui.log
+      - name: Library acceptance test (the page and the app's backend, real GitHub)
+        if: always()
+        env: { GITHUB_TOKEN: "${{ github.token }}" }
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium 2>&1 | tail -2
+          timeout 2400 python tests/desktop_page.py --cli desktop/target/release/workshop-cli --ui build/desktop/ui \
+            --app-site build/desktop/site --starter build/desktop/starter --engine build/native/squashfs-root \
+            --home "$RUNNER_TEMP/p2home" --out ci-out/p2 2>&1 | tee ci-out/desktop-page.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: library-linux
+          path: |
+            ci-out/p2/library.zip
+            ci-out/p2/library-summary.json
+          retention-days: 3
       - name: Publish reports to desktop-ci-linux
         if: always()
         run: |
@@ -178,6 +197,8 @@ jobs:
         run: |
           desktop/target/release/workshop-cli.exe bench --app-site build/desktop/site --starter build/desktop/starter \
             --engine build/desktop/engine --out ci-out/bench-native-windows.json 2>&1 | tee ci-out/bench-native-windows.log
+      - uses: actions/upload-artifact@v4
+        with: { name: cli-windows, path: desktop/target/release/workshop-cli.exe, retention-days: 3 }
       - name: Build the app (NSIS installer)
         working-directory: desktop
         run: npx --yes @tauri-apps/cli@2 build --bundles nsis 2>&1 | tee ../ci-out/tauri-build.log
@@ -214,3 +235,36 @@ jobs:
           git -c user.name=ci -c user.email=ci@users.noreply.github.com add -A
           git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "Desktop checks (Windows) for ${GITHUB_SHA::7}"
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" desktop-ci-windows
+
+  portability:
+    name: Library made on Linux, opened on Windows
+    needs: [linux, windows]
+    if: always() && needs.linux.result != 'skipped'
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run: { shell: bash }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: desktop-site, path: build/desktop }
+      - uses: actions/download-artifact@v4
+        with: { name: library-linux, path: lin }
+      - uses: actions/download-artifact@v4
+        with: { name: cli-windows, path: bin }
+      - name: Open the Linux library on Windows and compare
+        run: |
+          mkdir -p "moved/My library" && cd "moved/My library" && unzip -q ../../lin/library.zip && cd ../..
+          bin/workshop-cli.exe library-summary --library "moved/My library" --app-site build/desktop/site > win-summary.json
+          python - <<'EOF'
+          import json, sys
+          lin = json.load(open("lin/library-summary.json"))
+          win = json.load(open("win-summary.json"))
+          if lin == win:
+              print(f"::notice title=Portable library::Same on Windows: {len(win['sources'])} projects, {len(win['models'])} models, {win['parts']} parts")
+              sys.exit(0)
+          for k in lin:
+              if lin[k] != win.get(k):
+                  print(f"::error title=Portable library::{k} differs: linux {json.dumps(lin[k])[:400]} windows {json.dumps(win.get(k))[:400]}")
+          sys.exit(1)
+          EOF

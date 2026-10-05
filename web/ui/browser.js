@@ -9,6 +9,8 @@ import { Icon } from "./icons.js";
 import { Inspector } from "./inspector.js";
 import { Home } from "./home.js";
 import { LICENSE_TEXT, AGE_TEXT } from "./index-local.js";
+import { SourcePanel, AttentionList, isDesktop } from "./library.js";
+import { plural } from "../lib/util.js";
 
 const LAYOUTS = [["grid", "Grid", Icon.grid], ["list", "List", Icon.list], ["table", "Table", Icon.table], ["grouped", "Grouped", Icon.grouped]];
 const SORTS = [["default", "Best match / project"], ["name", "Name"], ["project", "Project"], ["updated", "Recently updated"], ["settings", "Most settings"], ["license", "License"], ["kind", "Kind"]];
@@ -23,6 +25,11 @@ export const COLUMNS = {
   authors: { label: "Authors", get: (i) => i.authors.join(", ") },
   tags: { label: "Tags", get: (i) => i.tags.join(", ") },
 };
+/** Built-in columns plus one per open metadata field ("f:material"). */
+function allColumns() {
+  const extra = Object.fromEntries((ctx.index?.fieldNames || []).map((n) => [`f:${n}`, { label: n, get: (i) => i.fields[n] ?? "", sort: `f:${n}` }]));
+  return { ...COLUMNS, ...extra };
+}
 const GROUP_KEY = {
   project: (i) => i.project, cat: (i) => i.categoryLabel, kind: (i) => (i.kind === "part" ? "Ready-made parts" : "Generators"),
   license: (i) => LICENSE_TEXT[i.licenseStatus] || i.licenseStatus,
@@ -37,14 +44,14 @@ export function openItem(item) {
 
 /** Query for the current place, search and filters. */
 export function useResults() {
-  const s = useStore(ui, (st) => ({ scope: st.scope, q: st.q, filters: st.filters, sort: st.sort, favs: st.favs, recent: st.recent, ready: st.ready }));
+  const s = useStore(ui, (st) => ({ scope: st.scope, q: st.q, filters: st.filters, sort: st.sort, favs: st.favs, recent: st.recent, ready: st.ready, v: st.catalogVersion }));
   return useMemo(() => {
     if (!s.ready || s.scope === "home") return null;
     const info = scopeInfo(s.scope);
     const sort = s.sort === "default" ? (info.sort || "relevance") : s.sort;
     const res = ctx.index.query({ text: s.q, scope: info.query, filters: s.filters, sort });
     return { info, ...res };
-  }, [s.scope, s.q, s.filters, s.sort, s.favs, s.recent, s.ready]);
+  }, [s.scope, s.q, s.filters, s.sort, s.favs, s.recent, s.ready, s.v]);
 }
 
 function groupItems(items, group) {
@@ -156,8 +163,10 @@ function ListView({ items, sel, favs, onPick, onOpen, scrollRef }) {
   </div>`;
 }
 
-function TableView({ items, sel, favs, columns, sort, onSort, onPick, onOpen, scrollRef }) {
+function TableView({ items, sel, favs, columns: wanted, sort, onSort, onPick, onOpen, scrollRef }) {
   const ROW = 38;
+  const COLUMNS = allColumns();
+  const columns = wanted.filter((c) => COLUMNS[c]);
   const virt = items.length > 300;
   const w = useWindow(scrollRef, items.length, ROW, virt);
   const head = (id, label, sortKey, num) => html`<th scope="col" class=${num ? "num" : ""} aria-sort=${sort === sortKey ? "ascending" : null}>
@@ -190,11 +199,37 @@ function GroupedView({ items, group, sel, onPick, onOpen }) {
   })}</div>`;
 }
 
+/** The icon chosen for a group (a project's or a category's), if any. */
+function groupIcon(group, g) {
+  const first = g.items[0];
+  if (!first) return null;
+  if (group === "project") return (ctx.catalog.sources || []).find((x) => x.id === first.projectId)?.icon || (ctx.catalog.families || []).find((f) => f.id === first.projectId)?.icon || null;
+  if (group === "cat") return (ctx.catalog.categories || []).find((c) => c.id === first.category)?.icon || null;
+  return null;
+}
+
+function CondensedView({ groups, group, size }) {
+  return html`<div class="grid-view condensed" style=${`--card:${SIZES[size]}px`}>
+    ${groups.map((g) => {
+      const icon = groupIcon(group, g);
+      const thumbs = g.items.filter((i) => i.thumb).slice(0, 4);
+      return html`<button type="button" class="card group-tile" data-group=${g.key || ""} key=${g.key || "all"}
+        onClick=${() => ui.set({ openGroup: g.key, selection: [], anchor: null })}>
+        <span class=${`thumb${icon ? "" : " collage"}${!icon && thumbs.length < 2 ? " single" : ""}`}>${icon ? html`<img src=${icon} alt="" />`
+          : thumbs.length ? thumbs.map((t) => html`<img src=${t.thumb} alt="" loading="lazy" />`) : html`<span class="thumb-none">${(g.key || "?").slice(0, 2)}</span>`}</span>
+        <span class="card-name">${g.key || "Other"}</span>
+        <span class="card-sub">${plural(g.items.length, "item")}</span>
+      </button>`;
+    })}
+  </div>`;
+}
+
 // ---------------------------------------------------------------- browser
 export function Browser() {
   const s = useStore(ui, (st) => ({
     scope: st.scope, q: st.q, filters: st.filters, layout: st.layout, size: st.size, sort: st.sort, group: st.group,
     columns: st.columns, selection: st.selection, anchor: st.anchor, favs: st.favs, inspector: st.inspector, ready: st.ready,
+    condensed: st.condensed, openGroup: st.openGroup, sourceTab: st.sourceTab, v: st.catalogVersion,
   }));
   const res = useResults();
   const scrollRef = useRef();
@@ -262,7 +297,11 @@ export function Browser() {
 
   const info = res.info;
   const setFilter = (k) => (vals) => ui.set({ filters: { ...ui.get().filters, [k]: vals } });
-  const groups = groupItems(items, s.group);
+  const allGroups = groupItems(items, s.group);
+  const condensing = s.condensed && s.group !== "none";
+  const groups = condensing && s.openGroup ? allGroups.filter((g) => g.key === s.openGroup) : allGroups;
+  const shownItems = condensing && s.openGroup ? groups.flatMap((g) => g.items) : items;
+  const sourceHidden = info.source && s.sourceTab && s.sourceTab !== "items";
   const props = { sel: s.selection, favs: s.favs, onPick, onOpen: openItem, scrollRef };
   const title = s.q ? `“${s.q}”` : info.label;
   const typed = Object.entries(res.parsed?.filters || {});
@@ -283,9 +322,11 @@ export function Browser() {
               ${SORTS.map(([v, l]) => html`<option value=${v}>${v === "default" ? "Sort: " + (s.q ? "best match" : "default") : "Sort: " + l}</option>`)}
             </select></label>
           <label class="tool-select"><span class="visually-hidden">Group</span>
-            <select value=${s.group} onChange=${(e) => setPref({ group: e.target.value })} aria-label="Group">
+            <select value=${s.group} onChange=${(e) => { setPref({ group: e.target.value }); ui.set({ openGroup: null }); }} aria-label="Group">
               ${GROUPS.map(([v, l]) => html`<option value=${v}>${v === "none" ? l : "Group: " + l}</option>`)}
             </select></label>
+          ${s.group !== "none" ? html`<button type="button" class="tool-btn" aria-pressed=${s.condensed ? "true" : "false"} data-condense
+            title="Show each group as one tile" aria-label="Condense groups" onClick=${() => { setPref({ condensed: !s.condensed }); ui.set({ openGroup: null }); }}>${Icon.stack(16)}</button>` : null}
           <div class="seg" role="group" aria-label="View">
             ${LAYOUTS.map(([v, l, ic]) => html`<button type="button" aria-pressed=${s.layout === v ? "true" : "false"} title=${`${l} view`}
               aria-label=${`${l} view`} data-layout=${v} onClick=${() => setLayout(v)}>${ic(16)}</button>`)}
@@ -294,8 +335,10 @@ export function Browser() {
             aria-label="Inspector" onClick=${() => setPref({ inspector: !s.inspector })}>${Icon.panel(16)}</button>
         </div>
       </div>
+      ${info.source ? html`<${SourcePanel} id=${info.source} />` : null}
+      ${s.scope === "attention" && isDesktop() ? html`<${AttentionList} />` : null}
       ${info.note ? html`<p class="browse-note">${info.note}</p>` : null}
-      <div class="filters">
+      ${sourceHidden ? null : html`<div class="filters">
         ${!info.query.kind ? html`<${FilterMenu} name="kind" label="Kind" values=${res.facets.kind} selected=${s.filters.kind || []}
           render=${(v) => (v === "part" ? "Parts" : "Generators")} onChange=${setFilter("kind")} />` : null}
         ${!info.query.category ? html`<${FilterMenu} name="cat" label="Category" values=${res.facets.cat} selected=${s.filters.cat || []} onChange=${setFilter("cat")} />` : null}
@@ -305,21 +348,25 @@ export function Browser() {
         <${FilterMenu} name="updated" label="Updated" values=${res.facets.updated} selected=${s.filters.updated || []}
           render=${(v) => AGE_TEXT[v] || v} order=${Object.keys(AGE_TEXT)} onChange=${setFilter("updated")} />
         ${typed.map(([k, vals]) => html`<span class="chip-btn on typed">${k}:${vals.join(",")}</span>`)}
+        ${Object.entries(res.facets.fields || {}).sort(([a], [b]) => a.localeCompare(b)).slice(0, 8).map(([k, vals]) => html`<${FilterMenu} name=${`f:${k}`} label=${k}
+          values=${vals} selected=${s.filters[`f:${k}`] || []} onChange=${setFilter(`f:${k}`)} />`)}
         ${s.layout === "table" ? html`<${ColumnChooser} columns=${s.columns} />` : null}
-      </div>
-      <div class="browse-scroll" ref=${scrollRef} onKeyDown=${onKey}>
+      </div>`}
+      ${condensing && s.openGroup && !sourceHidden ? html`<p class="group-crumb"><button type="button" class="link-btn" onClick=${() => ui.set({ openGroup: null, selection: [] })}>‹ All groups</button> / <b>${s.openGroup}</b></p>` : null}
+      ${sourceHidden ? null : html`<div class="browse-scroll" ref=${scrollRef} onKeyDown=${onKey}>
         <div class="results" ref=${listRef} role="listbox" aria-multiselectable="true" aria-label=${`${title}: results`} tabindex="0"
           data-layout=${s.layout}>
           ${!items.length ? html`<p class="empty">${s.q ? `Nothing matches “${s.q}”. Try fewer words, or “bin”, “baseplate”, “label”.` : info.label === "Favourites" ? "No favourites yet. Select something and press F, or use the star in the inspector." : info.label === "Recent" ? "Nothing opened yet." : "Nothing here."}</p>` : null}
-          ${s.layout === "grid" && items.length ? html`<${GridView} groups=${groups} size=${s.size} cols=${cols} ...${props} />` : null}
-          ${s.layout === "list" && items.length ? groups.map((g) => html`<section class="result-group" key=${g.key || "all"}>
+          ${condensing && !s.openGroup && items.length ? html`<${CondensedView} groups=${allGroups} group=${s.group} size=${s.size} />` : null}
+          ${(!condensing || s.openGroup) && s.layout === "grid" && items.length ? html`<${GridView} groups=${groups} size=${s.size} cols=${cols} ...${props} />` : null}
+          ${(!condensing || s.openGroup) && s.layout === "list" && items.length ? groups.map((g) => html`<section class="result-group" key=${g.key || "all"}>
             ${g.key ? html`<h2 class="group-head">${g.key} <span>${g.items.length}</span></h2>` : null}
             <${ListView} items=${g.items} ...${props} /></section>`) : null}
-          ${s.layout === "table" && items.length ? html`<${TableView} items=${items} columns=${s.columns} sort=${s.sort}
+          ${(!condensing || s.openGroup) && s.layout === "table" && items.length ? html`<${TableView} items=${shownItems} columns=${s.columns} sort=${s.sort}
             onSort=${(k) => setPref({ sort: k })} ...${props} />` : null}
-          ${s.layout === "grouped" && items.length ? html`<${GroupedView} items=${items} group=${s.group} ...${props} />` : null}
+          ${(!condensing || s.openGroup) && s.layout === "grouped" && items.length ? html`<${GroupedView} items=${shownItems} group=${s.group} ...${props} />` : null}
         </div>
-      </div>
+      </div>`}
     </div>
     ${s.inspector ? html`<${Inspector} />` : null}
   </div>`;
@@ -329,6 +376,7 @@ function ColumnChooser({ columns }) {
   const [open, setOpen] = useState(false);
   const ref = useRef();
   useDismiss(open, setOpen, ref);
+  const COLUMNS = allColumns();
   const toggle = (c) => setPref({ columns: columns.includes(c) ? columns.filter((x) => x !== c) : Object.keys(COLUMNS).filter((k) => k === c || columns.includes(k)) });
   return html`<div class="filter" ref=${ref}>
     <button type="button" class="chip-btn" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>Columns ▾</button>

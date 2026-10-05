@@ -6,6 +6,26 @@ import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 import { LICENSE_TEXT } from "./index-local.js";
 import { bytes, FORMAT_LABEL, plural } from "../lib/util.js";
+import { isDesktop, readOnly, api } from "./library.js";
+import { itemTarget } from "./metaedit.js";
+
+const canEdit = () => isDesktop() && !readOnly();
+
+/** "Use as the group's icon" when the browser is grouped by project or category. */
+async function useAsGroupIcon(it, group) {
+  const name = it.kind === "part" ? `part-${it.key.split("/")[1]}` : it.key.split("/")[1];
+  try {
+    if (group === "project") {
+      const r = await api("meta_set", { source: it.projectId, level: "project", target: null, patch: { icon: `item:${name}` } });
+      ctx.toast(`Icon set for ${it.project}.`);
+      void r;
+    } else {
+      await api("category_set", { id: it.category, icon: `item:${it.projectId}/${name}` });
+      ctx.toast(`Icon set for ${it.categoryLabel}.`);
+    }
+    await ctx.reloadCatalog();
+  } catch (e) { ctx.toast(String(e.message || e)); }
+}
 
 function SavedSettings({ item }) {
   const [rows, setRows] = useState(null);
@@ -32,7 +52,7 @@ function Downloads({ item }) {
 }
 
 export function Inspector() {
-  const s = useStore(ui, (st) => ({ selection: st.selection, favs: st.favs, scope: st.scope }));
+  const s = useStore(ui, (st) => ({ selection: st.selection, favs: st.favs, scope: st.scope, group: st.group, v: st.catalogVersion }));
   const sel = s.selection.map((id) => ctx.index.get(id)).filter(Boolean);
   if (!sel.length) {
     return html`<aside class="inspector" aria-label="Inspector"><div class="insp-empty">
@@ -52,7 +72,8 @@ export function Inspector() {
           Open ${gens.length > 8 ? "the first 8" : gens.length === 1 ? "it" : `all ${gens.length}`} in tabs</button>` : null}
         <button type="button" class="ghost" onClick=${() => ui.set({ selection: [] })}>Clear selection</button>
       </div>
-      <p class="muted insp-later">Tagging, categories and other edits for several items at once come with metadata editing (Phase 2).</p>
+      ${canEdit() ? html`<button type="button" class="ghost" data-act="bulk-edit" onClick=${() => ui.set({ dialog: { type: "edit", level: "bulk", items: sel.map((i) => i.id) } })}>
+        ${Icon.edit(15)} Edit details of ${plural(sel.length, "item")}</button>` : html`<p class="muted insp-later">${isDesktop() ? "This library is read-only." : "Editing details is in the desktop app."}</p>`}
     </aside>`;
   }
   const it = sel[0];
@@ -65,7 +86,7 @@ export function Inspector() {
     </button>
     <div>
       <h2 class="insp-title">${it.name}</h2>
-      <p class="insp-sub"><a href=${scopeHash(it.kind === "part" ? `lib:${it.projectId}` : `project:${it.projectId}`)}>${it.project}</a>${it.authors.length ? ` · ${it.authors.slice(0, 2).join(", ")}` : ""}</p>
+      <p class="insp-sub"><a href=${scopeHash(isDesktop() ? `source:${it.projectId}` : it.kind === "part" ? `lib:${it.projectId}` : `project:${it.projectId}`)}>${it.project}</a>${it.authors.length ? ` · ${it.authors.slice(0, 2).join(", ")}` : ""}</p>
     </div>
     <div class="insp-actions">
       <a class="button primary" href=${it.href} data-open=${it.id}>${it.kind === "part" ? "Open part" : "Open"}</a>
@@ -83,6 +104,7 @@ export function Inspector() {
       ${it.dims ? html`<dt>Size</dt><dd>${it.dims.map((d) => Math.round(d * 10) / 10).join(" × ")} mm</dd>` : null}
       ${it.tags.length ? html`<dt>Tags</dt><dd>${it.tags.join(", ")}</dd>` : null}
       ${it.updated ? html`<dt>Updated</dt><dd>${it.updated} <span class="muted">${it.updatedFrom === "supplied" ? "(files supplied)" : it.updatedFrom === "upstream" ? "(pinned upstream version)" : ""}</span></dd>` : null}
+      ${Object.entries(it.fields || {}).map(([k, v]) => html`<dt>${k}</dt><dd>${String(v)}</dd>`)}
     </dl>
     ${it.kind === "generator" ? html`<${SavedSettings} item=${it} />` : null}
     ${it.kind === "part" && it.files?.length ? html`<${Downloads} item=${it} />` : null}
@@ -90,6 +112,10 @@ export function Inspector() {
     ${siblings.length ? html`<section class="insp-section"><h3>More from ${it.project}</h3>
       <div class="insp-chips">${siblings.slice(0, 16).map((x) => html`<button type="button" class="chip" onClick=${() => ui.set({ selection: [x.id], anchor: x.id })}>${x.name}</button>`)}</div>
     </section>` : null}
-    <button type="button" class="ghost insp-later" disabled title="Comes with metadata editing (Phase 2)">Edit details</button>
+    ${canEdit() ? html`<div class="insp-actions">
+      <button type="button" class="ghost" data-act="edit" onClick=${() => ui.set({ dialog: { type: "edit", level: "item", item: it.id } })}>${Icon.edit(15)} Edit details</button>
+      ${it.thumb && (s.group === "project" || s.group === "cat") ? html`<button type="button" class="ghost" data-act="group-icon" onClick=${() => useAsGroupIcon(it, s.group)}
+        title=${`Show this item's thumbnail for ${s.group === "project" ? it.project : it.categoryLabel} when groups are condensed`}>Use as the group's icon</button>` : null}
+    </div>` : null}
   </aside>`;
 }

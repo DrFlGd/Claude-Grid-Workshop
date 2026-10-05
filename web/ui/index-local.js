@@ -62,6 +62,7 @@ export class LocalIndex {
         authors: (fam.authors || []).map((a) => a.name), thumb: m.thumb || null, settings: m.settings ?? null,
         desktopOnly: m.browser === false, terms: m.terms || "", href: `#/m/${m.key}`,
         updated: m.updated || null, updatedFrom: m.updated_from || null,
+        folder: m.folder || "", fields: m.fields || {},
       });
     }
     for (const lib of libraries || []) {
@@ -73,6 +74,7 @@ export class LocalIndex {
           authors: (lib.authors || []).map((a) => a.name), thumb: it.thumb || null, dims: it.dimensions || null,
           files: it.files || [], preview: it.preview_url || null, generator: it.generator || null, terms: "",
           href: `#/parts/${lib.id}/${it.id}`, updated: it.updated || lib.updated || null, updatedFrom: null,
+          folder: it.folder || "", fields: it.meta?.fields || {},
         });
       }
     }
@@ -80,8 +82,11 @@ export class LocalIndex {
     // search fields per item, weighted: name 6, project/tags 3, category 2, summary/authors 1, settings 1
     this.fields = this.items.map((i) => [
       [words(i.name), 6], [words(i.project), 3], [words(i.tags.join(" ")), 3],
-      [words(`${i.categoryLabel} ${i.subcategory || ""}`), 2], [words(`${i.summary} ${i.authors.join(" ")}`), 1], [words(i.terms), 1],
+      [words(`${i.categoryLabel} ${i.subcategory || ""}`), 2], [words(`${i.summary} ${i.authors.join(" ")}`), 1],
+      [words(`${i.terms} ${Object.values(i.fields).join(" ")}`), 1],
     ]);
+    /** Names of the open metadata fields any item has ("material", ...), for filters and columns. */
+    this.fieldNames = [...new Set(this.items.flatMap((i) => Object.keys(i.fields)))].sort((a, b) => a.localeCompare(b));
     this.vocab = new Set(this.fields.flatMap((f) => f.flatMap(([w]) => w)));
   }
 
@@ -128,6 +133,7 @@ export class LocalIndex {
     const typed = parsed.filters;   // typed "tag:gear": parts of values
     const terms = words(parsed.text).map((w) => this.expand(w));
     const ids = scope.ids ? new Set(scope.ids) : null;
+    const customKeys = Object.keys(filters).filter((k) => k.startsWith("f:") && filters[k]?.length);
     const inScope = (i) => (!scope.kind || i.kind === scope.kind) && (!scope.category || i.category === scope.category) &&
       (!scope.project || i.projectId === scope.project) && (!ids || ids.has(i.id));
     const has = (key, cands, skip) => {
@@ -142,7 +148,8 @@ export class LocalIndex {
       has("project", [i.projectId, i.project], skip) &&
       has("tag", i.tags, skip) &&
       has("license", [i.licenseStatus, LICENSE_TEXT[i.licenseStatus], i.license.spdx], skip) &&
-      has("updated", [ageBucket(i.updated), AGE_TEXT[ageBucket(i.updated)]], skip);
+      has("updated", [ageBucket(i.updated), AGE_TEXT[ageBucket(i.updated)]], skip) &&
+      customKeys.every((k) => has(k, [String(i.fields[k.slice(2)] ?? "")], skip));
 
     const scored = [];
     this.items.forEach((item, idx) => {
@@ -151,7 +158,7 @@ export class LocalIndex {
       if (s) scored.push({ item, s });
     });
     // facets: counts for each filter group, ignoring that group's own selection
-    const facets = { kind: {}, cat: {}, project: {}, license: {}, updated: {} };
+    const facets = { kind: {}, cat: {}, project: {}, license: {}, updated: {}, fields: {} };
     for (const { item } of scored) {
       if (pass(item, "kind")) facets.kind[item.kind] = (facets.kind[item.kind] || 0) + 1;
       const cat = item.kind === "part" ? item.subcategory || item.categoryLabel : item.categoryLabel;
@@ -160,6 +167,11 @@ export class LocalIndex {
       if (pass(item, "license")) facets.license[item.licenseStatus] = (facets.license[item.licenseStatus] || 0) + 1;
       const age = ageBucket(item.updated);
       if (pass(item, "updated")) facets.updated[age] = (facets.updated[age] || 0) + 1;
+      for (const [k, v] of Object.entries(item.fields)) {
+        if (!pass(item, `f:${k}`)) continue;
+        const f = (facets.fields[k] ||= {});
+        f[String(v)] = (f[String(v)] || 0) + 1;
+      }
     }
     let hits = scored.filter(({ item }) => pass(item));
     const by = {
@@ -172,6 +184,10 @@ export class LocalIndex {
       updated: (a, b) => (b.item.updated || "").localeCompare(a.item.updated || "") || by.name(a, b), // newest first
       given: (a, b) => (order.get(a.item.id) ?? 1e9) - (order.get(b.item.id) ?? 1e9), // e.g. most recent first
     };
+    if (sort.startsWith("f:")) {
+      const k = sort.slice(2);
+      by[sort] = (a, b) => String(a.item.fields[k] ?? "\uffff").localeCompare(String(b.item.fields[k] ?? "\uffff"), undefined, { numeric: true }) || by.name(a, b);
+    }
     const order = new Map((scope.ids || []).map((id, i) => [id, i]));
     hits.sort(by[sort] || (terms.length ? by.relevance : by.project));
     const total = hits.length;

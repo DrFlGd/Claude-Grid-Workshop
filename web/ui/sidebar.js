@@ -5,6 +5,7 @@ import { useStore } from "../lib/store.js";
 import { ui } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
+import { isDesktop, sourceById } from "./library.js";
 
 export function scopeInfo(scope) {
   const { catalog, libraries, index } = ctx;
@@ -17,7 +18,7 @@ export function scopeInfo(scope) {
   if (scope === "parts") return { label: "Ready-made parts", query: { kind: "part" } };
   if (scope === "attention") {
     const ids = index.items.filter((i) => i.licenseStatus !== "ok").map((i) => i.id);
-    return { label: "Needs attention", note: "License or author not stated, or not cleared for sharing. Check before sharing or selling prints.", query: { ids } };
+    return { label: "Needs attention", note: "Items below have a license or author that isn't stated, or isn't cleared for sharing. Check before sharing or selling prints.", query: { ids } };
   }
   const [kind, id] = scope.split(":");
   if (kind === "cat") return { label: catalog.categories.find((c) => c.id === id)?.label || id, query: { kind: "generator", category: id } };
@@ -26,6 +27,7 @@ export function scopeInfo(scope) {
     return { label: fam?.name || id, query: { kind: "generator", project: id }, project: fam };
   }
   if (kind === "lib") return { label: libraries.find((l) => l.id === id)?.name || id, query: { kind: "part", project: id } };
+  if (kind === "source") return { label: sourceById(id)?.name || id, query: { project: id }, source: id };
   return { label: scope, query: {} };
 }
 
@@ -45,8 +47,20 @@ function Row({ scope, label, n, icon, depth = 0, expand, open, onToggle, current
   </li>`;
 }
 
+function Projects({ current }) {
+  const [open, setOpen] = useState(true);
+  const sources = (ctx.catalog.sources || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return html`<div class="nav-head-row"><button type="button" class="nav-head nav-head-btn" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>
+      Projects <span class="nav-count">${sources.length}</span></button>
+      <button type="button" class="nav-add" title="Add a project from GitHub, a ZIP or a folder" aria-label="Add a project"
+        onClick=${() => ui.set({ dialog: { type: "add-project" }, navOpen: false })} id="add-project">+</button></div>
+    ${open ? html`<ul class="nav-list nav-projects">${sources.map((src) => html`<${Row} scope=${`source:${src.id}`} label=${src.name}
+      n=${(src.models || 0) + (src.parts || 0)} current=${current} key=${src.id}
+      icon=${src.update?.state === "available" ? html`<span class="dot busy" title="Update ready"></span>` : src.role === "library" ? html`<span title="Library">${Icon.box(13)}</span>` : null} />`)}</ul>` : null}`;
+}
+
 export function Sidebar() {
-  const s = useStore(ui, (st) => ({ scope: st.scope, view: st.view, favs: st.favs.length, recent: st.recent.length, ready: st.ready, navOpen: st.navOpen }));
+  const s = useStore(ui, (st) => ({ scope: st.scope, view: st.view, favs: st.favs.length, recent: st.recent.length, ready: st.ready, navOpen: st.navOpen, v: st.catalogVersion }));
   const [open, setOpen] = useState(() => ({}));
   if (!s.ready) return null;
   const { catalog, libraries } = ctx;
@@ -57,7 +71,7 @@ export function Sidebar() {
     const ids = [...new Set(catalog.models.filter((m) => keys.has(m.key)).map((m) => m.family))];
     return ids.map((id) => catalog.families.find((f) => f.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
   };
-  const attention = count(scopeInfo("attention").query);
+  const attention = count(scopeInfo("attention").query) + (ctx.catalog.attention || []).filter((a) => a.kind !== "license").length;
   return html`${s.navOpen ? html`<div class="nav-backdrop" onClick=${() => ui.set({ navOpen: false })}></div>` : null}
   <nav class=${`sidebar${s.navOpen ? " open" : ""}`} aria-label="Library"
     onKeyDown=${(e) => { if (e.key === "Escape" && ui.get().navOpen) ui.set({ navOpen: false }); }}>
@@ -81,6 +95,7 @@ export function Sidebar() {
           expand=${libraries.length > 0} open=${open.__parts} onToggle=${toggle("__parts")} />
         ${open.__parts ? libraries.map((l) => html`<${Row} scope=${`lib:${l.id}`} label=${l.name} depth=${1} n=${l.items.length} current=${current} />`) : null}
       </ul>` : null}
+    ${isDesktop() ? html`<${Projects} current=${current} />` : null}
     ${attention ? html`<ul class="nav-list nav-attention">
       <${Row} scope="attention" label="Needs attention" n=${attention} icon=${Icon.alert(15)} current=${current} />
     </ul>` : null}

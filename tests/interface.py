@@ -99,6 +99,24 @@ async def main():
         await pg.click('.sidebar [data-scope="all"]')
         await pg.wait_for_selector('.results [data-item^="gen:"]')
 
+        # grouped by project, condensed into one tile per project
+        await pg.select_option('select[aria-label="Group"]', "project")
+        await pg.click("[data-condense]")
+        await pg.wait_for_selector(".group-tile")
+        tiles = await pg.locator(".group-tile").count()
+        families = len({m["family"] for m in gens})
+        check("condensed groups: one tile per project", tiles == families, f"{tiles} tiles, {families} projects")
+        await pg.screenshot(path=f"{a.out}/ui-01-condensed.png")
+        await pg.locator(".group-tile").first.click()
+        await pg.wait_for_selector(".group-crumb")
+        inside = await items(pg)
+        check("opening a group shows its items", 0 < inside < n, inside)
+        await pg.click(".group-crumb .link-btn")
+        await pg.wait_for_selector(".group-tile")
+        await pg.click("[data-condense]")
+        await pg.select_option('select[aria-label="Group"]', "none")
+        await pg.wait_for_selector('.results [data-item^="gen:"]')
+
         # filters
         await pg.click('[data-filter="updated"]')
         opts = await pg.locator('.filter-panel[aria-label="Updated"] .filter-opt').all_inner_texts()

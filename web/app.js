@@ -7,6 +7,9 @@ import { changedValues, withChanges, encodeShare, decodeShare, toOpenSCAD, fromO
 import { $, el, humanize, fmt, same, bytes, plural, safeHTML, compileCondition, STATUS_TEXT, spdx, FORMAT_LABEL } from "./lib/util.js";
 import { LocalIndex } from "./ui/index-local.js";
 import { mountShell } from "./ui/shell.js";
+import { setContext } from "./ui/context.js";
+import { html, render } from "./lib/html.js";
+import { LibrarySettings } from "./ui/library.js";
 import { ui, recordRecent, setTabs, layoutFor, isDark, setTheme, THEMES } from "./ui/state.js";
 import { scopeFromPath } from "./ui/context.js";
 import { scopeInfo } from "./ui/sidebar.js";
@@ -77,7 +80,7 @@ function showBrowse(scope, q) {
   showView("browse");
   const st = ui.get();
   const place = st.scope !== scope;
-  ui.set({ scope, q, layout: layoutFor(scope), lastBrowse: location.hash || "#/", ...(place ? { selection: [], anchor: null, filters: {} } : {}) });
+  ui.set({ scope, q, layout: layoutFor(scope), lastBrowse: location.hash || "#/", ...(place ? { selection: [], anchor: null, filters: {}, openGroup: null, sourceTab: "items" } : {}) });
   const label = scope === "home" ? "" : q ? `“${q}”` : scopeInfo(scope).label;
   document.title = label ? `${label} | SCAD Workshop` : "SCAD Workshop";
   if (place) document.querySelector(".browse-scroll")?.scrollTo(0, 0);
@@ -1133,7 +1136,7 @@ FILAMENTS.forEach(([name, hex]) => {
 let toastTimer = null;
 function toast(text, action) {
   const t = $("#toast");
-  t.replaceChildren(el("span", { text }), action ? el("button", { type: "button", class: "ghost light", text: action.label, onclick: action.run }) : null);
+  t.replaceChildren(...[el("span", { text }), action ? el("button", { type: "button", class: "ghost light", text: action.label, onclick: () => { t.hidden = true; action.run(); } }) : null].filter(Boolean));
   t.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, 8000);
@@ -1258,14 +1261,8 @@ function desktopSettings() {
   const gb = (n) => (n == null ? "unknown" : bytes(n));
   const cacheLine = el("span", { text: gb(info.cache_bytes) });
   return [
-    el("h2", { text: "Workspace" }),
-    el("p", { text: "Everything you save lives in this folder as plain files, so you can back it up or sync it." }),
-    el("p", { class: "path" }, el("code", { text: info.workspace || info.workspace_error || "not available" })),
-    el("div", { class: "button-row" },
-      el("button", { type: "button", class: "ghost", text: "Open folder", onclick: () => platform.workspace.open().catch((e) => toast(String(e))) }),
-      el("button", { type: "button", class: "ghost", text: "Use another folder…", onclick: async () => {
-        try { if (await platform.workspace.choose()) location.reload(); } catch (e) { toast(String(e)); }
-      } })),
+    el("h2", { text: "Library" }),
+    (() => { const box = el("div", { id: "library-settings" }); render(html`<${LibrarySettings} />`, box); return box; })(),
     el("h2", { text: "Engine" }),
     info.engine
       ? el("p", {}, `OpenSCAD ${info.engine}, native, up to ${info.concurrency || 1} render${info.concurrency > 1 ? "s" : ""} at once. `, el("br"), el("code", { text: info.engine_path || "" }))
@@ -1285,24 +1282,45 @@ function desktopSettings() {
 }
 
 // ---------------------------------------------------------------- boot
+/** The catalog and parts packs (on the website: the built site; in the app: the library). */
+async function loadCatalog() {
+  const catalog = await getJSON("data/catalog.json");
+  if (platform.kind === "browser") {
+    // models that need native OpenSCAD only appear in the desktop app
+    state.desktopOnly = new Set(catalog.models.filter((m) => m.browser === false).map((m) => m.key));
+    catalog.models = catalog.models.filter((m) => m.browser !== false);
+    for (const c of catalog.categories) c.models = c.models.filter((k) => !state.desktopOnly.has(k));
+  }
+  const libraries = await Promise.all((catalog.libraries || []).map((l) => getJSON(`data/libraries/${l.id}.json`)));
+  return { catalog, libraries };
+}
+
+/** Read the catalog again after the library changed (a project added, details edited). */
+async function reloadCatalog() {
+  const { catalog, libraries } = await loadCatalog();
+  state.catalog = catalog;
+  state.libraries = libraries;
+  state.libDetail = {};
+  for (const l of libraries) state.libDetail[l.id] = l;
+  details.clear(); // model pages reload with the new details (open tabs keep their state)
+  state.index = new LocalIndex(catalog, libraries);
+  setContext({ catalog, libraries, index: state.index });
+  ui.set((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+  if (ui.get().view === "library" && location.hash.startsWith("#/parts/")) route();
+}
+
 (async function boot() {
   try {
-    state.catalog = await getJSON("data/catalog.json");
-    if (platform.kind === "browser") {
-      // models that need native OpenSCAD only appear in the desktop app
-      state.desktopOnly = new Set(state.catalog.models.filter((m) => m.browser === false).map((m) => m.key));
-      state.catalog.models = state.catalog.models.filter((m) => m.browser !== false);
-      for (const c of state.catalog.categories) c.models = c.models.filter((k) => !state.desktopOnly.has(k));
-    } else {
-      document.body.dataset.platform = platform.kind;
-    }
+    const { catalog, libraries } = await loadCatalog();
+    state.catalog = catalog;
+    if (platform.kind !== "browser") document.body.dataset.platform = platform.kind;
     state.engine = platform.makeEngine(state.catalog);
     $("#engine").textContent = state.engine.label;
-    state.libraries = await Promise.all((state.catalog.libraries || []).map((l) => getJSON(`data/libraries/${l.id}.json`)));
+    state.libraries = libraries;
     for (const l of state.libraries) state.libDetail[l.id] = l;
     state.index = new LocalIndex(state.catalog, state.libraries);
     mountShell({ platform, catalog: state.catalog, libraries: state.libraries, index: state.index, engine: state.engine,
-      loadModel, closeModelTab, openTabs, deliver });
+      loadModel, closeModelTab, openTabs, deliver, reloadCatalog, toast, route });
     ui.set({ ready: true });
   } catch (e) {
     $("#view-browse").hidden = false;

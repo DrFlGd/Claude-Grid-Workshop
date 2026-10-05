@@ -155,6 +155,9 @@ fn stage_for(line: &str) -> Option<&'static str> {
 
 impl Renderer {
     pub fn new(engine: NativeEngine, site: SiteDir, cache_dir: PathBuf, concurrency: usize) -> Result<Self> {
+        // OpenSCAD runs with the model's folder as working directory: paths must be absolute
+        let cache_dir = std::path::absolute(&cache_dir).unwrap_or(cache_dir);
+        let site = SiteDir::new(std::path::absolute(site.root()).unwrap_or_else(|_| site.root().to_path_buf()))?;
         for d in ["renders", "trees", "jobs"] {
             std::fs::create_dir_all(cache_dir.join(d))
                 .with_context(|| format!("couldn't create {}", cache_dir.join(d).display()))?;

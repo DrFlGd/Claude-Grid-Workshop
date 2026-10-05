@@ -276,7 +276,7 @@ async fn site_finish(mut a: Args) -> Result<()> {
     }
     let problems = workshop_core::sitebuild::finish(&repo, &out, &plan, &raw, &version)?;
     for p in &problems {
-        eprintln!("PROBLEM: {p}");
+        eprintln!("PROBLEM: {}", p.replace('\n', " | "));
     }
     if !problems.is_empty() {
         std::process::exit(1);
