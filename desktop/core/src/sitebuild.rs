@@ -51,7 +51,7 @@ pub fn packaged_bytes(path: &Path) -> Result<Vec<u8>> {
     Ok(if scad { replace_crlf(&data) } else { data })
 }
 
-fn replace_crlf(data: &[u8]) -> Vec<u8> {
+pub fn replace_crlf(data: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(data.len());
     let mut i = 0;
     while i < data.len() {

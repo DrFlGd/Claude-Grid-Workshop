@@ -1,10 +1,15 @@
-// Desktop app side of web/platform.js: native OpenSCAD and the workspace folder,
-// reached through the Tauri commands in desktop/src-tauri/src/main.rs.
+// Desktop app side of web/platform.js: native OpenSCAD and the library folder,
+// reached through the app's commands (desktop/core/src/api.rs, called through
+// Tauri's "api" / "api_bytes" commands in desktop/src-tauri/src/main.rs).
 
 import { EngineClient } from "./engine-client.js";
 
 const tauri = globalThis.__TAURI__;
 const invoke = (cmd, args, opts) => tauri.core.invoke(cmd, args, opts);
+/** One of the app's commands, answered as JSON. */
+const api = (cmd, args = {}) => invoke("api", { cmd, args });
+/** One of the app's commands, answered as bytes (ArrayBuffer). */
+const apiBytes = (cmd, args = {}) => invoke("api_bytes", { cmd, args });
 
 const MIME = { json: "application/json", stl: "model/stl", "3mf": "model/3mf", png: "image/png", svg: "image/svg+xml" };
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
@@ -33,7 +38,7 @@ class DesktopEngine {
   wasmEngine() {
     this.wasm ||= new EngineClient({
       commonFiles: this.common,
-      readFile: async (sha) => new Uint8Array(await invoke("site_read", { path: `fs/${sha}` })),
+      readFile: async (sha) => new Uint8Array(await apiBytes("blob", { sha })),
     });
     return this.wasm;
   }
@@ -135,22 +140,22 @@ class DesktopEngine {
 }
 
 export async function createPlatform() {
-  const info = await invoke("app_info").catch((e) => ({ engine_error: String(e) }));
-  let prefs = await invoke("prefs_get").catch(() => ({}));
+  const info = await api("app_info").catch((e) => ({ engine_error: String(e) }));
+  let prefs = await api("prefs_get").catch(() => ({}));
   let timer = null;
   const settings = {
     async persistent() { return true; },
-    list: (model) => invoke("settings_list", { model }),
-    get: (id) => invoke("settings_get", { id }),
+    list: (model) => api("settings_list", { model }),
+    get: (id) => api("settings_get", { id }),
     async save(rec) {
       const now = new Date().toISOString();
-      const old = rec.id ? await invoke("settings_get", { id: rec.id }) : null;
+      const old = rec.id ? await api("settings_get", { id: rec.id }) : null;
       const row = old ? { ...old, ...rec, updated: now }
         : { id: newId(), model: rec.model, name: rec.name, values: rec.values, created: now, updated: now };
-      await invoke("settings_put", { record: row });
+      await api("settings_put", { record: row });
       return row;
     },
-    remove: (id) => invoke("settings_remove", { id }),
+    remove: (id) => api("settings_remove", { id }),
   };
   const store = {
     kind: "desktop",
@@ -159,20 +164,35 @@ export async function createPlatform() {
       set(key, value) {
         prefs = { ...prefs, [key]: value };
         clearTimeout(timer);
-        timer = setTimeout(() => invoke("prefs_set", { prefs }).catch(() => {}), 250);
+        timer = setTimeout(() => api("prefs_set", { prefs }).catch(() => {}), 250);
       },
     },
     settings,
   };
+  /** Wait for a background job (adding or reading a project); onStage gets progress text. */
+  async function waitJob(job, onStage = () => {}) {
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 400));
+      const j = (await api("jobs")).find((x) => x.id === job);
+      if (!j) throw new Error("The job disappeared.");
+      onStage(j.stage);
+      if (j.done) {
+        if (j.error) throw new Error(j.error);
+        return j.result;
+      }
+    }
+  }
+  const libraryUrl = info.library_url || "library://localhost/";
   return {
     kind: "desktop",
     info,
     store,
+    api,
     makeEngine: (catalog) => new DesktopEngine(info, catalog, store.prefs),
-    /** Bundled site files (data/, parts/) instead of fetching relative URLs. */
+    /** App files and the library's catalog, model pages and files (by relative path). */
     async fetch(path) {
       try {
-        const buf = await invoke("site_read", { path: path.replace(/^\.?\//, "") });
+        const buf = await apiBytes("read", { path: path.replace(/^\.?\//, "") });
         const ext = path.split(".").pop().toLowerCase();
         return new Response(buf, { status: 200, headers: { "content-type": MIME[ext] || "application/octet-stream" } });
       } catch (e) {
@@ -185,11 +205,25 @@ export async function createPlatform() {
       return invoke("save_file", bytes, { headers: { "x-name": encodeURIComponent(name) } });
     },
     reveal: (path) => invoke("reveal", { path }),
-    async refreshInfo() { Object.assign(info, await invoke("app_info")); return info; },
+    async refreshInfo() { Object.assign(info, await api("app_info")); return info; },
     workspace: {
-      choose: () => invoke("workspace_choose"),
-      open: () => invoke("workspace_open"),
-      clearCache: () => invoke("cache_clear"),
+      choose: async () => {
+        const path = await invoke("pick_folder", { title: "Open or create a library folder" });
+        if (!path) return null;
+        await api("library_open", { path });
+        return path;
+      },
+      open: () => invoke("open_path", { path: info.library?.path || info.workspace }),
+      clearCache: () => api("cache_clear"),
+    },
+    /** The library: projects, jobs, metadata (desktop only). */
+    library: {
+      url: (rel) => libraryUrl + rel.split("/").map(encodeURIComponent).join("/"),
+      pickFolder: (title) => invoke("pick_folder", { title }),
+      pickFile: (title, extensions) => invoke("pick_file", { title, extensions }),
+      openPath: (path) => invoke("open_path", { path }),
+      waitJob,
+      jobs: () => api("jobs"),
     },
   };
 }

@@ -37,11 +37,16 @@
     ],
     "resources": {
       "../../build/desktop/site/": "site/",
+      "../../build/desktop/starter/": "starter/",
       "../../build/desktop/engine/": "engine/"
     },
     "linux": {
       "deb": {
-        "depends": ["libopengl0", "libegl1", "libglx0"]
+        "depends": [
+          "libopengl0",
+          "libegl1",
+          "libglx0"
+        ]
       }
     },
     "windows": {

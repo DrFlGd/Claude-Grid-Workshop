@@ -24,12 +24,12 @@ from selenium.webdriver.common.options import ArgOptions
 ap = argparse.ArgumentParser()
 ap.add_argument("--app", required=True)
 ap.add_argument("--out", default="shots")
-ap.add_argument("--workspace", help="expected workspace folder (default: ~/SCAD Workshop)")
+ap.add_argument("--library", "--workspace", dest="library", help="expected library folder (default: ~/SCAD Workshop)")
 ap.add_argument("--driver", default="http://127.0.0.1:4444")
 a = ap.parse_args()
 out = Path(a.out)
 out.mkdir(parents=True, exist_ok=True)
-workspace = Path(a.workspace) if a.workspace else Path.home() / "SCAD Workshop"
+library = Path(a.library) if a.library else Path.home() / "SCAD Workshop"
 
 opts = ArgOptions()
 opts.set_capability("browserName", "wry")
@@ -151,7 +151,7 @@ try:
         report[f"extended_bin_{i + 1}"] = {"status": text("#status"), "engine": d.execute_script("return document.body.dataset.engine || 'native'")}
         print("extended bin:", report[f"extended_bin_{i + 1}"], flush=True)
 
-    # saved settings go to the workspace as files
+    # saved settings go to the library as files
     open_model("gridfinity-rebuilt/bin")
     d.execute_script("""
       const i = document.querySelector('#p-gridx'); i.value = '4'; i.dispatchEvent(new Event('input', {bubbles: true}));""")
@@ -160,12 +160,12 @@ try:
     d.execute_script("document.querySelector('#save-name').value = 'CI four wide'")
     d.find_element(By.ID, "save-primary").click()
     wait("document.querySelector('#settings-note') && document.querySelector('#settings-note').textContent.startsWith('Saved')", 20, "save note")
-    saved = list((workspace / "settings/saved").glob("*.json"))
+    saved = list((library / "recipes").glob("*.json"))
     names = [json.loads(p.read_text()).get("name") for p in saved]
     report["saved_files"] = names
     print("saved settings files:", names)
     if "CI four wide" not in names:
-        failures.append(f"saved settings not in {workspace}: {names}")
+        failures.append(f"saved settings not in {library}: {names}")
 
     d.execute_script("location.hash = '#/settings'")
     wait("document.querySelector('.profile-grid')", 20, "settings page")

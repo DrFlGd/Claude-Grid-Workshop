@@ -1,22 +1,32 @@
 //! Core of the desktop app, kept free of any GUI so it builds and tests on its
-//! own (and powers `workshop-cli`, which CI uses to render every model natively).
+//! own (and powers `workshop-cli`: native renders in CI, the website build's
+//! catalog steps, and a local stand-in for the app's backend).
 //!
-//! - [`site`]: the built site (`_site`: data/, fs/, parts/) shipped with the app
-//! - [`engine`]: locating and identifying the bundled native OpenSCAD
-//! - [`render`]: render queue, cancellation and the render cache
-//! - [`workspace`]: the user's workspace folder and app config
-//! - [`store`]: saved settings and preferences as files in the workspace
-//! - [`ingest`]: reading OpenSCAD projects (files, settings, metadata)
+//! - [`site`]: the app's own files (common fonts, engine version); the website build
+//! - [`engine`], [`render`]: the bundled native OpenSCAD, render queue and cache
+//! - [`ingest`], [`sitebuild`]: reading OpenSCAD projects (files, settings, metadata)
+//! - [`config`]: what the app keeps on this computer (open library, preferences)
+//! - [`library`]: the portable library folder; [`meta`]: layered metadata
+//! - [`sources`]: adding projects (GitHub, ZIP, folders); [`scan`], [`project`]: reading them
+//! - [`catalog`]: the page's catalog from the library; [`merge`]: merging libraries
+//! - [`api`]: the commands the page calls
 
+pub mod api;
+pub mod catalog;
+pub mod config;
 pub mod engine;
 pub mod ingest;
+pub mod library;
+pub mod merge;
+pub mod meta;
+pub mod project;
+pub mod scan;
+pub mod sources;
 pub mod render;
 pub mod site;
 pub mod sitebuild;
-pub mod store;
-pub mod workspace;
 
 pub use engine::NativeEngine;
 pub use render::{RenderEvent, RenderOutput, RenderRequest, Renderer};
 pub use site::SiteDir;
-pub use workspace::Workspace;
+pub use library::Library;

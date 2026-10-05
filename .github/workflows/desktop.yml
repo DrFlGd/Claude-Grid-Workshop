@@ -99,10 +99,10 @@ jobs:
           cargo build --release -p workshop-core 2>&1 | tee ../ci-out/core-build.log
           cargo test --release -p workshop-core 2>&1 | tee ../ci-out/core-test.log
           cp Cargo.lock ../ci-out/Cargo.lock
-      - name: Render every model natively (workshop-cli)
+      - name: Render every model natively from the starter library (workshop-cli)
         run: |
-          desktop/target/release/workshop-cli bench --site build/desktop/site --engine build/native/squashfs-root \
-            --out ci-out/bench-native-linux.json 2>&1 | tee ci-out/bench-native-linux.log
+          desktop/target/release/workshop-cli bench --app-site build/desktop/site --starter build/desktop/starter \
+            --engine build/native/squashfs-root --out ci-out/bench-native-linux.json 2>&1 | tee ci-out/bench-native-linux.log
       - name: Build the app (AppImage, deb)
         working-directory: desktop
         run: npx --yes @tauri-apps/cli@2 build --bundles appimage,deb 2>&1 | tee ../ci-out/tauri-build.log
@@ -125,7 +125,7 @@ jobs:
           export HOME="$RUNNER_TEMP/home" && mkdir -p "$HOME"
           (timeout 25 xvfb-run -a desktop/target/release/scad-workshop > ci-out/app-start.log 2>&1; echo "exit $?" >> ci-out/app-start.log) || true
           ls -la desktop/target/release | head -40 > ci-out/release-dir.txt
-          ls -la "$HOME/.local/share" "$HOME/SCAD Workshop" >> ci-out/release-dir.txt 2>&1 || true
+          ls -la "$HOME/.local/share" "$HOME/SCAD Workshop" "$HOME/SCAD Workshop/sources" >> ci-out/release-dir.txt 2>&1 || true
       - name: Drive the app (WebDriver)
         run: |
           cargo install tauri-driver --locked 2>&1 | tail -3
@@ -174,10 +174,10 @@ jobs:
           mkdir -p ../ci-out
           cargo build --release -p workshop-core 2>&1 | tee ../ci-out/core-build.log
           cargo test --release -p workshop-core 2>&1 | tee ../ci-out/core-test.log
-      - name: Render every model natively (workshop-cli)
+      - name: Render every model natively from the starter library (workshop-cli)
         run: |
-          desktop/target/release/workshop-cli.exe bench --site build/desktop/site --engine build/desktop/engine \
-            --out ci-out/bench-native-windows.json 2>&1 | tee ci-out/bench-native-windows.log
+          desktop/target/release/workshop-cli.exe bench --app-site build/desktop/site --starter build/desktop/starter \
+            --engine build/desktop/engine --out ci-out/bench-native-windows.json 2>&1 | tee ci-out/bench-native-windows.log
       - name: Build the app (NSIS installer)
         working-directory: desktop
         run: npx --yes @tauri-apps/cli@2 build --bundles nsis 2>&1 | tee ../ci-out/tauri-build.log
