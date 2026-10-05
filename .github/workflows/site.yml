@@ -43,6 +43,14 @@ jobs:
       - name: Fetch pinned OpenSCAD WebAssembly engine
         run: python tools/fetch_engine.py --out build/engine
 
+      # the catalog steps are the desktop app's project reading (desktop/core)
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: desktop }
+      - name: Build workshop-cli
+        working-directory: desktop
+        run: cargo build --release -p workshop-core
+
       - name: Build site
         run: python tools/build_site.py --engine build/engine --out _site
 

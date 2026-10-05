@@ -82,6 +82,9 @@ const MAX_LOG_LINES: usize = 400;
 pub struct Renderer {
     engine: NativeEngine,
     site: SiteDir,
+    /// Content-addressed files that aren't in the site's fs/: the open library's
+    /// project files, by SHA-256 (see [`Renderer::add_blobs`]).
+    blobs: Arc<std::sync::RwLock<HashMap<String, PathBuf>>>,
     cache_dir: PathBuf,
     slots: Arc<Semaphore>,
     concurrency: usize,
@@ -161,6 +164,7 @@ impl Renderer {
         Ok(Self {
             engine,
             site,
+            blobs: Arc::default(),
             cache_dir,
             slots: Arc::new(Semaphore::new(concurrency)),
             concurrency,
@@ -182,6 +186,76 @@ impl Renderer {
     }
     pub fn cache_dir(&self) -> &Path {
         &self.cache_dir
+    }
+
+    /// Make more files renderable: {sha256: path on disk} (a library's project files).
+    pub fn add_blobs(&self, blobs: impl IntoIterator<Item = (String, PathBuf)>) {
+        self.blobs.write().unwrap().extend(blobs);
+    }
+
+    /// Forget files added with [`Renderer::add_blobs`] (another library was opened).
+    pub fn clear_blobs(&self) {
+        self.blobs.write().unwrap().clear();
+    }
+
+    fn resolver(&self) -> BlobResolver {
+        BlobResolver { site: self.site.clone(), extra: self.blobs.clone() }
+    }
+
+    /// OpenSCAD's Customizer description of a model (`--export-format=param`):
+    /// its settings, groups, defaults and choices. Cached like renders.
+    pub async fn export_params(&self, req: &RenderRequest) -> Result<Value, RenderFailure> {
+        let key = format!("{}-params", self.cache_key(&RenderRequest { values: BTreeMap::new(), defines: vec![], ..req.clone() }));
+        let cached = self.cache_dir.join("renders").join(format!("{key}.json"));
+        if self.use_cache {
+            if let Some(v) = std::fs::read(&cached).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
+                return Ok(v);
+            }
+        }
+        let _permit = self.slots.clone().acquire_owned().await.map_err(|_| RenderFailure::failed("The render queue was closed.", vec![]))?;
+        let tree = {
+            let files = req.files.clone();
+            let blobs = self.resolver();
+            let trees = self.cache_dir.join("trees");
+            tokio::task::spawn_blocking(move || ensure_tree(&blobs, &trees, &files))
+                .await
+                .map_err(|e| RenderFailure::failed(format!("Couldn't prepare the model files: {e}"), vec![]))?
+                .map_err(|e| RenderFailure::failed(format!("Couldn't prepare the model files: {e:#}"), vec![]))?
+        };
+        let entry = rel_path(&req.entry).map_err(|e| RenderFailure::failed(e.to_string(), vec![]))?;
+        let job_dir = self.cache_dir.join("jobs").join(format!("params-{}-{}", &key[..16], std::process::id()));
+        let _cleanup = RemoveOnDrop(job_dir.clone());
+        std::fs::create_dir_all(&job_dir).map_err(|e| RenderFailure::failed(format!("Couldn't create a job folder: {e}"), vec![]))?;
+        let target = job_dir.join("params.json");
+        let mut cmd = self.engine.command();
+        cmd.arg(tree.join(&entry))
+            .args(["--export-format=param", "-o"])
+            .arg(&target)
+            .current_dir(&tree)
+            .env("OPENSCADPATH", tree.join("libraries"))
+            .env("OPENSCAD_FONT_PATH", tree.join("fonts"))
+            .envs(self.env.iter().map(|(k, v)| (k.as_str(), v.as_os_str())))
+            .stdin(Stdio::null())
+            .kill_on_drop(true);
+        let out = tokio::time::timeout(std::time::Duration::from_secs(600), cmd.output())
+            .await
+            .map_err(|_| RenderFailure::failed("Reading the settings took over 10 minutes.", vec![]))?
+            .map_err(|e| RenderFailure::failed(format!("Couldn't start OpenSCAD ({}): {e}", self.engine.exe.display()), vec![]))?;
+        let logs: Vec<String> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .chain(String::from_utf8_lossy(&out.stderr).lines())
+            .map(String::from)
+            .collect();
+        let bytes = std::fs::read(&target).map_err(|_| {
+            let first = logs.iter().find(|l| l.starts_with("ERROR:")).cloned();
+            RenderFailure::failed(first.unwrap_or_else(|| "OpenSCAD couldn't read this file's settings.".into()), logs.clone())
+        })?;
+        let v: Value = serde_json::from_slice(&bytes)
+            .map_err(|e| RenderFailure::failed(format!("OpenSCAD's settings export wasn't valid JSON: {e}"), logs.clone()))?;
+        if self.use_cache {
+            let _ = std::fs::write(&cached, &bytes);
+        }
+        Ok(v)
     }
 
     /// Everything that changes the output: engine version, entry, every input file, values, defines.
@@ -255,9 +329,9 @@ impl Renderer {
         on_event(RenderEvent::Stage { stage: "Preparing model files…".into() });
         let tree = {
             let files = req.files.clone();
-            let site = self.site.clone();
+            let blobs = self.resolver();
             let trees = self.cache_dir.join("trees");
-            tokio::task::spawn_blocking(move || ensure_tree(&site, &trees, &files))
+            tokio::task::spawn_blocking(move || ensure_tree(&blobs, &trees, &files))
                 .await
                 .map_err(|e| RenderFailure::failed(format!("Couldn't prepare the model files: {e}"), vec![]))?
                 .map_err(|e| RenderFailure::failed(format!("Couldn't prepare the model files: {e:#}"), vec![]))?
@@ -455,9 +529,29 @@ impl Drop for RemoveOnDrop {
     }
 }
 
+/// Finds content-addressed files: the site's fs/ first, then the library's files.
+#[derive(Clone)]
+struct BlobResolver {
+    site: SiteDir,
+    extra: Arc<std::sync::RwLock<HashMap<String, PathBuf>>>,
+}
+
+impl BlobResolver {
+    fn blob(&self, sha: &str) -> Result<PathBuf> {
+        let p = self.site.blob(sha)?;
+        if p.is_file() {
+            return Ok(p);
+        }
+        match self.extra.read().unwrap().get(sha) {
+            Some(p) => Ok(p.clone()),
+            None => bail!("file {} isn't in the app or the library", &sha[..12.min(sha.len())]),
+        }
+    }
+}
+
 /// Lay a model's files out as a real folder tree (once per distinct file set) so
 /// native OpenSCAD can follow its includes. Returns the tree's root.
-fn ensure_tree(site: &SiteDir, trees: &Path, files: &BTreeMap<String, String>) -> Result<PathBuf> {
+fn ensure_tree(site: &BlobResolver, trees: &Path, files: &BTreeMap<String, String>) -> Result<PathBuf> {
     let listing: String = files.iter().map(|(p, s)| format!("{p}\0{s}\n")).collect();
     let key = &sha_hex(&[listing.as_bytes()])[..24];
     let root = trees.join(key);

@@ -1,0 +1,681 @@
+//! Reading OpenSCAD projects: which files a model needs, its Customizer
+//! settings, and the metadata layered on top of them (the upstream project's
+//! editor.toml and the catalog's own `ui` overlays).
+//!
+//! One implementation for two users: the website build (`workshop-cli site-*`,
+//! called by tools/build_site.py) and the desktop app's library ingest.
+
+use anyhow::{Context, Result};
+use regex::Regex;
+use serde_json::{json, Map, Value};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+// ------------------------------------------------------------------ paths
+
+/// posixpath.normpath for "/"-separated virtual paths.
+pub fn normpath(p: &str) -> String {
+    if p.is_empty() {
+        return ".".into();
+    }
+    let absolute = p.starts_with('/');
+    let mut out: Vec<&str> = vec![];
+    for part in p.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                if out.last().is_some_and(|l| *l != "..") {
+                    out.pop();
+                } else if !absolute {
+                    out.push("..");
+                }
+            }
+            x => out.push(x),
+        }
+    }
+    let joined = out.join("/");
+    match (absolute, joined.is_empty()) {
+        (true, _) => format!("/{joined}"),
+        (false, true) => ".".into(),
+        (false, false) => joined,
+    }
+}
+
+/// posixpath.dirname
+pub fn dirname(p: &str) -> &str {
+    match p.rfind('/') {
+        Some(0) => "/",
+        Some(i) => &p[..i],
+        None => "",
+    }
+}
+
+/// posixpath.join for two parts.
+pub fn join(a: &str, b: &str) -> String {
+    if b.starts_with('/') || a.is_empty() {
+        b.to_string()
+    } else if a.ends_with('/') {
+        format!("{a}{b}")
+    } else {
+        format!("{a}/{b}")
+    }
+}
+
+/// Find `rel` under `base`, ignoring case where an exact match is missing, as
+/// Windows and macOS do (upstream files are sometimes written with mismatched case).
+pub fn find_nocase(base: &Path, rel: &str) -> Option<PathBuf> {
+    let mut cur = base.to_path_buf();
+    for part in rel.split('/') {
+        match part {
+            "" | "." => continue,
+            ".." => {
+                cur = cur.parent()?.to_path_buf();
+                continue;
+            }
+            _ => {}
+        }
+        let direct = cur.join(part);
+        if direct.exists() {
+            cur = direct;
+            continue;
+        }
+        if !cur.is_dir() {
+            return None;
+        }
+        let lower = part.to_lowercase();
+        let hit = std::fs::read_dir(&cur)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.to_lowercase() == lower))
+            .min()?;
+        cur = hit;
+    }
+    cur.is_file().then_some(cur)
+}
+
+/// Where a model's virtual paths live on disk: "/" is the project root, and
+/// "/libraries/<x>" is looked up in each library folder in turn (OPENSCADPATH).
+#[derive(Clone, Debug)]
+pub struct Resolver {
+    pub root: PathBuf,
+    pub libraries: Vec<PathBuf>,
+}
+
+impl Resolver {
+    pub fn host(&self, v: &str) -> Option<PathBuf> {
+        if let Some(rel) = v.strip_prefix("/libraries/") {
+            for lib in &self.libraries {
+                let p = lib.join(rel);
+                if p.is_file() {
+                    return Some(p);
+                }
+            }
+            return self.libraries.iter().find_map(|lib| find_nocase(lib, rel));
+        }
+        let rel = v.trim_start_matches('/');
+        if rel.split('/').any(|c| c == "..") {
+            return None; // stays inside the project
+        }
+        let p = self.root.join(rel);
+        if p.is_file() {
+            Some(p)
+        } else {
+            find_nocase(&self.root, rel)
+        }
+    }
+}
+
+fn include_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^\s*(?:include|use)\s*<([^>]+)>").unwrap())
+}
+fn import_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"\b(?:import|surface)\s*\(\s*(?:file\s*=\s*)?"([^"]+)""#).unwrap())
+}
+fn block_comment_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)/\*.*?\*/").unwrap())
+}
+
+/// SCAD source with comments blanked out (line numbers kept).
+pub fn strip_comments(text: &str) -> String {
+    let no_blocks = block_comment_re().replace_all(text, |c: &regex::Captures| "\n".repeat(c[0].matches('\n').count()));
+    no_blocks.lines().map(|l| l.split("//").next().unwrap_or("")).collect::<Vec<_>>().join("\n")
+}
+
+/// References in one SCAD file: (include/use targets, import()/surface() files).
+pub fn references(text: &str) -> (Vec<String>, Vec<String>) {
+    let (mut uses, mut imports) = (vec![], vec![]);
+    for line in strip_comments(text).lines() {
+        if let Some(c) = include_re().captures(line) {
+            uses.push(c[1].trim().to_string());
+            continue;
+        }
+        for c in import_re().captures_iter(line) {
+            imports.push(c[1].to_string());
+        }
+    }
+    (uses, imports)
+}
+
+/// Files a model needs, by following include/use/import from its entry file as
+/// OpenSCAD does: next to the including file first, then the library folders.
+/// Returns {virtual path: host path} and the references that couldn't be found.
+pub fn collect_files(resolver: &Resolver, entry: &str) -> (BTreeMap<String, PathBuf>, Vec<String>) {
+    let mut files: BTreeMap<String, PathBuf> = BTreeMap::new();
+    let mut missing: BTreeSet<String> = BTreeSet::new();
+    let mut todo = vec![format!("/{}", entry.trim_start_matches('/'))];
+    while let Some(v) = todo.pop() {
+        if files.contains_key(&v) {
+            continue;
+        }
+        let Some(h) = resolver.host(&v) else {
+            missing.insert(v);
+            continue;
+        };
+        let is_scad = h.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("scad"));
+        files.insert(v.clone(), h.clone());
+        if !is_scad {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&std::fs::read(&h).unwrap_or_default()).into_owned();
+        let base = dirname(&v).to_string();
+        let (uses, imports) = references(&text);
+        for r in uses {
+            let rel = normpath(&join(&base, &r));
+            if resolver.host(&rel).is_some() {
+                todo.push(rel);
+            } else {
+                todo.push(format!("/libraries/{}", normpath(&r)));
+            }
+        }
+        for i in imports {
+            let rel = normpath(&join(&base, &i));
+            if resolver.host(&rel).is_some() {
+                todo.push(rel);
+            }
+        }
+    }
+    (files, missing.into_iter().collect())
+}
+
+// ------------------------------------------------------------------ JSON helpers
+
+/// Numbers compare by value (OpenSCAD writes 3 and 3.0 interchangeably).
+pub fn json_eq(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
+        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(p, q)| json_eq(p, q)),
+        _ => a == b,
+    }
+}
+
+/// 3.0 -> 3 (OpenSCAD's parameter export writes whole numbers as floats).
+pub fn int_if_whole(v: &Value) -> Value {
+    match v {
+        Value::Number(n) if n.is_f64() => {
+            let f = n.as_f64().unwrap_or(0.0);
+            if f.fract() == 0.0 && f.abs() < 9.0e15 {
+                json!(f as i64)
+            } else {
+                v.clone()
+            }
+        }
+        Value::Array(a) => Value::Array(a.iter().map(|x| if x.is_array() { x.clone() } else { int_if_whole(x) }).collect()),
+        _ => v.clone(),
+    }
+}
+
+fn is_number(v: &Value) -> bool {
+    v.is_number()
+}
+
+/// Python's str() for a JSON scalar (labels made from option values).
+fn py_str(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Bool(true) => "True".into(),
+        Value::Bool(false) => "False".into(),
+        Value::Null => "None".into(),
+        other => other.to_string(),
+    }
+}
+
+// ------------------------------------------------------------------ parameters
+
+/// OpenSCAD's `--export-format=param` output -> the site's parameter list and group order.
+pub fn convert_params(raw: &Value) -> (Vec<Value>, Vec<String>) {
+    let mut params = vec![];
+    let mut groups: Vec<String> = vec![];
+    for p in raw.get("parameters").and_then(Value::as_array).into_iter().flatten() {
+        let name = p.get("name").and_then(Value::as_str).unwrap_or("").to_string();
+        let group = p.get("group").and_then(Value::as_str).filter(|g| !g.is_empty()).unwrap_or("Parameters").to_string();
+        if group.to_lowercase() == "hidden" || name.starts_with('$') {
+            continue; // $fn/$fa/$fs quality knobs stay at the model's defaults
+        }
+        let initial = p.get("initial").cloned().unwrap_or(Value::Null);
+        let caption = p.get("caption").and_then(Value::as_str).map(str::trim).filter(|c| !c.is_empty());
+        let mut out = Map::new();
+        out.insert("name".into(), json!(name));
+        out.insert("group".into(), json!(group));
+        out.insert("description".into(), caption.map(|c| json!(c)).unwrap_or(Value::Null));
+        out.insert("default".into(), initial.clone());
+        let (ty, widget) = match &initial {
+            Value::Bool(_) => ("boolean", "checkbox"),
+            Value::Array(a) => (if a.iter().all(is_number) { "number[]" } else { "list" }, "vector"),
+            Value::Number(_) => ("number", "number"),
+            _ => ("string", "text"),
+        };
+        out.insert("type".into(), json!(ty));
+        out.insert("widget".into(), json!(widget));
+        for k in ["min", "max", "step"] {
+            if let Some(v) = p.get(k).filter(|v| !v.is_null()) {
+                out.insert(k.into(), v.clone());
+            }
+        }
+        let options = p.get("options").and_then(Value::as_array).filter(|o| !o.is_empty());
+        if let Some(opts) = options {
+            out.insert("widget".into(), json!("dropdown"));
+            let mut list: Vec<Value> = opts
+                .iter()
+                .map(|o| {
+                    let value = o.get("value").cloned().unwrap_or(Value::Null);
+                    let label = o.get("name").map(py_str).unwrap_or_else(|| py_str(&value));
+                    json!({ "value": value, "label": label })
+                })
+                .collect();
+            if list.iter().all(|o| !json_eq(&o["value"], &initial)) {
+                list.insert(0, json!({ "value": initial, "label": py_str(&initial) }));
+            }
+            out.insert("options".into(), Value::Array(list));
+        } else if ty == "number" && out.contains_key("max") && out.contains_key("min") {
+            out.insert("widget".into(), json!("slider"));
+        }
+        for k in ["default", "min", "max", "step"] {
+            if let Some(v) = out.get(k).cloned() {
+                out.insert(k.into(), int_if_whole(&v));
+            }
+        }
+        if let Some(Value::Array(opts)) = out.get_mut("options") {
+            for o in opts.iter_mut() {
+                let v = o["value"].clone();
+                if v.is_f64() {
+                    o["value"] = int_if_whole(&v);
+                }
+            }
+        }
+        params.push(Value::Object(out));
+        if !groups.contains(&group) {
+            groups.push(group);
+        }
+    }
+    (params, groups)
+}
+
+// ------------------------------------------------------------------ editor.toml
+
+/// Parse an editor.toml (web-openscad-editor format) into JSON, keeping key order.
+pub fn load_editor_toml(path: &Path) -> Result<Value> {
+    if !path.is_file() {
+        return Ok(Value::Object(Map::new()));
+    }
+    let text = std::fs::read_to_string(path).with_context(|| format!("couldn't read {}", path.display()))?;
+    let table: toml::Table = text.parse().with_context(|| format!("{} isn't valid TOML", path.display()))?;
+    Ok(serde_json::to_value(table)?)
+}
+
+fn as_name_list(v: Option<&Value>) -> Vec<String> {
+    match v {
+        Some(Value::String(s)) => vec![s.clone()],
+        Some(Value::Array(a)) => a.iter().filter_map(|x| x.as_str().map(String::from)).collect(),
+        _ => vec![],
+    }
+}
+
+/// Merge the templates (default + named) and the [[model]] entry for one model file.
+/// Returns {} when the file has no entry.
+pub fn editor_model_meta(cfg: &Value, model_file: &str) -> Value {
+    let Some(obj) = cfg.as_object().filter(|o| !o.is_empty()) else { return json!({}) };
+    let empty = Map::new();
+    let templates = obj.get("model-template").and_then(Value::as_object).unwrap_or(&empty);
+
+    fn resolve<'a>(templates: &'a Map<String, Value>, name: &str, seen: &mut Vec<String>) -> Vec<&'a Value> {
+        let Some(t) = templates.get(name) else { return vec![] };
+        let mut chain = vec![];
+        for parent in as_name_list(t.get("template")) {
+            if !seen.contains(&parent) {
+                seen.push(name.to_string());
+                chain.extend(resolve(templates, &parent, seen));
+                seen.pop();
+            }
+        }
+        chain.push(t);
+        chain
+    }
+
+    for model in obj.get("model").and_then(Value::as_array).into_iter().flatten() {
+        if model.get("file").and_then(Value::as_str) != Some(model_file) {
+            continue;
+        }
+        let mut names = match model.get("template") {
+            None => vec!["default".to_string()],
+            v => as_name_list(v),
+        };
+        if !names.iter().any(|n| n == "default") && model.get("template").is_none() {
+            names.insert(0, "default".into());
+        }
+        let mut layers: Vec<&Value> = vec![];
+        for n in &names {
+            layers.extend(resolve(templates, n, &mut vec![]));
+        }
+        // web-openscad-editor applies "section-" templates to models that contain the
+        // referenced tab; include them generically (they only add tab metadata)
+        layers.extend(templates.iter().filter(|(n, _)| n.starts_with("section-")).map(|(_, t)| t));
+        layers.push(model);
+        let mut merged = Map::new();
+        let mut pmeta: Vec<Value> = vec![];
+        let mut tmeta = Map::new();
+        for layer in layers {
+            for (k, v) in layer.as_object().into_iter().flatten() {
+                match k.as_str() {
+                    "param-metadata" => {
+                        for (pattern, md) in v.as_object().into_iter().flatten() {
+                            pmeta.push(json!([pattern, md]));
+                        }
+                    }
+                    "tab-metadata" => {
+                        for (tab, meta) in v.as_object().into_iter().flatten() {
+                            let slot = tmeta.entry(tab.clone()).or_insert_with(|| json!({}));
+                            for (mk, mv) in meta.as_object().into_iter().flatten() {
+                                slot[mk] = mv.clone();
+                            }
+                        }
+                    }
+                    "file" | "template" => {}
+                    _ => {
+                        merged.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+        }
+        merged.insert("param-metadata".into(), Value::Array(pmeta));
+        merged.insert("tab-metadata".into(), Value::Object(tmeta));
+        // key order as Python builds it: param-metadata and tab-metadata first
+        let mut ordered = Map::new();
+        ordered.insert("param-metadata".into(), merged.shift_remove("param-metadata").unwrap());
+        ordered.insert("tab-metadata".into(), merged.shift_remove("tab-metadata").unwrap());
+        ordered.extend(merged);
+        return Value::Object(ordered);
+    }
+    json!({})
+}
+
+// ------------------------------------------------------------------ HTML
+
+fn html_res() -> &'static [Regex; 3] {
+    static RES: OnceLock<[Regex; 3]> = OnceLock::new();
+    RES.get_or_init(|| {
+        [
+            Regex::new(r"(?si)<\s*(script|style|iframe|object|embed)[^>]*>.*?<\s*/\s*(?:script|style|iframe|object|embed)\s*>").unwrap(),
+            Regex::new(r#"(?i)\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)"#).unwrap(),
+            Regex::new(r"(?i)javascript:").unwrap(),
+        ]
+    })
+}
+
+/// Keep simple formatting only (the page sanitises again before showing it).
+pub fn clean_html(html: Option<&str>) -> Option<String> {
+    let html = html.filter(|h| !h.is_empty())?;
+    let [tags, handlers, js] = html_res();
+    let s = tags.replace_all(html, "");
+    let s = handlers.replace_all(&s, "");
+    let s = js.replace_all(&s, "");
+    Some(s.trim().to_string())
+}
+
+// ------------------------------------------------------------------ metadata
+
+/// fnmatch.fnmatchcase: `*`, `?`, `[seq]`, `[!seq]`.
+pub fn fnmatch(name: &str, pattern: &str) -> bool {
+    fn go(n: &[char], p: &[char]) -> bool {
+        match p.first() {
+            None => n.is_empty(),
+            Some('*') => (0..=n.len()).any(|i| go(&n[i..], &p[1..])),
+            Some('?') => !n.is_empty() && go(&n[1..], &p[1..]),
+            Some('[') => {
+                let Some(close) = p.iter().skip(1).position(|c| *c == ']').map(|i| i + 1) else {
+                    return n.first() == Some(&'[') && go(&n[1..], &p[1..]);
+                };
+                let Some(c) = n.first() else { return false };
+                let mut set = &p[1..close];
+                let negate = set.first() == Some(&'!');
+                if negate {
+                    set = &set[1..];
+                }
+                let mut hit = false;
+                let mut i = 0;
+                while i < set.len() {
+                    if i + 2 < set.len() && set[i + 1] == '-' {
+                        hit |= set[i] <= *c && *c <= set[i + 2];
+                        i += 3;
+                    } else {
+                        hit |= set[i] == *c;
+                        i += 1;
+                    }
+                }
+                hit != negate && go(&n[1..], &p[close + 1..])
+            }
+            Some(x) => n.first() == Some(x) && go(&n[1..], &p[1..]),
+        }
+    }
+    let n: Vec<char> = name.chars().collect();
+    let p: Vec<char> = pattern.chars().collect();
+    go(&n, &p)
+}
+
+/// Layer site settings on the parameters: the catalog model's fixed/hidden/defaults,
+/// the family and model `ui` overlays and the editor.toml metadata. Returns the
+/// visible parameters and the per-group ("tab") metadata.
+pub fn apply_metadata(params: &[Value], groups: &[String], fam: &Value, model: &Value, meta: &Value) -> (Vec<Value>, Value) {
+    let empty = Map::new();
+    let fixed = model.get("fixed").and_then(Value::as_object).unwrap_or(&empty);
+    let mut hidden: BTreeSet<String> = model
+        .get("hidden")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
+    hidden.extend(fixed.keys().cloned());
+    let defaults = model.get("defaults").and_then(Value::as_object).unwrap_or(&empty);
+    let mut ui: Map<String, Value> = fam.get("ui").and_then(Value::as_object).cloned().unwrap_or_default();
+    for (k, v) in model.get("ui").and_then(Value::as_object).into_iter().flatten() {
+        let slot = ui.entry(k.clone()).or_insert_with(|| json!({}));
+        for (mk, mv) in v.as_object().into_iter().flatten() {
+            slot[mk] = mv.clone();
+        }
+    }
+    let names: BTreeSet<&str> = params.iter().filter_map(|p| p["name"].as_str()).collect();
+    let pmeta: Vec<(String, Value)> = meta
+        .get("param-metadata")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| Some((e.get(0)?.as_str()?.to_string(), e.get(1)?.clone())))
+        .collect();
+    let mut out = vec![];
+    for p in params {
+        let name = p["name"].as_str().unwrap_or("");
+        if hidden.contains(name) {
+            continue;
+        }
+        let mut p = p.as_object().cloned().unwrap_or_default();
+        if let Some(d) = defaults.get(name) {
+            p.insert("default".into(), d.clone());
+        }
+        let mut m = Map::new();
+        for (pattern, md) in &pmeta {
+            if fnmatch(name, pattern) {
+                for (k, v) in md.as_object().into_iter().flatten() {
+                    m.insert(k.clone(), v.clone());
+                }
+            }
+        }
+        for (k, v) in ui.get(name).and_then(Value::as_object).into_iter().flatten() {
+            m.insert(k.clone(), v.clone());
+        }
+        if let Some(cond) = m.get("display-condition").and_then(Value::as_object) {
+            if cond.get("fixed") == Some(&Value::Bool(false)) {
+                p.insert("hidden".into(), json!(true));
+            } else if let Some(js) = cond.get("js").filter(|j| j.as_str().is_some_and(|s| !s.is_empty())) {
+                p.insert("show_if".into(), js.clone());
+            }
+        }
+        if let Some(h) = m.get("help-link").filter(|v| truthy(v)) {
+            p.insert("help_link".into(), h.clone());
+        }
+        if let Some(h) = m.get("description-html").filter(|v| truthy(v)) {
+            p.insert("description_html".into(), clean_html(h.as_str()).map(Value::String).unwrap_or(Value::Null));
+        }
+        if let Some(pr) = m.get("presets").and_then(Value::as_object) {
+            if let Some(values) = pr.get("values").and_then(Value::as_object).filter(|v| !v.is_empty()) {
+                let label = pr.get("text").cloned().unwrap_or(json!("Presets"));
+                let vals: Vec<Value> = values.iter().map(|(k, v)| json!({ "label": k, "value": v })).collect();
+                p.insert("presets".into(), json!({ "label": label, "values": vals }));
+            }
+        }
+        for k in ["label", "description", "unit", "advanced", "axes", "min", "max", "profile"] {
+            if let Some(v) = m.get(k) {
+                p.insert(k.into(), v.clone());
+            }
+        }
+        if let Some(opts) = m.get("options").and_then(Value::as_array) {
+            p.insert("widget".into(), json!("dropdown"));
+            let list: Vec<Value> = opts
+                .iter()
+                .map(|o| if o.is_object() { o.clone() } else { json!({ "value": o, "label": py_str(o) }) })
+                .collect();
+            let default = p.get("default").cloned().unwrap_or(Value::Null);
+            if !list.iter().any(|o| json_eq(&o["value"], &default)) {
+                if let Some(first) = list.first() {
+                    p.insert("default".into(), first["value"].clone());
+                }
+            }
+            p.insert("options".into(), Value::Array(list));
+        }
+        out.push(Value::Object(p));
+    }
+    let mut tabs = Map::new();
+    for (tab, tm) in meta.get("tab-metadata").and_then(Value::as_object).into_iter().flatten() {
+        if !groups.contains(tab) {
+            continue;
+        }
+        let mut t = Map::new();
+        if let Some(c) = tm.get("collapsed") {
+            t.insert("collapsed".into(), json!(truthy(c)));
+        }
+        if let Some(c) = tm.get("control-boolean").and_then(Value::as_str).filter(|c| names.contains(c)) {
+            t.insert("control".into(), json!(c));
+        }
+        for (src, dst) in [("help-link", "help_link"), ("description-html", "description_html"), ("description-collapsed-html", "description_collapsed_html")] {
+            if let Some(v) = tm.get(src).filter(|v| truthy(v)) {
+                let val = if dst.ends_with("html") { clean_html(v.as_str()).map(Value::String).unwrap_or(Value::Null) } else { v.clone() };
+                t.insert(dst.into(), val);
+            }
+        }
+        tabs.insert(tab.clone(), Value::Object(t));
+    }
+    (out, Value::Object(tabs))
+}
+
+/// Python truthiness for JSON values.
+pub fn truthy(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64() != Some(0.0),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(o) => !o.is_empty(),
+    }
+}
+
+/// Search terms from the visible settings ("tooth count" finds the generator that has it).
+pub fn setting_terms(params: &[Value]) -> String {
+    let mut terms: Vec<String> = vec![];
+    for p in params.iter().filter(|p| !p.get("hidden").is_some_and(truthy)) {
+        let name = p["name"].as_str().unwrap_or("").replace('_', " ");
+        for t in [p.get("label").and_then(Value::as_str).map(String::from), Some(name)].into_iter().flatten() {
+            if !t.is_empty() && !terms.contains(&t.to_lowercase()) {
+                terms.push(t.to_lowercase());
+            }
+        }
+    }
+    let joined = terms.join(" | ");
+    joined.chars().take(4000).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normpath_like_python() {
+        assert_eq!(normpath("/a/b/../c"), "/a/c");
+        assert_eq!(normpath("/../x"), "/x");
+        assert_eq!(normpath("../x/./y"), "../x/y");
+        assert_eq!(normpath("a//b/"), "a/b");
+        assert_eq!(normpath(""), ".");
+        assert_eq!(join("/vendor/x", "lib.scad"), "/vendor/x/lib.scad");
+        assert_eq!(dirname("/vendor/x/a.scad"), "/vendor/x");
+        assert_eq!(dirname("/a.scad"), "/");
+    }
+
+    #[test]
+    fn fnmatch_patterns() {
+        assert!(fnmatch("magnet_d", "magnet_*"));
+        assert!(fnmatch("a1", "a?"));
+        assert!(fnmatch("b", "[abc]"));
+        assert!(!fnmatch("d", "[abc]"));
+        assert!(fnmatch("d", "[!abc]"));
+        assert!(fnmatch("x5", "x[0-9]"));
+        assert!(!fnmatch("Magnet", "magnet"));
+    }
+
+    #[test]
+    fn references_skip_comments() {
+        let src = "include <a.scad>\n// use <b.scad>\n/* use <c.scad>\n */ use <d.scad>\nx = import(\"m.stl\"); // import(\"n.stl\")\n";
+        let (uses, imports) = references(src);
+        assert_eq!(uses, vec!["a.scad", "d.scad"]); // code after a block comment on the same line counts
+        assert_eq!(imports, vec!["m.stl"]);
+    }
+
+    #[test]
+    fn params_convert() {
+        let raw = json!({"parameters": [
+            {"name": "w", "group": "Size", "initial": 3.0, "min": 1.0, "max": 10.0, "caption": " Width "},
+            {"name": "$fn", "initial": 32},
+            {"name": "style", "group": "Size", "initial": "a", "options": [{"name": "B", "value": "b"}]},
+            {"name": "v", "initial": [1.0, 2.5]},
+            {"name": "secret", "group": "Hidden", "initial": 1}
+        ]});
+        let (p, g) = convert_params(&raw);
+        assert_eq!(g, vec!["Size", "Parameters"]);
+        assert_eq!(p[0]["default"], json!(3));
+        assert_eq!(p[0]["widget"], json!("slider"));
+        assert_eq!(p[0]["description"], json!("Width"));
+        assert_eq!(p[1]["options"][0], json!({"value": "a", "label": "a"}));
+        assert_eq!(p[2]["type"], json!("number[]"));
+        assert_eq!(p[2]["default"], json!([1, 2.5]));
+        assert_eq!(p.len(), 3);
+    }
+
+    #[test]
+    fn html_cleaned() {
+        assert_eq!(clean_html(Some("<b onclick='x()'>hi</b><script>evil()</script>")).as_deref(), Some("<b>hi</b>"));
+        assert_eq!(clean_html(Some("")), None);
+    }
+}

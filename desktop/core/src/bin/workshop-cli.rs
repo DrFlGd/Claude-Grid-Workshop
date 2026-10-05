@@ -3,10 +3,15 @@
 //!   workshop-cli version --engine <dir|exe>
 //!   workshop-cli render  --site _site --engine <dir|exe> --model family/model --out part.stl [--set name=<json>]...
 //!   workshop-cli bench   --site _site --engine <dir|exe> [--out bench-native.json] [--jobs N] [--timeout S] [keys...]
+//!   workshop-cli site-prepare --repo . --out _site [--desktop] [--public] [--hide-blocked]
+//!   workshop-cli site-finish  --repo . --out _site --params raw.json --engine-version V [--native-engine <dir|exe>]
 //!
 //! `bench` renders every model in the site (including desktop-only ones) with
 //! default settings and a fresh cache, like `tools/engine/cli.mjs bench` does for
 //! the WebAssembly engine, and exits non-zero if any fails.
+//!
+//! `site-prepare` and `site-finish` are the catalog steps of tools/build_site.py:
+//! the same project reading (files, settings, metadata) as the app's library ingest.
 
 use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
@@ -57,6 +62,11 @@ async fn run() -> Result<()> {
     }
     let cmd = all.remove(0);
     let mut a = Args { rest: all };
+    match cmd.as_str() {
+        "site-prepare" => return site_prepare(a),
+        "site-finish" => return site_finish(a).await,
+        _ => {}
+    }
     let engine = NativeEngine::locate(&PathBuf::from(a.need("--engine")?)).await?;
     match cmd.as_str() {
         "version" => {
@@ -194,6 +204,62 @@ async fn bench(engine: NativeEngine, mut a: Args) -> Result<()> {
         report["total_repeat_seconds"]
     );
     if failed > 0 {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Files and model stubs for every catalog model; writes <out>/.build/plan.json.
+fn site_prepare(mut a: Args) -> Result<()> {
+    let repo = PathBuf::from(a.need("--repo")?);
+    let out = PathBuf::from(a.need("--out")?);
+    let opts = workshop_core::sitebuild::PrepareOptions {
+        public: a.rest.iter().any(|x| x == "--public"),
+        hide_blocked: a.rest.iter().any(|x| x == "--hide-blocked"),
+        desktop: a.rest.iter().any(|x| x == "--desktop"),
+    };
+    let plan = workshop_core::sitebuild::prepare(&repo, &out, &opts)?;
+    std::fs::create_dir_all(out.join(".build"))?;
+    std::fs::write(out.join(".build/plan.json"), serde_json::to_vec_pretty(&plan)?)?;
+    let browser: Vec<&str> = plan.models.iter().filter(|m| m.browser).map(|m| m.key.as_str()).collect();
+    println!("{}", browser.join("\n"));
+    eprintln!("{} models ({} for the browser engine), {} problems", plan.models.len(), browser.len(), plan.problems.len());
+    Ok(())
+}
+
+/// Model JSON and the catalog from the settings exports (desktop-only models read natively).
+async fn site_finish(mut a: Args) -> Result<()> {
+    let repo = PathBuf::from(a.need("--repo")?);
+    let out = PathBuf::from(a.need("--out")?);
+    let version = a.need("--engine-version")?;
+    let plan: workshop_core::sitebuild::Plan = serde_json::from_slice(&std::fs::read(out.join(".build/plan.json"))?)?;
+    let mut raw: serde_json::Map<String, Value> = match a.flag("--params") {
+        Some(p) => serde_json::from_slice(&std::fs::read(&p).with_context(|| format!("couldn't read {p}"))?)?,
+        None => Default::default(),
+    };
+    let native: Vec<_> = plan.models.iter().filter(|m| !m.browser).collect();
+    if !native.is_empty() {
+        let exe = a.flag("--native-engine").context("desktop-only models need --native-engine")?;
+        let engine = NativeEngine::locate(&PathBuf::from(exe)).await?;
+        let cache = out.join(".build/cache");
+        let mut r = Renderer::new(engine, SiteDir::new(&out)?, cache, 2)?;
+        r.use_cache = false;
+        for m in native {
+            let mut files = plan.common_files.clone();
+            files.extend(m.files.clone());
+            let req = workshop_core::RenderRequest { model: m.key.clone(), entry: m.entry.clone(), files, values: Default::default(), defines: vec![] };
+            let v = match r.export_params(&req).await {
+                Ok(v) => v,
+                Err(e) => json!({ "error": format!("{}\n{}", e.message, e.logs.join("\n")) }),
+            };
+            raw.insert(m.key.clone(), v);
+        }
+    }
+    let problems = workshop_core::sitebuild::finish(&repo, &out, &plan, &raw, &version)?;
+    for p in &problems {
+        eprintln!("PROBLEM: {p}");
+    }
+    if !problems.is_empty() {
         std::process::exit(1);
     }
     Ok(())

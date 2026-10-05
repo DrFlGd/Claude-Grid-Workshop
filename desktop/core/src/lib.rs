@@ -6,10 +6,13 @@
 //! - [`render`]: render queue, cancellation and the render cache
 //! - [`workspace`]: the user's workspace folder and app config
 //! - [`store`]: saved settings and preferences as files in the workspace
+//! - [`ingest`]: reading OpenSCAD projects (files, settings, metadata)
 
 pub mod engine;
+pub mod ingest;
 pub mod render;
 pub mod site;
+pub mod sitebuild;
 pub mod store;
 pub mod workspace;
 

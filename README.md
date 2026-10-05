@@ -21,7 +21,7 @@ the model's files + OpenSCAD -> STL -> three.js preview -> download
 ```
 
 - **Engine:** the official OpenSCAD WebAssembly snapshot pinned in `engine.json` (2026.10.02), downloaded and checksum-verified by `tools/fetch_engine.py`. Each render runs in its own web worker (cancel = stop the worker); the page compiles the engine once and reuses it.
-- **Files per model:** `build_site.py` follows `include`/`use`/`import` from each entrypoint (next to the file first, then the family's library folders, mounted at `/libraries` in the engine) and stores each file once by content hash. The browser fetches only what a model needs and caches it.
+- **Files per model:** the build (`build_site.py`, using the desktop app's project reading in `desktop/core` through `workshop-cli`) follows `include`/`use`/`import` from each entrypoint (next to the file first, then the family's library folders, mounted at `/libraries` in the engine) and stores each file once by content hash. The browser fetches only what a model needs and caches it.
 - **Settings forms:** OpenSCAD's own Customizer export (`--export-format=param`), run on the same engine at build time. On top of that the site applies the upstream project's `editor.toml` when it has one (the [web-openscad-editor](https://github.com/yawkat/web-openscad-editor) format used by GridFlock and Gridfinity Extended): show-when conditions, presets (e.g. printer bed sizes), help links, collapsed sections, section on/off switches and warnings. Family manifests can add the same metadata (`ui`) for projects without one.
 - **Interface:** a library-style layout. The sidebar lists Home, Recent, Favourites, generator categories (each opening into its projects), the parts libraries and "Needs attention". The browser shows any of these as a grid of thumbnails (three sizes), a list, a sortable table with columns you choose, or grouped by project, category, kind or license; the view is remembered per place. An inspector beside it shows the selected item: license, settings count, last upstream update, your saved settings, more from the same project. Opened generators stay open as tabs, with their settings and preview kept. Space opens a quick look (a 3D preview at default settings), Ctrl+K a command palette, `/` the search. Themes: light, dark and night, following the system by default.
 - **Search:** one box for generators and parts, matching names, projects, tags, descriptions and setting names ("tooth count" finds the generator that has one), with prefix matching, one-typo tolerance and synonyms (cog → gear, box → case). Filter chips with counts for kind, category, project, license and when the source was last updated; the same filters can be typed (`tag:label project:underware updated:year`). The search sits behind an `index` interface (`web/ui/index-local.js`) so the desktop app can later swap in SQLite.
@@ -35,10 +35,11 @@ the model's files + OpenSCAD -> STL -> three.js preview -> download
 
 ## Build and run locally
 
-Needs Python 3.11+ (with numpy for part previews) and Node 20+.
+Needs Python 3.11+ (with numpy for part previews), Node 20+ and Rust (for `workshop-cli`, which reads the projects; the desktop app uses the same code).
 
 ```sh
 python3 tools/fetch_engine.py --out build/engine        # or --zip <downloaded zip>
+(cd desktop && cargo build --release -p workshop-core)   # builds workshop-cli
 python3 tools/build_site.py --engine build/engine --out _site
 node tools/engine/cli.mjs bench _site --out bench.json --stl-dir build/stl   # renders every model once
 python3 tools/thumbnails.py --site _site --stl-dir build/stl                 # thumbnails (needs Playwright)

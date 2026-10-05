@@ -1,317 +1,46 @@
 #!/usr/bin/env python3
 """Build the static website (GitHub Pages) into _site/.
 
-    python3 tools/build_site.py --engine path/to/openscad-wasm [--out _site]
+    python3 tools/build_site.py --engine path/to/openscad-wasm [--out _site] [--cli workshop-cli]
 
 Steps
 1. Copy the front end (web/) and the OpenSCAD WebAssembly engine.
-2. For every available catalog model, find the files it needs by following
-   include/use/import from its entrypoint, as OpenSCAD would: next to the
-   including file first, then the family's library folders (mounted at
-   /libraries in the engine). Files are stored once, by content hash, in fs/.
-3. Ask the engine for each model's Customizer parameters
-   (--export-format=param), then layer on site settings: the family manifest
-   (fixed/hidden/defaults/ui) and the upstream project's editor.toml
-   (web-openscad-editor format: display conditions, presets, help links,
+2. Catalog (workshop-cli site-prepare, from desktop/core: the same project reading
+   as the desktop app's library ingest): for every available catalog model, find the
+   files it needs by following include/use/import from its entrypoint, as OpenSCAD
+   would (next to the including file first, then the family's library folders,
+   mounted at /libraries in the engine). Files are stored once, by content hash, in fs/.
+3. Ask the engine for each model's Customizer parameters (--export-format=param;
+   desktop-only models with native OpenSCAD), then layer on site settings with
+   workshop-cli site-finish: the family manifest (fixed/hidden/defaults/ui) and the
+   upstream project's editor.toml (display conditions, presets, help links,
    collapsed tabs, warnings).
 4. Copy part libraries and make STL previews for their 3MF files.
 """
 from __future__ import annotations
 
 import argparse
-import fnmatch
-import hashlib
 import json
 import os
-import posixpath
-import re
 import shutil
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
-INCLUDE_RE = re.compile(r"^\s*(?:include|use)\s*<([^>]+)>")
-IMPORT_RE = re.compile(r"""\b(?:import|surface)\s*\(\s*(?:file\s*=\s*)?"([^"]+)\"""")
-CATEGORY_LABELS = {"gridfinity": "Gridfinity", "carrying": "Boxes & Baskets", "labels": "Labels",
-                   "wall": "Wall Storage", "other": "Other"}
-FONTS_DIR = ROOT / "assets/fonts"
 
-
-class Store:
-    """Content-addressed files under <out>/fs/<sha256>."""
-
-    def __init__(self, out: Path):
-        self.dir = out / "fs"
-        self.dir.mkdir(parents=True, exist_ok=True)
-        self.bytes = 0
-
-    def put(self, data: bytes) -> str:
-        sha = hashlib.sha256(data).hexdigest()
-        p = self.dir / sha
-        if not p.exists():
-            p.write_bytes(data)
-            self.bytes += len(data)
-        return sha
-
-
-# ---------------------------------------------------------------- dependencies
-def collect_files(entry: str, library_paths: list[str]) -> tuple[dict[str, Path], list[str]]:
-    """Return {virtual path: host path} for an entrypoint, plus unresolved references."""
-    libs = [ROOT / p for p in library_paths]
-
-    def nocase(base: Path, rel: str) -> Path | None:
-        """Find rel under base ignoring case, as Windows/macOS do (upstream files
-        are sometimes written there with mismatched case)."""
-        cur = base
-        for part in rel.split("/"):
-            if part in ("", "."):
-                continue
-            if part == "..":
-                cur = cur.parent
-                continue
-            if (cur / part).exists():
-                cur = cur / part
-                continue
-            if not cur.is_dir():
-                return None
-            match = next((c for c in cur.iterdir() if c.name.lower() == part.lower()), None)
-            if match is None:
-                return None
-            cur = match
-        return cur if cur.is_file() else None
-
-    def host(v: str) -> Path | None:
-        if v.startswith("/libraries/"):
-            rel = v[len("/libraries/"):]
-            for lib in libs:
-                if (lib / rel).is_file():
-                    return lib / rel
-            for lib in libs:
-                if (hit := nocase(lib, rel)):
-                    return hit
-            return None
-        p = ROOT / v.lstrip("/")
-        return p if p.is_file() else nocase(ROOT, v.lstrip("/"))
-
-    files: dict[str, Path] = {}
-    missing: list[str] = []
-    todo = ["/" + entry]
-    while todo:
-        v = todo.pop()
-        if v in files:
-            continue
-        h = host(v)
-        if h is None:
-            missing.append(v)
-            continue
-        files[v] = h
-        if h.suffix.lower() != ".scad":
-            continue
-        text = h.read_text(encoding="utf-8", errors="replace")
-        text = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), text, flags=re.S)
-        base = posixpath.dirname(v)
-        for line in text.splitlines():
-            line = line.split("//", 1)[0]
-            m = INCLUDE_RE.match(line)
-            if m:
-                ref = m.group(1).strip()
-                rel = posixpath.normpath(posixpath.join(base, ref))
-                todo.append(rel if host(rel) else "/libraries/" + posixpath.normpath(ref))
-                continue
-            for imp in IMPORT_RE.findall(line):
-                rel = posixpath.normpath(posixpath.join(base, imp))
-                if host(rel):
-                    todo.append(rel)
-    return files, sorted(set(missing))
-
-
-# ---------------------------------------------------------------- editor.toml
-def load_editor_toml(path: Path) -> dict:
-    return tomllib.loads(path.read_text()) if path.is_file() else {}
-
-
-def editor_model_meta(cfg: dict, model_file: str) -> dict:
-    """Merge templates (default + named) and the [[model]] entry for one file."""
-    if not cfg:
-        return {}
-    templates = cfg.get("model-template", {})
-
-    def resolve(name, seen=()):
-        t = templates.get(name, {})
-        chain = []
-        for parent in t.get("template", []) if isinstance(t.get("template"), list) else ([t["template"]] if t.get("template") else []):
-            if parent not in seen:
-                chain += resolve(parent, seen + (name,))
-        return chain + [t]
-
-    for model in cfg.get("model", []):
-        if model.get("file") != model_file:
-            continue
-        names = model.get("template", ["default"])
-        names = [names] if isinstance(names, str) else names
-        if "default" not in names and "template" not in model:
-            names = ["default"] + names
-        layers = []
-        for n in names:
-            layers += resolve(n)
-        # web-openscad-editor applies templates whose name starts with "section-" to models
-        # that contain the referenced tab; include them generically (they only add tab metadata)
-        layers += [t for n, t in templates.items() if n.startswith("section-")]
-        layers.append(model)
-        merged: dict = {"param-metadata": [], "tab-metadata": {}}
-        for layer in layers:
-            for k, v in layer.items():
-                if k == "param-metadata":
-                    merged["param-metadata"] += list(v.items())
-                elif k == "tab-metadata":
-                    for tab, meta in v.items():
-                        merged["tab-metadata"].setdefault(tab, {}).update(meta)
-                elif k not in ("file", "template"):
-                    merged[k] = v
-        return merged
-    return {}
-
-
-SAFE_TAGS = {"a", "b", "strong", "i", "em", "br", "p", "span", "code", "ul", "ol", "li", "div", "small"}
-
-
-def clean_html(html: str | None) -> str | None:
-    """Keep simple formatting only (the browser re-sanitises too)."""
-    if not html:
-        return None
-    html = re.sub(r"<\s*(script|style|iframe|object|embed)[^>]*>.*?<\s*/\s*\1\s*>", "", html, flags=re.S | re.I)
-    html = re.sub(r"\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", "", html, flags=re.I)
-    html = re.sub(r"javascript:", "", html, flags=re.I)
-    return html.strip()
-
-
-# ---------------------------------------------------------------- parameters
-def convert_params(raw: dict) -> tuple[list[dict], list[str]]:
-    """OpenSCAD's --export-format=param output -> the site's parameter schema."""
-    params, groups = [], []
-    for p in raw.get("parameters", []):
-        group = p.get("group") or "Parameters"
-        if group.lower() == "hidden" or p["name"].startswith("$"):
-            continue  # $fn/$fa/$fs quality knobs stay at the model's defaults
-        initial = p.get("initial")
-        out = {"name": p["name"], "group": group, "description": (p.get("caption") or "").strip() or None, "default": initial}
-        if isinstance(initial, bool):
-            out["type"], out["widget"] = "boolean", "checkbox"
-        elif isinstance(initial, list):
-            out["type"] = "number[]" if all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in initial) else "list"
-            out["widget"] = "vector"
-        elif isinstance(initial, (int, float)):
-            out["type"], out["widget"] = "number", "number"
-        else:
-            out["type"], out["widget"] = "string", "text"
-        for k in ("min", "max", "step"):
-            if p.get(k) is not None:
-                out[k] = p[k]
-        if p.get("options"):
-            out["widget"] = "dropdown"
-            out["options"] = [{"value": o.get("value"), "label": str(o.get("name", o.get("value")))} for o in p["options"]]
-            if all(o["value"] != initial for o in out["options"]):
-                out["options"].insert(0, {"value": initial, "label": str(initial)})
-        elif out["type"] == "number" and "max" in out and "min" in out:
-            out["widget"] = "slider"
-        # normalise floats that are integers (OpenSCAD exports 3 as 3.0)
-        for k in ("default", "min", "max", "step"):
-            v = out.get(k)
-            if isinstance(v, float) and v.is_integer():
-                out[k] = int(v)
-            elif isinstance(v, list):
-                out[k] = [int(x) if isinstance(x, float) and x.is_integer() else x for x in v]
-        if out.get("options"):
-            for o in out["options"]:
-                if isinstance(o["value"], float) and o["value"].is_integer():
-                    o["value"] = int(o["value"])
-        params.append(out)
-        if group not in groups:
-            groups.append(group)
-    return params, groups
-
-
-def native_params(exe: Path, out: Path, entry: str, files: dict) -> dict:
-    """OpenSCAD's Customizer export with a native engine, for models the WebAssembly one can't read."""
-    import tempfile
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        for vpath, sha in files.items():
-            dst = root / vpath.lstrip("/")
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(out / "fs" / sha, dst)
-        target = root / "params.json"
-        env = {**os.environ, "OPENSCADPATH": str(root / "libraries"), "OPENSCAD_FONT_PATH": str(root / "fonts")}
-        exe = exe.resolve() if exe.exists() else exe  # runs with cwd inside the temp tree
-        r = subprocess.run([str(exe), str(root / entry.lstrip("/")), "--export-format=param", "-o", str(target)],
-                           cwd=root, env=env, capture_output=True, text=True, timeout=600)
-        if not target.exists():
-            return {"error": (r.stdout + r.stderr)[-2000:]}
-        return json.loads(target.read_text())
-
-
-def apply_metadata(params: list[dict], groups: list[str], fam: dict, model: dict, meta: dict) -> tuple[list, dict]:
-    fixed = dict(model.get("fixed", {}))
-    hidden = set(model.get("hidden", [])) | set(fixed)
-    defaults = model.get("defaults", {})
-    ui = {k: dict(v) for k, v in fam.get("ui", {}).items()}  # family-wide, model overrides
-    for k, v in model.get("ui", {}).items():
-        ui.setdefault(k, {}).update(v)
-    names = {p["name"] for p in params}
-    pmeta = meta.get("param-metadata", [])
-    out = []
-    for p in params:
-        if p["name"] in hidden:
-            continue
-        p = dict(p)
-        if p["name"] in defaults:
-            p["default"] = defaults[p["name"]]
-        m: dict = {}
-        for pattern, md in pmeta:
-            if fnmatch.fnmatchcase(p["name"], pattern):
-                m.update(md)
-        m.update(ui.get(p["name"], {}))
-        cond = m.get("display-condition")
-        if isinstance(cond, dict):
-            if cond.get("fixed") is False:
-                p["hidden"] = True
-            elif cond.get("js"):
-                p["show_if"] = cond["js"]
-        if m.get("help-link"):
-            p["help_link"] = m["help-link"]
-        if m.get("description-html"):
-            p["description_html"] = clean_html(m["description-html"])
-        if isinstance(m.get("presets"), dict) and m["presets"].get("values"):
-            p["presets"] = {"label": m["presets"].get("text", "Presets"),
-                            "values": [{"label": k, "value": v} for k, v in m["presets"]["values"].items()]}
-        for k in ("label", "description", "unit", "advanced", "axes", "min", "max", "profile"):
-            if k in m:
-                p[k] = m[k]
-        if isinstance(m.get("options"), list):  # site override, e.g. fonts the browser engine has
-            p["widget"] = "dropdown"
-            p["options"] = [o if isinstance(o, dict) else {"value": o, "label": str(o)} for o in m["options"]]
-            if p["default"] not in [o["value"] for o in p["options"]]:
-                p["default"] = p["options"][0]["value"]
-        out.append(p)
-    tabs = {}
-    for tab, tm in meta.get("tab-metadata", {}).items():
-        if tab not in groups:
-            continue
-        t = {}
-        if "collapsed" in tm:
-            t["collapsed"] = bool(tm["collapsed"])
-        if tm.get("control-boolean") in names:
-            t["control"] = tm["control-boolean"]
-        for src, dst in (("help-link", "help_link"), ("description-html", "description_html"),
-                         ("description-collapsed-html", "description_collapsed_html")):
-            if tm.get(src):
-                t[dst] = clean_html(tm[src]) if dst.endswith("html") else tm[src]
-        tabs[tab] = t
-    return out, tabs
+# ---------------------------------------------------------------- catalog (Rust)
+def find_cli(given: Path | None) -> Path:
+    """workshop-cli, built from desktop/core (cargo build --release -p workshop-core)."""
+    exe = "workshop-cli.exe" if os.name == "nt" else "workshop-cli"
+    for c in [given, os.environ.get("WORKSHOP_CLI") and Path(os.environ["WORKSHOP_CLI"]),
+              ROOT / "desktop/target/release" / exe, ROOT / "desktop/target/debug" / exe]:
+        if c and Path(c).is_file():
+            return Path(c)
+    raise SystemExit("workshop-cli not found: build it with `cd desktop && cargo build --release -p workshop-core`, "
+                     "or pass --cli / set WORKSHOP_CLI")
 
 
 # ---------------------------------------------------------------- libraries
@@ -368,6 +97,7 @@ def main():
     ap.add_argument("--skip-libraries", action="store_true")
     ap.add_argument("--native-engine", type=Path,
                     help="native openscad executable; needed to include desktop-only models (\"browser\": false)")
+    ap.add_argument("--cli", type=Path, help="workshop-cli (default: desktop/target/release, or $WORKSHOP_CLI)")
     args = ap.parse_args()
     out = args.out
     if out.exists():
@@ -383,136 +113,36 @@ def main():
     engine_version = subprocess.run(["node", str(ROOT / "tools/engine/cli.mjs"), "version", str(args.engine)],
                                     capture_output=True, text=True, check=True).stdout.strip()
 
-    store = Store(out)
-    common = {"/fonts/fonts.conf": store.put(
-        b'<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
-        b"<fontconfig><dir>/fonts</dir><cachedir>/tmp/fontconfig</cachedir></fontconfig>\n")}
-    for font in sorted(FONTS_DIR.glob("*.ttf")):
-        common[f"/fonts/{font.name}"] = store.put(font.read_bytes())
-
-    (out / "data/models").mkdir(parents=True)
-    families, models, problems = [], [], []
-    for fam_file in sorted((ROOT / "catalog/families").glob("*.json")):
-        fam = json.loads(fam_file.read_text())
-        if fam.get("status") == "disabled":
-            continue
-        use = fam.get("license", {}).get("public_use", "ok")
-        if (args.public and use != "ok") or (args.hide_blocked and use == "blocked"):
-            continue
-        families.append({"id": fam["id"], "name": fam["name"], "status": fam["status"], "category": fam["category"],
-                         "license": fam.get("license", {}), "authors": fam.get("authors", []),
-                         "source": (fam.get("source") or {}).get("repository") or next(iter((fam.get("links") or {}).values()), None),
-                         "models": [m["name"] for m in fam.get("models", []) if m.get("status") == "available"]})
-        editor_cfg = load_editor_toml(ROOT / fam["editor_toml"]) if fam.get("editor_toml") else {}
-        lib_paths = (fam.get("engine") or {}).get("library_paths", [])
-        for m in fam.get("models", []):
-            # "browser": false models crash the WebAssembly engine; they're built for the
-            # desktop app (native OpenSCAD) and hidden on the website
-            if m.get("status") != "available" or not m.get("entrypoint"):
-                continue
-            if m.get("browser") is False and not args.native_engine:
-                continue  # website build: these can't even be read by the WebAssembly engine
-            key = f'{fam["id"]}/{m["id"]}'
-            files, missing = collect_files(m["entrypoint"], lib_paths)
-            if missing:
-                problems.append(f"{key}: unresolved {missing}")
-            # CRLF line endings stop OpenSCAD's Customizer from reading dropdown lists;
-            # normalise SCAD text when packaging (vendored files stay untouched)
-            fmap = {v: store.put(h.read_bytes().replace(b"\r\n", b"\n") if h.suffix.lower() == ".scad" else h.read_bytes())
-                    for v, h in sorted(files.items())}
-            models.append({"key": key, "fam": fam, "meta": m, "files": fmap, "entry": "/" + m["entrypoint"],
-                           "editor": editor_model_meta(editor_cfg, m.get("editor_model") or Path(m["entrypoint"]).name)})
-
-    # provisional catalog so the engine runner can read common files
-    (out / "data/catalog.json").write_text(json.dumps({"common_files": common, "models": []}))
-    for mdl in models:
-        (out / "data/models" / (mdl["key"].replace("/", "--") + ".json")).write_text(
-            json.dumps({"entry": mdl["entry"], "files": mdl["files"], "parameters": []}))
-    raw = json.loads(subprocess.run(["node", str(ROOT / "tools/engine/cli.mjs"), "params", str(args.engine), str(out),
-                                     *[m["key"] for m in models if m["meta"].get("browser") is not False]],
-                                    capture_output=True, text=True, check=True).stdout)
-    for mdl in models:
-        if mdl["meta"].get("browser") is False:
-            raw[mdl["key"]] = native_params(args.native_engine, out, mdl["entry"], {**common, **mdl["files"]})
-
-    listing = []
-    profile_uses: dict = {}  # printer-profile field -> models that start from it
-    for mdl in models:
-        fam, m, key = mdl["fam"], mdl["meta"], mdl["key"]
-        if "error" in raw[key]:
-            problems.append(f"{key}: parameter export failed\n{raw[key]['error']}")
-            continue
-        params, groups = convert_params(raw[key])
-        # site-declared settings for variables OpenSCAD's Customizer can't expose
-        # (computed with an expression in the file); the page passes these with -D
-        for extra in m.get("extra_params", []):
-            e = {"type": "number", "widget": "number", "description": None, **extra, "define": True}
-            after = e.pop("after", None)
-            at = next((i for i, p in enumerate(params) if p["name"] == after), None)
-            params.insert(at + 1 if at is not None else len(params), e)
-            if e["group"] not in groups:
-                groups.append(e["group"])
-        params, tabs = apply_metadata(params, groups, fam, m, mdl["editor"])
-        groups = [g for g in groups if any(p["group"] == g for p in params)]
-        summary = {
-            "key": key, "family": fam["id"], "family_name": fam["name"], "id": m["id"], "name": m["name"],
-            "category": fam["category"], "category_label": CATEGORY_LABELS.get(fam["category"], fam["category"]),
-            "summary": fam.get("summary", ""), "tags": fam.get("tags", []), "license": fam.get("license", {}),
-        }
-        if m.get("browser") is False:
-            summary["browser"] = False
-        # when the pinned upstream version was made, or when supplied files were added
-        src = fam.get("source") or {}
-        supplied = re.search(r"\d{4}-\d{2}-\d{2}", src.get("supplied_by") or "")
-        if src.get("commit_date"):
-            summary["updated"], summary["updated_from"] = src["commit_date"][:10], "upstream"
-        elif supplied:
-            summary["updated"], summary["updated_from"] = supplied.group(0), "supplied"
-        # for the interface's search ("tooth count" finds the generator that has it) and table view
-        visible = [p for p in params if not p.get("hidden")]
-        summary["settings"] = len(visible)
-        terms = []
-        for p in visible:
-            for t in (p.get("label"), p["name"].replace("_", " ")):
-                if t and t.lower() not in terms:
-                    terms.append(t.lower())
-        summary["terms"] = " | ".join(terms)[:4000]
-        detail = {
-            **summary,
-            "authors": fam.get("authors", []), "links": fam.get("links", {}), "source": fam.get("source"),
-            "notes": m.get("notes"), "part_parameter": m.get("part_parameter"),
-            "description_html": clean_html(mdl["editor"].get("description-extra-html")),
-            "entry": mdl["entry"], "files": mdl["files"], "fixed": m.get("fixed", {}),
-            "groups": groups, "tabs": tabs, "parameters": params, "presets": m.get("presets", []),
-            "input_bytes": sum((out / "fs" / s).stat().st_size for s in mdl["files"].values()),
-        }
-        (out / "data/models" / (key.replace("/", "--") + ".json")).write_text(json.dumps(detail, separators=(",", ":")))
-        listing.append(summary)
-        for p in params:
-            if p.get("profile"):
-                profile_uses.setdefault(p["profile"].split(".")[0], []).append({"key": key, "param": p["name"]})
-
-    cats = {}
-    for s in listing:
-        cats.setdefault(s["category"], []).append(s)
-    order = list(CATEGORY_LABELS)
+    # Catalog: the same project reading as the desktop app's library ingest (desktop/core,
+    # src/ingest.rs + src/sitebuild.rs): files by following include/use/import, settings from
+    # OpenSCAD's Customizer export, then the family manifests' and editor.toml metadata.
+    cli = find_cli(args.cli)
+    flags = (["--desktop"] if args.native_engine else []) + (["--public"] if args.public else []) + \
+        (["--hide-blocked"] if args.hide_blocked else [])
+    prep = subprocess.run([str(cli), "site-prepare", "--repo", str(ROOT), "--out", str(out), *flags],
+                          capture_output=True, text=True)
+    sys.stderr.write(prep.stderr)
+    if prep.returncode:
+        raise SystemExit(prep.returncode)
+    browser_keys = [k for k in prep.stdout.split("\n") if k.strip()]
+    raw = subprocess.run(["node", str(ROOT / "tools/engine/cli.mjs"), "params", str(args.engine), str(out), *browser_keys],
+                         capture_output=True, text=True, check=True).stdout
+    (out / ".build/params-wasm.json").write_text(raw)
+    fin = subprocess.run([str(cli), "site-finish", "--repo", str(ROOT), "--out", str(out), "--params",
+                          str(out / ".build/params-wasm.json"), "--engine-version", engine_version,
+                          *(["--native-engine", str(args.native_engine.resolve())] if args.native_engine else [])],
+                         capture_output=True, text=True)
+    sys.stderr.write(fin.stderr)
+    if fin.returncode not in (0, 1):
+        raise SystemExit(fin.returncode)
+    catalog = json.loads((out / "data/catalog.json").read_text())
     libraries = [] if args.skip_libraries else build_libraries(out)
-    catalog = {
-        "engine": engine_version,
-        "common_files": common,
-        "models": listing,
-        "categories": [{"id": c, "label": CATEGORY_LABELS.get(c, c), "models": [m["key"] for m in cats[c]]}
-                       for c in sorted(cats, key=lambda c: order.index(c) if c in order else 99)],
-        "families": families,
-        "libraries": libraries,
-        "profile_uses": profile_uses,
-    }
+    catalog["libraries"] = libraries
     (out / "data/catalog.json").write_text(json.dumps(catalog, separators=(",", ":")))
-    print(f"engine {engine_version}; {len(listing)} models; {len(libraries)} libraries; "
-          f"{len(list((out / 'fs').iterdir()))} source files ({store.bytes / 1e6:.1f} MB)")
-    for p in problems:
-        print("PROBLEM:", p, file=sys.stderr)
-    return 1 if problems else 0
+    shutil.rmtree(out / ".build", ignore_errors=True)
+    print(f"engine {engine_version}; {len(catalog['models'])} models; {len(libraries)} libraries; "
+          f"{len(list((out / 'fs').iterdir()))} source files")
+    return fin.returncode
 
 
 if __name__ == "__main__":

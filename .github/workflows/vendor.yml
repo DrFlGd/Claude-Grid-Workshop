@@ -32,7 +32,7 @@ jobs:
           cargo install cargo-vendor-filterer --locked 2>&1 | tail -2 | tee -a ../out/vendor.log
           cargo vendor-filterer --platform=x86_64-unknown-linux-gnu --versioned-dirs ../out/vendor > ../out/vendor-config.toml 2>> ../out/vendor.log || { tail -30 ../out/vendor.log; exit 1; }
           cp Cargo.lock ../out/Cargo.lock
-          cargo build --offline --config ../out/vendor-config.toml -p workshop-core 2>&1 | tail -5 | tee -a ../out/vendor.log
+          sed "s|directory = .*|directory = \"$PWD/../out/vendor\"|" ../out/vendor-config.toml > /tmp/vc.toml && cargo build --offline --config /tmp/vc.toml -p workshop-core 2>&1 | tail -5 | tee -a ../out/vendor.log
           du -sh ../out/vendor | tee -a ../out/vendor.log
       - name: Push to crates-vendor
         if: always()
