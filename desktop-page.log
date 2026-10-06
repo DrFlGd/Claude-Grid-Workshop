@@ -1,0 +1,40 @@
+PASS starter library installed :: 58 generators, 44 parts, 19 projects
+PASS left menu: Parametric Models, Components, Parts Library; the categories in a panel beside it (projects inside, folds away, scrolls) :: (['Parametric Models', 'Components', 'Parts Library'], 0, 15, 1, 1, 'auto')
+PASS added vector76/gridfinity_openscad/commit/af95c658fdd11e56bbc826b68ac13022c8bc79e4 :: github-vector76-gridfinity-openscad: 31 items
+PASS added chrisspen/gears :: github-chrisspen-gears: 18 items
+PASS added BelfrySCAD/BOSL2 :: github-belfryscad-bosl2: 0 items
+PASS local project read (includes BOSL2 from the library)
+PASS search 'bevel gear' finds the new generators :: ['gen:local-bevel/bevel-gear', 'gen:github-chrisspen-gears/examples-bevel-gear', 'gen:github-chrisspen-gears/examples-bevel-gear-pair', 'gen:github-chrisspen-gears/examples-bevel-herringbone-gear', 'gen:github-chrisspen-gears/examples-bevel-herringbone-gear-pair']
+PASS search 'silverware' finds the added project's too :: ['gen:gridfinity-extended/silverware', 'gen:github-vector76-gridfinity-openscad/gridfinity-silverware', 'gen:gridfinity-extended/baseplate', 'gen:gridfinity-extended/bin', 'gen:gridfinity-extended/removable-walls', 'gen:gridfinity-extended/chess', 'gen:gridfinity-extended/connector-clips', 'gen:gridfinity-extended/drawers', 'gen:gridfinity-extended/glue-stick', 'gen:gridfinity-extended/item-holder', 'gen:gridfinity-extended/lid', 'gen:gridfinity-extended/marble', 'gen:gridfinity-extended/sieve', 'gen:gridfinity-extended/sliding-lid', 'gen:gridfinity-extended/socket-holder', 'gen:gridfinity-extended/tray', 'gen:gridfinity-extended/vertical-divider']
+PASS a model that includes BOSL2 renders :: Preview matches your settings. Made in 0.7 s on this device.
+PASS Components: modules of the bundled libraries, your BOSL2 in use :: (796, [['BOSL2', 'bundled', False], ['MCAD', 'bundled', True], ['NopSCADlib', 'bundled', True], ['Round-Anything', 'bundled', True], ['threads-scad', 'bundled', True], ['BOSL2', 'project', True]])
+PASS search 'bevel gear': BOSL2 bevel_gear() is the first result :: comp:@bosl2/bevel_gear
+PASS bevel gear: form from the docs' example, teeth and module changed, preview, download, under a minute :: ({'teeth': '36', 'mate_teeth': '36', 'circ_pitch': '5'}, 'Preview matches your settings. Made in 0.8 s on this device.', 'BOSL2-bevel_gear.stl', 3.7)
+PASS the component's OpenSCAD code :: // BOSL2 bevel_gear() made with SCAD Workshop | include <BOSL2/std.scad> | include <BOSL2/gears.scad> |  | bevel_gear(teeth=24, mate_teeth=36, mod=2); | 
+PASS pinned as a model under Parametric Models, with its settings :: (['generator', 'mechanical', 'Pinned components'], '24')
+PASS form edit stored as a manifest ui block, and applied :: {'hidden': ['spiral'], 'ui': {'mate_teeth': {'display-condition': {'js': 'teeth > 10'}}, 'teeth': {'label': 'Tooth count', 'min': 8}}}
+PASS switch between your BOSL2 and the app's (projects read again) :: (['bundled', 0], 'project', None)
+PASS a setting whose doc lists its values is a drop-down (spheroid style), and renders with the choice :: ('SELECT', ['orig', 'aligned', 'stagger', 'octa', 'icosa'], 'Preview matches your settings. Made in 0.4 s on this device.')
+PASS a model whose values are typed into its module call has them as settings, and renders with a change :: (['modul', 'tooth_number', 'partial_cone_angle', 'tooth_width', 'bore', 'pressure_angle', 'helix_angle'], 'Preview matches your settings. Made in 0.2 s on this device.', '31.3 × 31.2 × 4.9 mm', '19.4 × 19.2 × 4.8 mm')
+PASS settings from a module call borrow the library's descriptions and choices (a fraction is the library's 1/3) :: ({'width': ['number', 'Width of the block, in studs'], 'length': ['number', 'Length of the block, in studs'], 'height': ['1/3', 'Height of the block: 1/3 is a plate, 1 a brick'], 'type': ['Tile', 'What type of block should this be?']}, '15.8 × 31.8 × 3.2 mm', '15.8 × 31.8 × 9.6 mm')
+PASS the Code tab edits a model: Generate uses the edits; saved as a variant with the settings; Defaults is the original code; the file is untouched :: ('Code changed. Generate to update the preview and download.', '23.8 × 31.8 × 9.6 mm', '15.8 × 31.8 × 3.2 mm', '23.8 × 31.8 × 9.6 mm', {'height': 1}, ['/examples/plate.scad'], ['Defaults', 'Three wide · code edited'], 1)
+PASS side viewer: a model's code, its project's README as HTML kept in the library, pictures from its files :: ('// Made by SCAD Workshop from examples/bevel_gear.scad: the ', 'OpenSCAD Gear Generator', True)
+PASS side viewer: a component's generated code and its module's file, the BOSL2 and Gridfinity Extended READMEs, a project file :: ('// BOSL2 bevel_gear() made with SCAD Workshop\ninclude <BOSL2/std.scad>\ninclude <', 'module bevel_gear(', 'Code\nexamples/bevel_gear.scad')
+PASS upstream change detected and summarised :: Update ready from Dec 27, 2022: overlooked this in the previous update |  | 9 changes upstream | Gridfinity basic cup: new settings box_corner_attachments_only, lip_style | Gridfinity cup modules: new settings box_corner_attachments_only, default_lip_style |  | The current version stays until you ac
+PASS update accepted :: af95c658fdd1 -> 0e7308cd8fc7
+PASS edits survive the update :: {'id': 'gen:github-vector76-gridfinity-openscad/gridfinity-basic-cup', 'name': 'My cup', 'license': 'CC-BY-4.0', 'kind': 'generator'}
+PASS project license applies to all items but the one with its own :: [('gridfinity-baseplate', 'MIT'), ('gridfinity-basic-cup', 'CC-BY-SA-4.0'), ('gridfinity-chess', 'CC-BY-SA-4.0'), ('gridfinity-cup-modules', 'CC-BY-SA-4.0'), ('gridfinity-flsun-q5', 'CC-BY-SA-4.0'), ('gridfinity-glue-stick', 'CC-BY-SA-4.0'), ('gridfinity-silverware', 'CC-BY-SA-4.0'), ('gridfinity-socket-holder', 'CC-BY-SA-4.0')]
+PASS condensed group shows its chosen icon
+PASS hidden item leaves the list; Show hidden brings it back
+PASS flagged as broken, with its note, under Needs attention :: Lid too tight
+PASS deleted item leaves the library (Ctrl+Z undoes) :: ['gridfinity-flsun-q5']
+PASS edit dialog starts with the values in use :: CC-BY-SA-4.0
+PASS item listed under another project; credits stay :: ('github-chrisspen-gears', 'github-vector76-gridfinity-openscad', {'spdx': 'CC-BY-SA-4.0', 'public_use': 'ok'})
+PASS categories: add, remove (items move), bring back :: (0, 5)
+PASS a category icon from an image file, kept in the library :: True
+PASS a deleted item comes back from Library settings
+PASS a hidden project hides everything in it
+PASS Edit… in Library settings edits the project; long text stays inside its box (folder path, details) :: (True, [], [], ['a-very-long-tag-name-that-keeps-going', 'another-long-tag-for-wrapping', 'yet-another-tag-so-it-needs-three-lines', 'edited-from-library-settings'])
+PASS deleted project goes to the trash, comes back, trash empties :: (True, True, True)
+PASS library opens the same after moving :: 24 projects, 87 models
+39 of 39 checks passed

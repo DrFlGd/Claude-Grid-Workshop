@@ -1,0 +1,5 @@
+total 368296
+drwxr-xr-x  2 runner runner      4096 Oct  6 12:11 .
+drwxr-xr-x 20 runner runner      4096 Oct  6 12:11 ..
+-rwxr-xr-x  1 runner runner 225245688 Oct  6 12:11 SCAD Workshop_0.4.1_amd64.AppImage
+-rw-r--r--  1 runner runner 151876026 Oct  6 12:11 SCAD Workshop_0.4.1_amd64.deb

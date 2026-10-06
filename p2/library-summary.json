@@ -1,0 +1,1348 @@
+{
+ "sources": [
+  {
+   "id": "anylid",
+   "kind": "bundled",
+   "version": "bundle-213212226cdf",
+   "name": "Gridfinity Anylid",
+   "models": 1,
+   "parts": 0,
+   "license": "NOASSERTION",
+   "icon": null
+  },
+  {
+   "id": "cullenect-label",
+   "kind": "bundled",
+   "version": "bundle-5e17099c620a",
+   "name": "Cullenect Label",
+   "models": 1,
+   "parts": 0,
+   "license": "MIT",
+   "icon": null
+  },
+  {
+   "id": "github-belfryscad-bosl2",
+   "kind": "github",
+   "version": "e173fa0ae45f",
+   "name": "BOSL2",
+   "models": 0,
+   "parts": 0,
+   "license": "BSD-2-Clause",
+   "icon": null
+  },
+  {
+   "id": "github-chrisspen-gears",
+   "kind": "github",
+   "version": "a15177fb116c",
+   "name": "Gears",
+   "models": 18,
+   "parts": 0,
+   "license": "CC-BY-NC-SA-3.0",
+   "icon": null
+  },
+  {
+   "id": "github-vector76-gridfinity-openscad",
+   "kind": "github",
+   "version": "0e7308cd8fc7",
+   "name": "Gridfinity openscad",
+   "models": 8,
+   "parts": 24,
+   "license": "CC-BY-SA-4.0",
+   "icon": true
+  },
+  {
+   "id": "gridfinity-basket",
+   "kind": "bundled",
+   "version": "bundle-a0f8f270bf4a",
+   "name": "Gridfinity Basket",
+   "models": 1,
+   "parts": 0,
+   "license": "MIT",
+   "icon": null
+  },
+  {
+   "id": "gridfinity-extended",
+   "kind": "bundled",
+   "version": "bundle-04eca4c9c69a",
+   "name": "Gridfinity Extended",
+   "models": 16,
+   "parts": 0,
+   "license": "GPL-3.0-only",
+   "icon": null
+  },
+  {
+   "id": "gridfinity-kitchen",
+   "kind": "bundled",
+   "version": "bundle-375ca0562f69",
+   "name": "Gridfinity Kitchen",
+   "models": 4,
+   "parts": 0,
+   "license": "MIT",
+   "icon": null
+  },
+  {
+   "id": "gridfinity-rebuilt",
+   "kind": "bundled",
+   "version": "bundle-da0c79ed7618",
+   "name": "Gridfinity Rebuilt",
+   "models": 3,
+   "parts": 0,
+   "license": "MIT",
+   "icon": null
+  },
+  {
+   "id": "gridfinity-rugged-box",
+   "kind": "bundled",
+   "version": "bundle-3640d65f7e99",
+   "name": "Gridfinity Rugged Box",
+   "models": 1,
+   "parts": 0,
+   "license": "CC-BY-SA-4.0 AND MIT",
+   "icon": null
+  },
+  {
+   "id": "gridflock",
+   "kind": "bundled",
+   "version": "bundle-7f254f312221",
+   "name": "GridFlock",
+   "models": 1,
+   "parts": 0,
+   "license": "MIT AND CC-BY-4.0",
+   "icon": null
+  },
+  {
+   "id": "hsw",
+   "kind": "bundled",
+   "version": "bundle-5b50c7b142a1",
+   "name": "Honeycomb Storage Wall",
+   "models": 2,
+   "parts": 0,
+   "license": "CC-BY-4.0",
+   "icon": null
+  },
+  {
+   "id": "just-fit-base-grid",
+   "kind": "bundled",
+   "version": "bundle-a12ea2bd8d03",
+   "name": "Just Fit Base Grid",
+   "models": 1,
+   "parts": 0,
+   "license": "NOASSERTION",
+   "icon": null
+  },
+  {
+   "id": "kevenaar-box-label",
+   "kind": "bundled",
+   "version": "bundle-189096ddfd5d",
+   "name": "Gridfinity Storage Box Label",
+   "models": 1,
+   "parts": 0,
+   "license": "CC-BY-4.0",
+   "icon": null
+  },
+  {
+   "id": "label-generator-gridfinity",
+   "kind": "bundled",
+   "version": "bundle-eb0b722b30b2",
+   "name": "Label Generator for Gridfinity",
+   "models": 2,
+   "parts": 0,
+   "license": "GPL-3.0-only",
+   "icon": null
+  },
+  {
+   "id": "local-bricks",
+   "kind": "local",
+   "version": "live-d25208fde725",
+   "name": "Bricks",
+   "models": 2,
+   "parts": 0,
+   "license": null,
+   "icon": null
+  },
+  {
+   "id": "minimalist-kitchen-gridfinity",
+   "kind": "bundled",
+   "version": "bundle-ee8e633710eb",
+   "name": "Modular Minimalist Kitchen",
+   "models": 1,
+   "parts": 0,
+   "license": "NOASSERTION",
+   "icon": null
+  },
+  {
+   "id": "opengrid",
+   "kind": "bundled",
+   "version": "bundle-64daebfde56e",
+   "name": "openGrid",
+   "models": 3,
+   "parts": 0,
+   "license": "CC-BY-NC-SA-4.0",
+   "icon": null
+  },
+  {
+   "id": "opengrid-official",
+   "kind": "bundled",
+   "version": "bundle-7a043d2e93ec",
+   "name": "openGrid parts",
+   "models": 0,
+   "parts": 44,
+   "license": "CC-BY-4.0",
+   "icon": null
+  },
+  {
+   "id": "opengrid-shelf",
+   "kind": "bundled",
+   "version": "bundle-ee5a79d2560c",
+   "name": "openGrid Shelf",
+   "models": 1,
+   "parts": 0,
+   "license": "NOASSERTION",
+   "icon": null
+  },
+  {
+   "id": "pinned",
+   "kind": "pinned",
+   "version": "pins",
+   "name": "Pinned components",
+   "models": 1,
+   "parts": 0,
+   "license": null,
+   "icon": null
+  },
+  {
+   "id": "pred-label-bin",
+   "kind": "bundled",
+   "version": "bundle-23281b232a91",
+   "name": "Gridfinity Bin for Pred Labels",
+   "models": 1,
+   "parts": 0,
+   "license": "CC-BY-NC-SA-4.0",
+   "icon": null
+  },
+  {
+   "id": "santalla-screw-label",
+   "kind": "bundled",
+   "version": "bundle-6431f57cb989",
+   "name": "Gridfinity Screw Label",
+   "models": 1,
+   "parts": 0,
+   "license": "GPL-3.0-or-later",
+   "icon": null
+  },
+  {
+   "id": "underware",
+   "kind": "bundled",
+   "version": "bundle-cfd4626a8dba",
+   "name": "Underware for openGrid",
+   "models": 17,
+   "parts": 0,
+   "license": "NOASSERTION",
+   "icon": null
+  }
+ ],
+ "models": [
+  {
+   "key": "anylid/lid",
+   "name": "Lid",
+   "license": "NOASSERTION",
+   "category": "gridfinity",
+   "tags": [
+    "lids",
+    "stacking",
+    "magnets"
+   ],
+   "settings": 21
+  },
+  {
+   "key": "cullenect-label/label",
+   "name": "Label",
+   "license": "MIT",
+   "category": "labels",
+   "tags": [
+    "labels",
+    "icons",
+    "fasteners"
+   ],
+   "settings": 31
+  },
+  {
+   "key": "github-chrisspen-gears/examples-bevel-gear",
+   "name": "Bevel gear",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 7
+  },
+  {
+   "key": "github-chrisspen-gears/examples-bevel-gear-pair",
+   "name": "Bevel gear pair",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 10
+  },
+  {
+   "key": "github-chrisspen-gears/examples-bevel-herringbone-gear",
+   "name": "Bevel herringbone gear",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 7
+  },
+  {
+   "key": "github-chrisspen-gears/examples-bevel-herringbone-gear-pair",
+   "name": "Bevel herringbone gear pair",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 10
+  },
+  {
+   "key": "github-chrisspen-gears/examples-demo",
+   "name": "Demo",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 11
+  },
+  {
+   "key": "github-chrisspen-gears/examples-herringbone-gear",
+   "name": "Herringbone gear",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 7
+  },
+  {
+   "key": "github-chrisspen-gears/examples-herringbone-rack",
+   "name": "Herringbone rack",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 6
+  },
+  {
+   "key": "github-chrisspen-gears/examples-herringbone-ring-gear",
+   "name": "Herringbone ring gear",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 6
+  },
+  {
+   "key": "github-chrisspen-gears/examples-mountable-herringbone-rack",
+   "name": "Mountable herringbone rack",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 9
+  },
+  {
+   "key": "github-chrisspen-gears/examples-mountable-rack",
+   "name": "Mountable rack",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 9
+  },
+  {
+   "key": "github-chrisspen-gears/examples-planetary-gear",
+   "name": "Planetary gear",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 22
+  },
+  {
+   "key": "github-chrisspen-gears/examples-rack",
+   "name": "Rack",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 6
+  },
+  {
+   "key": "github-chrisspen-gears/examples-rack-and-pinion",
+   "name": "Rack and pinion",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 10
+  },
+  {
+   "key": "github-chrisspen-gears/examples-ring",
+   "name": "Ring",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 8
+  },
+  {
+   "key": "github-chrisspen-gears/examples-ring-gear",
+   "name": "Ring gear",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 6
+  },
+  {
+   "key": "github-chrisspen-gears/examples-spur-gear",
+   "name": "Spur gear",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 7
+  },
+  {
+   "key": "github-chrisspen-gears/examples-worm",
+   "name": "Worm",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 7
+  },
+  {
+   "key": "github-chrisspen-gears/examples-worm-gear",
+   "name": "Worm gear",
+   "license": "CC-BY-NC-SA-3.0",
+   "category": "mechanical",
+   "tags": [
+    "a-very-long-tag-name-that-keeps-going",
+    "another-long-tag-for-wrapping",
+    "yet-another-tag-so-it-needs-three-lines",
+    "edited-from-library-settings"
+   ],
+   "settings": 13
+  },
+  {
+   "key": "github-vector76-gridfinity-openscad/gridfinity-baseplate",
+   "name": "Gridfinity baseplate",
+   "license": "MIT",
+   "category": "gridfinity",
+   "tags": [],
+   "settings": 4
+  },
+  {
+   "key": "github-vector76-gridfinity-openscad/gridfinity-basic-cup",
+   "name": "My cup",
+   "license": "CC-BY-SA-4.0",
+   "category": "gridfinity",
+   "tags": [],
+   "settings": 18
+  },
+  {
+   "key": "github-vector76-gridfinity-openscad/gridfinity-chess",
+   "name": "Gridfinity chess",
+   "license": "CC-BY-SA-4.0",
+   "category": "gridfinity",
+   "tags": [],
+   "settings": 1
+  },
+  {
+   "key": "github-vector76-gridfinity-openscad/gridfinity-cup-modules",
+   "name": "Gridfinity cup modules",
+   "license": "CC-BY-SA-4.0",
+   "category": "gridfinity",
+   "tags": [],
+   "settings": 13
+  },
+  {
+   "key": "github-vector76-gridfinity-openscad/gridfinity-flsun-q5",
+   "name": "Gridfinity flsun q5",
+   "license": "CC-BY-SA-4.0",
+   "category": "gridfinity",
+   "tags": [],
+   "settings": 4
+  },
+  {
+   "key": "github-vector76-gridfinity-openscad/gridfinity-glue-stick",
+   "name": "Gridfinity glue stick",
+   "license": "CC-BY-SA-4.0",
+   "category": "gridfinity",
+   "tags": [],
+   "settings": 4
+  },
+  {
+   "key": "github-vector76-gridfinity-openscad/gridfinity-silverware",
+   "name": "Gridfinity silverware",
+   "license": "CC-BY-SA-4.0",
+   "category": "gridfinity",
+   "tags": [],
+   "settings": 49
+  },
+  {
+   "key": "github-vector76-gridfinity-openscad/gridfinity-socket-holder",
+   "name": "Gridfinity socket holder",
+   "license": "CC-BY-SA-4.0",
+   "category": "gridfinity",
+   "tags": [],
+   "settings": 1
+  },
+  {
+   "key": "gridfinity-basket/basket",
+   "name": "Basket",
+   "license": "MIT",
+   "category": "carrying",
+   "tags": [
+    "baskets",
+    "handles",
+    "stacking"
+   ],
+   "settings": 26
+  },
+  {
+   "key": "gridfinity-extended/baseplate",
+   "name": "Baseplate",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 48
+  },
+  {
+   "key": "gridfinity-extended/bin",
+   "name": "Basic Bin",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 157
+  },
+  {
+   "key": "gridfinity-extended/chess",
+   "name": "Chess Set",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 4
+  },
+  {
+   "key": "gridfinity-extended/connector-clips",
+   "name": "Connector Clips",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 48
+  },
+  {
+   "key": "gridfinity-extended/drawers",
+   "name": "Drawers",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 57
+  },
+  {
+   "key": "gridfinity-extended/glue-stick",
+   "name": "Glue Stick Holder",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 4
+  },
+  {
+   "key": "gridfinity-extended/item-holder",
+   "name": "Item Holder",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 137
+  },
+  {
+   "key": "gridfinity-extended/lid",
+   "name": "Lid",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 20
+  },
+  {
+   "key": "gridfinity-extended/marble",
+   "name": "Marble Run",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 56
+  },
+  {
+   "key": "gridfinity-extended/removable-walls",
+   "name": "Bin with Removable Walls",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 138
+  },
+  {
+   "key": "gridfinity-extended/sieve",
+   "name": "Sieve",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 34
+  },
+  {
+   "key": "gridfinity-extended/silverware",
+   "name": "Silverware Holder",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 118
+  },
+  {
+   "key": "gridfinity-extended/sliding-lid",
+   "name": "Sliding Lid",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 138
+  },
+  {
+   "key": "gridfinity-extended/socket-holder",
+   "name": "Socket Holder",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 1
+  },
+  {
+   "key": "gridfinity-extended/tray",
+   "name": "Tray",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 110
+  },
+  {
+   "key": "gridfinity-extended/vertical-divider",
+   "name": "Vertical Divider",
+   "license": "GPL-3.0-only",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "dividers",
+    "lids",
+    "drawers",
+    "holders"
+   ],
+   "settings": 56
+  },
+  {
+   "key": "gridfinity-kitchen/edge-cutout",
+   "name": "Edge Cutout Bin",
+   "license": "MIT",
+   "category": "gridfinity",
+   "tags": [
+    "kitchen",
+    "bins",
+    "cutout",
+    "utensils",
+    "drawer",
+    "spacer"
+   ],
+   "settings": 87
+  },
+  {
+   "key": "gridfinity-kitchen/full-cutout",
+   "name": "Full Cutout Bin",
+   "license": "MIT",
+   "category": "gridfinity",
+   "tags": [
+    "kitchen",
+    "bins",
+    "cutout",
+    "utensils",
+    "drawer",
+    "spacer"
+   ],
+   "settings": 87
+  },
+  {
+   "key": "gridfinity-kitchen/spacer",
+   "name": "Spacer",
+   "license": "MIT",
+   "category": "gridfinity",
+   "tags": [
+    "kitchen",
+    "bins",
+    "cutout",
+    "utensils",
+    "drawer",
+    "spacer"
+   ],
+   "settings": 86
+  },
+  {
+   "key": "gridfinity-kitchen/spacer-with-walls",
+   "name": "Spacer with Walls",
+   "license": "MIT",
+   "category": "gridfinity",
+   "tags": [
+    "kitchen",
+    "bins",
+    "cutout",
+    "utensils",
+    "drawer",
+    "spacer"
+   ],
+   "settings": 83
+  },
+  {
+   "key": "gridfinity-rebuilt/baseplate",
+   "name": "Baseplate",
+   "license": "MIT",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "vase-mode"
+   ],
+   "settings": 15
+  },
+  {
+   "key": "gridfinity-rebuilt/bin",
+   "name": "Basic Bin",
+   "license": "MIT",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "vase-mode"
+   ],
+   "settings": 25
+  },
+  {
+   "key": "gridfinity-rebuilt/vase-bin",
+   "name": "Vase Mode Bin",
+   "license": "MIT",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "baseplates",
+    "vase-mode"
+   ],
+   "settings": 21
+  },
+  {
+   "key": "gridfinity-rugged-box/box",
+   "name": "Rugged Box",
+   "license": "CC-BY-SA-4.0 AND MIT",
+   "category": "carrying",
+   "tags": [
+    "boxes",
+    "latches",
+    "handles",
+    "hinges"
+   ],
+   "settings": 24
+  },
+  {
+   "key": "gridflock/baseplate",
+   "name": "Baseplate",
+   "license": "MIT AND CC-BY-4.0",
+   "category": "gridfinity",
+   "tags": [
+    "baseplates",
+    "drawer-fit",
+    "puzzle",
+    "magnets"
+   ],
+   "settings": 96
+  },
+  {
+   "key": "hsw/grid",
+   "name": "Grid",
+   "license": "CC-BY-4.0",
+   "category": "wall",
+   "tags": [
+    "wall",
+    "honeycomb"
+   ],
+   "settings": 13
+  },
+  {
+   "key": "hsw/grid-v2-3",
+   "name": "Grid (v2.3 columns)",
+   "license": "CC-BY-4.0",
+   "category": "wall",
+   "tags": [
+    "wall",
+    "honeycomb"
+   ],
+   "settings": 13
+  },
+  {
+   "key": "just-fit-base-grid/baseplate",
+   "name": "Skeleton Baseplate",
+   "license": "NOASSERTION",
+   "category": "gridfinity",
+   "tags": [
+    "baseplates",
+    "skeleton",
+    "drawer-fit",
+    "half cells",
+    "inches",
+    "centimetres"
+   ],
+   "settings": 27
+  },
+  {
+   "key": "kevenaar-box-label/label",
+   "name": "Box Label",
+   "license": "CC-BY-4.0",
+   "category": "labels",
+   "tags": [
+    "labels",
+    "storage boxes",
+    "text"
+   ],
+   "settings": 16
+  },
+  {
+   "key": "label-generator-gridfinity/bin-label",
+   "name": "Bin Label",
+   "license": "GPL-3.0-only",
+   "category": "labels",
+   "tags": [
+    "labels",
+    "bins",
+    "storage boxes",
+    "bolts",
+    "nuts",
+    "washers",
+    "inserts"
+   ],
+   "settings": 14
+  },
+  {
+   "key": "label-generator-gridfinity/box-label",
+   "name": "Storage Box Label",
+   "license": "GPL-3.0-only",
+   "category": "labels",
+   "tags": [
+    "labels",
+    "bins",
+    "storage boxes",
+    "bolts",
+    "nuts",
+    "washers",
+    "inserts"
+   ],
+   "settings": 24
+  },
+  {
+   "key": "local-bricks/brick",
+   "name": "Brick",
+   "license": "NOASSERTION",
+   "category": "other",
+   "tags": [],
+   "settings": 4
+  },
+  {
+   "key": "local-bricks/examples-plate",
+   "name": "Plate",
+   "license": "NOASSERTION",
+   "category": "other",
+   "tags": [],
+   "settings": 4
+  },
+  {
+   "key": "minimalist-kitchen-gridfinity/bin",
+   "name": "Scoop Bin",
+   "license": "NOASSERTION",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "kitchen",
+    "scoop",
+    "utensils",
+    "compartments"
+   ],
+   "settings": 10
+  },
+  {
+   "key": "opengrid-shelf/shelf",
+   "name": "Shelf",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "shelves",
+    "opengrid",
+    "snaps"
+   ],
+   "settings": 4
+  },
+  {
+   "key": "opengrid/border",
+   "name": "Border",
+   "license": "CC-BY-NC-SA-4.0",
+   "category": "wall",
+   "tags": [
+    "wall",
+    "tiles",
+    "snaps",
+    "borders"
+   ],
+   "settings": 16
+  },
+  {
+   "key": "opengrid/snap",
+   "name": "Snap",
+   "license": "CC-BY-NC-SA-4.0",
+   "category": "wall",
+   "tags": [
+    "wall",
+    "tiles",
+    "snaps",
+    "borders"
+   ],
+   "settings": 4
+  },
+  {
+   "key": "opengrid/tile",
+   "name": "Grid",
+   "license": "CC-BY-NC-SA-4.0",
+   "category": "wall",
+   "tags": [
+    "wall",
+    "tiles",
+    "snaps",
+    "borders"
+   ],
+   "settings": 39
+  },
+  {
+   "key": "pinned/bevel-gear-24t",
+   "name": "Bevel gear 24T",
+   "license": "BSD-2-Clause",
+   "category": "mechanical",
+   "tags": [
+    "Gears",
+    "Parts"
+   ],
+   "settings": 7
+  },
+  {
+   "key": "pred-label-bin/bin",
+   "name": "Bin",
+   "license": "CC-BY-NC-SA-4.0",
+   "category": "gridfinity",
+   "tags": [
+    "bins",
+    "labels",
+    "pred",
+    "label holder",
+    "compartments"
+   ],
+   "settings": 13
+  },
+  {
+   "key": "santalla-screw-label/label",
+   "name": "Screw Label",
+   "license": "GPL-3.0-or-later",
+   "category": "labels",
+   "tags": [
+    "labels",
+    "bins",
+    "screws",
+    "bolts"
+   ],
+   "settings": 7
+  },
+  {
+   "key": "underware/bridge-channel",
+   "name": "Bridge Channel",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 28
+  },
+  {
+   "key": "underware/cable-winder",
+   "name": "Cable Winder",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 28
+  },
+  {
+   "key": "underware/diagonal-channel",
+   "name": "Diagonal Channel",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 28
+  },
+  {
+   "key": "underware/i-bridge-channel",
+   "name": "I Bridge Channel",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 27
+  },
+  {
+   "key": "underware/i-channel",
+   "name": "I Channel",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 31
+  },
+  {
+   "key": "underware/i-channel-hok",
+   "name": "I Channel (HOK)",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 29
+  },
+  {
+   "key": "underware/i-channel-leaf",
+   "name": "I Channel (leaf texture)",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 27
+  },
+  {
+   "key": "underware/i-channel-tex",
+   "name": "I Channel (textured)",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 27
+  },
+  {
+   "key": "underware/i-channel-wood",
+   "name": "I Channel (wood texture)",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 27
+  },
+  {
+   "key": "underware/i-height-change-channel",
+   "name": "I Channel, height change",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 26
+  },
+  {
+   "key": "underware/i-width-change-channel",
+   "name": "I Channel, width change",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 26
+  },
+  {
+   "key": "underware/l-channel",
+   "name": "L Channel",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 28
+  },
+  {
+   "key": "underware/mitre-channel",
+   "name": "Mitre Channel",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 28
+  },
+  {
+   "key": "underware/s-channel",
+   "name": "S Channel",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 28
+  },
+  {
+   "key": "underware/t-channel",
+   "name": "T Channel",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 28
+  },
+  {
+   "key": "underware/text-label",
+   "name": "Label",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 15
+  },
+  {
+   "key": "underware/x-channel",
+   "name": "X Channel",
+   "license": "NOASSERTION",
+   "category": "wall",
+   "tags": [
+    "cable-management",
+    "channels",
+    "opengrid"
+   ],
+   "settings": 27
+  }
+ ],
+ "parts": 68,
+ "blobs": 556
+}
