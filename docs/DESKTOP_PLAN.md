@@ -481,6 +481,32 @@ Each phase ends with something usable and with checks in CI.
 | **4. Model library + file formats** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); reference documents for projects and a model's code in a side viewer (README as HTML, Printables PDF, readme.txt; section 5; done in 0.4.0); notes per part (a scratch pad, later); one item per file name with a download format picker (built-in parts, imports and generator output); multi-colour and multi-part 3MF export; recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection; a pack with STL, 3MF and STEP copies of each part imports as one item per name; a two-colour label and the Rugged Box download as 3MF files that open in Bambu Studio and OrcaSlicer with their colours and separate parts |
 | **5. Productivity** | Batch from CSV, multi-setting sweeps, multi-part 3MF arranged on the bed for the printer profile, send to slicer (open the file in Bambu Studio / OrcaSlicer / PrusaSlicer), live reload when a watched .scad file is saved | As listed |
 
+## Future and experimental options
+
+Asked for by the owner on 2026-10-06. None is scheduled, none belongs to a numbered phase, and each needs a decision before building (the open questions are listed). They are ideas to try, not promises; anything that ships is marked experimental in the app until it has been used for a while.
+
+### Direct slicing in software
+
+Slice a rendered model inside the app and show the result (layers, print time, filament), without leaving for a separate slicer.
+
+- **How it might work:** run a command-line slicer (PrusaSlicer, OrcaSlicer or CuraEngine) as the native engine runs OpenSCAD: the app finds or bundles it, passes the model and a print profile, and reads back G-code or a 3MF with its statistics. Printer profiles already belong to the software (decision 8), so the bed size and tolerances are there to start from.
+- **Relation to Phase 5's "send to slicer":** that item only opens the file in the slicer. Direct slicing is the step after it and shares its setting for where each slicer is installed.
+- **Open questions:** which slicer (licensing and bundling size against asking the user to install one); how much of a slicer's profile system to expose; a preview of layers or only numbers; desktop only (the website can't run a slicer).
+
+### Multiple libraries
+
+More than one library folder in use at once (for instance personal, work and a shared one), instead of the single selected folder of Phase 2.
+
+- **How it might work:** a list of library folders, one active for writing and the others read-only or switchable, shown in the sidebar with the same layered metadata. The library format is already portable and versioned, so each folder stays self-contained.
+- **Open questions:** whether items from several libraries appear in one browser or one library at a time; which copy wins when the same project is in two (the rule for bundled against user copies in Components, decision 12, is the starting point); where saved settings, favourites and the trash live; how the index is built across them.
+
+### Agent integration to edit SCAD files
+
+Let an AI agent (Claude, for instance) read and edit a model's OpenSCAD from inside the app, with the result rendering as usual.
+
+- **How it might work:** the agent's changes are kept the way the Code tab's edits already are (0.4.1): stored as a variant in the saved-settings record, never written to the project's files and never added as a model, so library updates aren't affected. The app would offer the agent the model's code, its settings and the render result; the agent proposes an edit, the user sees it in the Code tab as a change to accept or revert, and Generate renders it. Possible routes are an MCP server exposing the library, or a panel that talks to an API.
+- **Open questions:** the route (MCP server, built-in chat panel, or both); what the agent may touch (only the open model, or the whole library); keys and where requests go (a network call from an otherwise offline app, so off until the user turns it on); how an agent's edit is told apart from the user's in a variant's history.
+
 ## Testing
 
 - **Linux:** automated UI tests through `tauri-driver` (WebDriver) in CI (this environment can't build the app; see Phase 1 notes).
