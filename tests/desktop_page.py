@@ -19,8 +19,9 @@ minute), pinning a component as a model, the OpenSCAD code, a form edit stored i
 the shape of a manifest's ui block, and switching between your BOSL2 and the
 app's; 0.3.1: the left menu's category panel, a doc-listed setting as a drop-down,
 Edit… in Library settings, long text kept inside its box; 0.4: the side viewer (a
-model's code, a project's README, a component's file at its module); and the
-library opening the same after being moved (library-summary). Writes
+model's code, a project's README, a component's file at its module), settings from
+the values in a model's module call (the Gears examples); and the library opening
+the same after being moved (library-summary). Writes
 <out>/library-summary.json and <out>/library.zip for the cross-platform check.
 """
 import argparse
@@ -284,6 +285,19 @@ async def main():
             gears = ids["gears"]
             await pg.goto(B + f"#/m/{gears}/examples-bevel-gear")
             await pg.wait_for_function(f"()=>document.body.dataset.model==='{gears}/examples-bevel-gear'")
+            # (its values are typed into a module call, bevel_gear(modul=1, tooth_number=30, ...): they become settings)
+            await pg.wait_for_function(DONE, timeout=120000)
+            lifted = await pg.eval_on_selector_all("#params .field[data-name]", "els => els.map(e => e.dataset.name)")
+            dims0 = await pg.inner_text("#dims")
+            await pg.fill("#p-tooth_number", "18")
+            await pg.click("#generate")
+            await pg.wait_for_function("()=>!document.querySelector('#generate').disabled", timeout=120000)
+            await pg.wait_for_function(DONE, timeout=120000)
+            status = await pg.inner_text("#status")
+            dims1 = await pg.inner_text("#dims")
+            check("a model whose values are typed into its module call has them as settings, and renders with a change",
+                  {"modul", "tooth_number", "partial_cone_angle", "bore"} <= set(lifted) and "matches" in status and dims0 != dims1,
+                  (lifted, status, dims0.split("\n")[0], dims1.split("\n")[0]))
             await pg.click("#model-extra [data-side-open=code]")
             await pg.wait_for_selector(".side-panel[data-side-panel=code] .code .cl")
             code = await pg.inner_text(".side-panel .code")
@@ -296,7 +310,7 @@ async def main():
             stored = any((library / f"sources/{gears}/docs").rglob("readme.html"))
             await pg.screenshot(path=str(out / "p4-01-readme.png"))
             check("side viewer: a model's code, its project's README as HTML kept in the library, pictures from its files",
-                  "include" in code and "Gear" in h1 and stored, (code[:60], h1, stored))
+                  "include" in code and "tooth_number = 30" in code and "Gear" in h1 and stored, (code[:60], h1, stored))
             await pg.goto(B + "#/m/@bosl2/bevel_gear")
             await pg.wait_for_function("()=>document.body.dataset.model==='@bosl2/bevel_gear'")
             await pg.wait_for_selector(".side-panel[data-side-panel=readme] .doc-frame")

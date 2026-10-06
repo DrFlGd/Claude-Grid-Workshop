@@ -15,8 +15,13 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// Version of the derived-data format (bump to re-read every project).
-pub const DERIVED_FORMAT: u64 = 1;
+/// Version of the derived-data format (bump to re-read every project). 2 (0.4): settings lifted from
+/// module calls, reference documents.
+pub const DERIVED_FORMAT: u64 = 2;
+
+/// A blob owner's suffix for files the app made for a version (`<source>@<version>~gen:<path>`, in
+/// `sources/<source>/generated/<version>/`).
+pub const GENERATED: &str = "~gen";
 
 /// What reading a project needs to know about libraries besides the library folder:
 /// the copies bundled with the app, which of them win over the user's own
@@ -202,6 +207,27 @@ pub async fn ingest(
             renderable.push((sha.clone(), host.clone()));
             fmap.insert(vpath.clone(), sha);
         }
+        // values typed into its module calls (no settings of its own): a copy that has them as settings
+        let entry_v = format!("/{}", entry.trim_start_matches('/'));
+        let mut lifted = false;
+        if let Some((host, _)) = files.get(&entry_v) {
+            let text = String::from_utf8_lossy(&std::fs::read(host).unwrap_or_default()).into_owned();
+            let others: Vec<String> = files
+                .iter()
+                .filter(|(v, (h, _))| **v != entry_v && h.extension().is_some_and(|e| e.eq_ignore_ascii_case("scad")))
+                .map(|(_, (h, _))| String::from_utf8_lossy(&std::fs::read(h).unwrap_or_default()).into_owned())
+                .collect();
+            if let Some(copy) = crate::components::lift_call_values(&text, entry, &others) {
+                let gen = lib.source_dir(&id)?.join("generated").join(version).join(library::rel_inside(entry)?);
+                std::fs::create_dir_all(gen.parent().unwrap())?;
+                crate::config::write_atomic(&gen, copy.as_bytes())?;
+                let sha = sha_file(&gen)?;
+                blobs.insert(sha.clone(), format!("{id}@{version}{GENERATED}:{entry}"));
+                renderable.push((sha.clone(), gen));
+                fmap.insert(entry_v.clone(), sha);
+                lifted = true;
+            }
+        }
         if !missing.is_empty() {
             problems.push(json!({
                 "kind": "missing", "model": format!("{id}/{mid}"), "files": missing,
@@ -209,10 +235,13 @@ pub async fn ingest(
             }));
         }
         let stem = Path::new(entry).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let model = json!({
+        let mut model = json!({
             "id": mid, "name": scan::humanize(&stem), "entrypoint": entry, "status": "available",
             "presets": scan::presets_for(&root, entry),
         });
+        if lifted {
+            model["settings_from"] = json!("calls");
+        }
         let editor = ingest::editor_model_meta(&editor_cfg, Path::new(entry).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().as_str());
         planned.push((mid, model, fmap, editor, input_bytes, entry.clone()));
     }
@@ -320,6 +349,12 @@ pub fn category_label(id: &str) -> String {
 /// Where a blob entry ("<source>@<version>:<path>") is on disk.
 pub fn blob_path(lib: &Library, entry: &str, bundled: &[crate::components::ComponentLibrary]) -> Option<PathBuf> {
     let (owner, rel) = entry.split_once(':')?;
+    if let Some(owner) = owner.strip_suffix(GENERATED) {
+        // "<source>@<version>~gen": a file the app made for that version (settings lifted from calls)
+        let (source, version) = owner.split_once('@')?;
+        library::valid_id(version).ok()?;
+        return Some(lib.source_dir(source).ok()?.join("generated").join(version).join(library::rel_inside(rel).ok()?));
+    }
     if let Some(name) = owner.strip_prefix("@bundled/") {
         // "@bundled/<Name>@<commit>": a library shipped with the app
         let name = name.split('@').next()?;

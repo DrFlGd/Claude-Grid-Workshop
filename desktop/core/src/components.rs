@@ -328,6 +328,183 @@ fn comment_above(lines: &[&str], line: usize) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
+// ------------------------------------------------------------------ settings from a model's calls
+
+/// A model file whose values are typed into its module calls (`spur_gear(modul=1, tooth_number=30);`,
+/// like the Gears project's examples) gives OpenSCAD's Customizer nothing to list. This returns a copy
+/// with each literal argument lifted into a top-level setting after the includes (named after the
+/// argument, described by the library's own comment for it where there is one), which OpenSCAD then
+/// lists as usual; the calls use the settings. `source_rel` names the original in the copy's header;
+/// `libs` are the texts of the files it includes (for argument names, descriptions and their globals).
+/// None when the file has settings of its own, blocks or definitions, or nothing to lift.
+pub fn lift_call_values(text: &str, source_rel: &str, libs: &[String]) -> Option<String> {
+    let masked = mask_comments(text);
+    // includes and uses stay as they are, first
+    let mut head: Vec<String> = vec![];
+    let mut rest = String::with_capacity(masked.len());
+    for (line, orig) in masked.split('\n').zip(text.split('\n')) {
+        let t = line.trim();
+        if (t.starts_with("include") || t.starts_with("use")) && t.contains('<') && t.trim_end_matches(';').trim_end().ends_with('>') {
+            head.push(orig.trim().to_string());
+            rest.push_str(&" ".repeat(line.len()));
+        } else {
+            rest.push_str(line);
+        }
+        rest.push('\n');
+    }
+    if rest.contains('{') || rest.contains('}') {
+        return None; // definitions or blocks: not a plain list of calls
+    }
+    // the modules the included files define, and their top-level variables
+    let defs: Vec<ModuleDef> = libs.iter().flat_map(|t| find_modules(t)).collect();
+    let mut globals: BTreeSet<String> = BTreeSet::new();
+    for t in libs {
+        for l in mask_comments(t).lines() {
+            if let Some((n, v)) = l.split_once('=') {
+                let n = n.trim_end();
+                if !l.starts_with(' ') && !l.starts_with('\t') && !v.starts_with('=') && !n.is_empty() && n.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                    globals.insert(n.to_string());
+                }
+            }
+        }
+    }
+    struct Lifted {
+        var: String,
+        value: String,
+        doc: Option<String>,
+    }
+    let mut blocks: Vec<(String, Vec<Lifted>)> = vec![];
+    let mut calls: Vec<String> = vec![];
+    let mut used: BTreeSet<String> = BTreeSet::new();
+    let mut count: BTreeMap<String, usize> = BTreeMap::new();
+    for stmt in split_top(&rest, b';') {
+        let st = stmt.trim();
+        if st.is_empty() {
+            continue;
+        }
+        // a chain of calls: translate([80, 0, 0]) planetary_gear(...)
+        let b = st.as_bytes();
+        let mut i = 0;
+        let mut parts: Vec<(String, usize, usize)> = vec![]; // (name, args start, args end)
+        while i < b.len() {
+            while i < b.len() && b[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i >= b.len() {
+                break;
+            }
+            let s0 = i;
+            while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
+                i += 1;
+            }
+            let name = &st[s0..i];
+            while i < b.len() && b[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if name.is_empty() || name.as_bytes()[0].is_ascii_digit() || b.get(i) != Some(&b'(') {
+                return None; // an assignment (settings of its own) or something else
+            }
+            let end = matching(b, i)?; // just past the ")"
+            parts.push((name.to_string(), i + 1, end - 1));
+            i = end;
+        }
+        let (module, a0, a1) = parts.last()?.clone();
+        let n = {
+            let c = count.entry(module.clone()).or_insert(0);
+            *c += 1;
+            *c
+        };
+        let def = defs.iter().find(|d| d.name == module);
+        let docs = def.map(|d| arg_descriptions(d)).unwrap_or_default();
+        let mut lifted = vec![];
+        let mut args_out = vec![];
+        for (k, a) in split_top(&st[a0..a1], b',').into_iter().enumerate() {
+            let a = a.trim();
+            if a.is_empty() {
+                continue;
+            }
+            let (name, value) = match split_arg(a) {
+                Some((nm, Some(v))) => (Some(nm), v),
+                _ => (def.and_then(|d| d.args.get(k)).map(|x| x.0.clone()), a.to_string()),
+            };
+            let literal = parse_literal(&value).is_some_and(|v| !v.is_null());
+            match name {
+                Some(nm) if literal && !nm.starts_with('$') => {
+                    let mut var = if n > 1 { format!("{nm}_{n}") } else { nm.clone() };
+                    if globals.contains(&var) || used.contains(&var) {
+                        var = format!("{module}_{var}");
+                    }
+                    used.insert(var.clone());
+                    args_out.push(format!("{nm}={var}"));
+                    lifted.push(Lifted { var, value, doc: docs.get(&nm).cloned() });
+                }
+                Some(nm) if split_arg(a).is_some_and(|x| x.1.is_some()) => args_out.push(format!("{nm}={value}")),
+                _ => args_out.push(a.to_string()),
+            }
+        }
+        let prefix = &st[..parts.last().map(|_| a0 - 1 - module.len()).unwrap_or(0)];
+        calls.push(format!("{}{module}({});", prefix.trim_start(), args_out.join(", ")));
+        if !lifted.is_empty() {
+            let title = if count[&module] > 1 || n > 1 { format!("{} {n}", humanize_module(&module)) } else { humanize_module(&module) };
+            blocks.push((title, lifted));
+        }
+    }
+    if blocks.is_empty() {
+        return None;
+    }
+    // a module called more than once: number its first block too
+    let mut out = format!(
+        "// Made by SCAD Workshop from {source_rel}: the values typed into its module calls are settings\n// here, so the form can change them. The original file is unchanged.\n\n"
+    );
+    for h in &head {
+        out.push_str(h);
+        out.push('\n');
+    }
+    for (title, lifted) in &blocks {
+        let title = if count.iter().any(|(m, c)| *c > 1 && *title == humanize_module(m)) { format!("{title} 1") } else { title.clone() };
+        out.push_str(&format!("\n/* [{title}] */\n"));
+        for l in lifted {
+            if let Some(d) = &l.doc {
+                out.push_str(&format!("// {}\n", d.replace('\n', " ")));
+            }
+            out.push_str(&format!("{} = {};\n", l.var, l.value));
+        }
+    }
+    out.push_str("\n/* [Hidden] */\n\n");
+    for c in &calls {
+        out.push_str(c);
+        out.push('\n');
+    }
+    Some(out)
+}
+
+/// `name = description` lines in a module's comment (the Gears library's style), by argument name.
+fn arg_descriptions(def: &ModuleDef) -> BTreeMap<String, String> {
+    let mut out: BTreeMap<String, String> = BTreeMap::new();
+    let Some(doc) = def.doc_above.as_deref() else { return out };
+    let names: BTreeSet<&str> = def.args.iter().map(|a| a.0.as_str()).collect();
+    let mut current: Option<String> = None;
+    for line in doc.lines() {
+        let t = line.trim();
+        match t.split_once('=') {
+            Some((n, d)) if names.contains(n.trim()) && !d.starts_with('=') => {
+                current = Some(n.trim().to_string());
+                out.insert(n.trim().to_string(), d.trim().to_string());
+            }
+            _ => {
+                if let Some(c) = &current {
+                    if !t.is_empty() {
+                        let e = out.get_mut(c).unwrap();
+                        e.push(' ');
+                        e.push_str(t);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 // ------------------------------------------------------------------ BOSL2-style docs
 
 #[derive(Debug, Default, Clone)]
@@ -2049,6 +2226,26 @@ mod tests {
         // a mention isn't a pointer
         others.entry("text".into()).or_default().insert("valign".into(), vec!["top".into(), "center".into()]);
         assert_eq!(arg_choices("valign", "align text to the path using \"top\" or \"bottom\".  You can also adjust it.", "path_text", &others), None);
+    }
+
+    #[test]
+    fn values_in_calls_become_settings() {
+        let lib = "$fn = 50;\nclearance = 0.05;\n\n/*  Spur gear\n    modul = Height of the Tooth Tip\n    tooth_number = Number of Gear Teeth\n    optimized = Create holes; where\n        geometry allows */\nmodule spur_gear(modul, tooth_number, width, bore, pressure_angle = 20, helix_angle = 0, optimized = true, clearance = 0) {\n    cylinder(r = modul * tooth_number, h = width);\n}\n".to_string();
+        let ex = "include <../gears.scad>\n\nspur_gear(modul=1, tooth_number=30, width=5, bore=4, optimized=true, clearance=0.1, $fn=20);\n\ntranslate([80, 0, 0])\nspur_gear(2, 16, width=w, bore=4);\n";
+        let out = lift_call_values(ex, "examples/spur_gear.scad", &[lib]).expect("lifted");
+        assert!(out.contains("include <../gears.scad>\n"), "{out}");
+        assert!(out.contains("/* [Spur gear 1] */\n// Height of the Tooth Tip\nmodul = 1;\n// Number of Gear Teeth\ntooth_number = 30;\nwidth = 5;\nbore = 4;\n// Create holes; where geometry allows\noptimized = true;\n"), "{out}");
+        // a library global keeps its name for the library: the setting gets the module's name
+        assert!(out.contains("spur_gear_clearance = 0.1;"), "{out}");
+        assert!(out.contains("spur_gear(modul=modul, tooth_number=tooth_number, width=width, bore=bore, optimized=optimized, clearance=spur_gear_clearance, $fn=20);"), "{out}");
+        // the second call: positional values named from the module, numbered; an expression stays
+        assert!(out.contains("/* [Spur gear 2] */\n// Height of the Tooth Tip\nmodul_2 = 2;"), "{out}");
+        assert!(out.contains("translate([80, 0, 0])\nspur_gear(modul=modul_2, tooth_number=tooth_number_2, width=w, bore=bore_2);"), "{out}");
+        assert!(out.find("/* [Hidden] */").unwrap() < out.find("spur_gear(modul=modul").unwrap());
+        // files with settings of their own, definitions or blocks are left alone
+        assert!(lift_call_values("include <g.scad>\nteeth = 20;\nspur_gear(modul=1, tooth_number=teeth);\n", "a.scad", &[]).is_none());
+        assert!(lift_call_values("difference() { cube(10); sphere(6); }\n", "a.scad", &[]).is_none());
+        assert!(lift_call_values("include <g.scad>\nspur_gear(modul=m, tooth_number=t);\n", "a.scad", &[]).is_none());
     }
 
     #[test]

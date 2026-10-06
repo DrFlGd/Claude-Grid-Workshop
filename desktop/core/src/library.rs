@@ -56,7 +56,7 @@ pub struct Migration {
     pub cache_removed: bool,
 }
 
-fn valid_id(id: &str) -> Result<()> {
+pub fn valid_id(id: &str) -> Result<()> {
     if id.is_empty() || id.len() > 96 || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.') || id.starts_with('.') {
         bail!("invalid id {id}");
     }

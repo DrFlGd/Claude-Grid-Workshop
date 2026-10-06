@@ -653,9 +653,9 @@ impl App {
                     let mut unread: Vec<String> = lib.source_ids().into_iter().filter(|id| {
                         lib.source(id).ok().is_some_and(|s| s["kind"] != "bundled" && s["kind"] != "pinned" && lib.derived(id, s["version"].as_str().unwrap_or("")).is_none())
                     }).collect();
-                    // and those whose libraries changed (the app's copy, or which copy is used)
+                    // and those whose libraries changed (the app's copy, or which copy is used), or read by an older app
                     if let Ok(c) = app.catalog() {
-                        for a in c.catalog["attention"].as_array().into_iter().flatten().filter(|a| a["kind"] == "libraries") {
+                        for a in c.catalog["attention"].as_array().into_iter().flatten().filter(|a| a["kind"] == "libraries" || a["kind"] == "reread") {
                             if let Some(id) = a["source"].as_str() {
                                 unread.push(id.to_string());
                             }
