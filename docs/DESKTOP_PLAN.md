@@ -483,7 +483,7 @@ Each phase ends with something usable and with checks in CI.
 
 ## Future and experimental options
 
-Asked for by the owner on 2026-10-06. None is scheduled, none belongs to a numbered phase, and each needs a decision before building (the open questions are listed). They are ideas to try, not promises; anything that ships is marked experimental in the app until it has been used for a while.
+Asked for by the owner on 2026-10-06 (the plugin architecture a little later the same day). None is scheduled, none belongs to a numbered phase, and each needs a decision before building (the open questions are listed). They are ideas to try, not promises; anything that ships is marked experimental in the app until it has been used for a while.
 
 ### Direct slicing in software
 
@@ -506,6 +506,15 @@ Let an AI agent (Claude, for instance) read and edit a model's OpenSCAD from ins
 
 - **How it might work:** the agent's changes are kept the way the Code tab's edits already are (0.4.1): stored as a variant in the saved-settings record, never written to the project's files and never added as a model, so library updates aren't affected. The app would offer the agent the model's code, its settings and the render result; the agent proposes an edit, the user sees it in the Code tab as a change to accept or revert, and Generate renders it. Possible routes are an MCP server exposing the library, or a panel that talks to an API.
 - **Open questions:** the route (MCP server, built-in chat panel, or both); what the agent may touch (only the open model, or the whole library); keys and where requests go (a network call from an otherwise offline app, so off until the user turns it on); how an agent's edit is told apart from the user's in a variant's history.
+
+### Plugin architecture
+
+A way for outside code to add abilities to the app without changing the app itself. The three ideas above could each be a plugin rather than part of the core, which would keep the core small and let people choose what to install.
+
+- **Example uses:** a slicer plugin per slicer (PrusaSlicer, OrcaSlicer, Bambu Studio, CuraEngine) behind one "slice" interface; inference-engine plugins for the agent integration, so the agent can be Claude, another hosted model or one run locally; model editors that open a part's code or mesh in another tool and bring the result back (a code editor, a mesh sculpting tool, a CAD program); also import and export formats, extra sources to ingest from, and extra views of a model.
+- **How it might work:** a plugin is a folder with a manifest that says what it adds (a command, a panel in the side viewer, an action on a model, a setting page), and the app asks the plugin to do the work through a small, versioned interface. Two shapes are possible and may both be used: separate programs the app starts and talks to over standard input and output (any language, and a crash can't take the app down), and web-page panels in a sandboxed frame for things that need an interface. This matches how the native engine and the library's commands are already separated from the front end (`App::call`).
+- **Decisions to make first:** what the interface offers a plugin (read the library, render, store a variant) and what needs the user's say-so each time (network, files outside the library, running programs); how plugins are installed, updated and removed (a folder in the library, or from a GitHub link the way projects are added); whether plugins belong to the app or travel with a library; and whether they run on the website (only the web-panel kind could).
+- **Order:** the interface should be settled with the first plugin that needs it (a slicer is the simplest), not designed in the abstract. Direct slicing and agent integration would then be built as plugins from the start.
 
 ## Testing
 
