@@ -7,6 +7,7 @@ Generate 3D-printable parts (Gridfinity, openGrid, Honeycomb Storage Wall and fr
 
 **Live site:** https://drflgd.github.io/Claude-Grid-Workshop/
 **Desktop app:** installers on the [latest release](https://github.com/DrFlGd/Claude-Grid-Workshop/releases/latest) (numbered: 0.2.0, 0.2.1, …; each one built and tested by CI from `main`)
+**History:** [CHANGELOG.md](CHANGELOG.md) (what was built, when and why; start there if you're picking up the work)
 
 ## How it works
 
