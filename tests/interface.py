@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check the library interface in Chromium: views, search, filters, inspector,
-quick look, command palette, tabs, favourites, themes and phone width.
+quick look, command palette, tabs, the side viewer (code, README), favourites,
+themes and phone width.
 
     python3 -m http.server -d _site 8000 &
     python3 tests/interface.py --base http://localhost:8000/ --out shots
@@ -209,6 +210,19 @@ async def main():
         kept = await pg.input_value("#p-gridx")
         check("a tab keeps its unsaved settings", kept == "3", kept)
         await pg.screenshot(path=f"{a.out}/ui-04-tabs.png")
+        # the side viewer: the model's OpenSCAD code and its project's README, in a panel on the right
+        await pg.click("#model-extra [data-side-open=code]")
+        await pg.wait_for_selector(".side-panel[data-side-panel=code] .code .cl")
+        lines = await pg.locator(".side-panel .code .cl").count()
+        files = await pg.locator("#side-file option").count()
+        await pg.click("[data-side-tab=readme]")
+        await pg.wait_for_selector(".side-panel[data-side-panel=readme] .doc-frame")
+        await pg.wait_for_function("() => document.querySelector('.doc-frame')?.contentDocument?.querySelector('h1')")
+        h1 = await pg.frame_locator(".doc-frame").locator("h1").first.inner_text()
+        await pg.screenshot(path=f"{a.out}/ui-08-side-readme.png")
+        await pg.click("[data-side-tab=readme]")
+        await pg.wait_for_selector(".side-panel", state="detached")
+        check("side viewer: the model's code and its project's README, folding away", lines > 20 and files > 1 and "Gridfinity" in h1, (lines, files, h1))
         await pg.click('.tabstrip [data-tab="gridfinity-rebuilt/baseplate"] .tab-close')
         await pg.wait_for_function("()=>!document.querySelector('.tabstrip [data-tab=\"gridfinity-rebuilt/baseplate\"]')")
         check("closing a tab removes it", True)

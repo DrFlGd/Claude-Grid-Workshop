@@ -7,6 +7,7 @@ import { changedValues, withChanges, encodeShare, decodeShare, toOpenSCAD, fromO
 import { $, el, humanize, fmt, same, bytes, plural, safeHTML, compileCondition, STATUS_TEXT, spdx, FORMAT_LABEL } from "./lib/util.js";
 import { LocalIndex } from "./ui/index-local.js";
 import { mountShell } from "./ui/shell.js";
+import { sideModelButtons } from "./ui/sideview.js";
 import { setContext } from "./ui/context.js";
 import { html, render } from "./lib/html.js";
 import { LibrarySettingsPage } from "./ui/libsettings.js";
@@ -189,12 +190,13 @@ function renderModelHeader(detail) {
   $("#model-notes").open = false;
 }
 
-/** Desktop tools above the form: copy the OpenSCAD code (components), pin, edit the form. */
+/** Tools above the form: the side viewer (Code, README); in the app also copy the OpenSCAD code (components), pin, edit the form. */
 function renderModelExtra(detail) {
   const box = $("#model-extra");
   if (!box) return;
   box.replaceChildren();
-  if (platform.kind !== "desktop") { box.hidden = true; return; }
+  sideModelButtons(box, detail);
+  if (platform.kind !== "desktop") return;
   const ro = !!state.catalog?.library?.read_only;
   const btn = (id, text, title, onclick, disabled = false) => el("button", { type: "button", class: "ghost small", id, text, title, onclick, disabled });
   if (detail.kind === "component") {

@@ -150,8 +150,11 @@ fn mime(path: &str) -> &'static str {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "svg" => "image/svg+xml",
+        "gif" => "image/gif",
         "stl" => "model/stl",
         "json" => "application/json",
+        "pdf" => "application/pdf",
+        "txt" | "md" | "scad" => "text/plain; charset=utf-8",
         _ => "application/octet-stream",
     }
 }

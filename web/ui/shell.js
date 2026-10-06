@@ -13,6 +13,7 @@ import { AddProject, MergeConflicts, makeThumbnails, dailyUpdateCheck, rescanLoc
 import { MetaEditor, undoNow } from "./metaedit.js";
 import { FlagDialog } from "./actions.js";
 import { PinDialog, FormEditor } from "./forms.js";
+import { SideView } from "./sideview.js";
 
 /** Modal dialogs (desktop): adding a project, editing details, flagging as broken, merge differences, pinning, the form editor. */
 function Dialogs() {
@@ -39,6 +40,7 @@ export function mountShell(context) {
   mount("palette-root", Palette);
   mount("quicklook-root", QuickLook);
   mount("dialog-root", Dialogs);
+  mount("sideview-root", SideView);
   // Ctrl+Z undoes the last edit of details (outside text fields)
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z" && !e.target.closest?.("input, textarea, select, [contenteditable]") && ui.get().undo.length) {

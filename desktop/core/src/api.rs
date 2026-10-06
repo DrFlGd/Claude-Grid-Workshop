@@ -691,7 +691,65 @@ impl App {
                     "source": src, "entry": entry, "metadata": lib.metadata(id), "readme": readme, "license_text": license_text,
                     "files": files, "derived": derived,
                     "folder": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().map(|p| p.display().to_string()),
+                    "folder_rel": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().and_then(|p| lib.relative(&p)),
                 }))
+            }
+            "docs_list" => {
+                // a project's ({ source }) or an app library's ({ library }) documents, for the side viewer
+                let t = self.doc_target(&args).map_err(e2s)?;
+                let list: Vec<Value> = t
+                    .docs
+                    .iter()
+                    .map(|d| json!({ "id": d["id"], "title": d["title"], "kind": d["kind"], "src": d["src"], "bytes": d["bytes"], "relative": d["relative"].as_bool().unwrap_or(d["kind"] == "html") }))
+                    .collect();
+                j(json!({ "docs": list, "folder": t.folder_rel, "path": t.src_root.display().to_string(), "github": t.github.as_ref().map(|g| &g.1) }))
+            }
+            "doc_get" => {
+                // one document: { kind, html } / { kind, text }, or a PDF's bytes
+                let t = self.doc_target(&args).map_err(e2s)?;
+                let id = arg(&args, "doc").map_err(e2s)?;
+                let d = t.docs.iter().find(|d| d["id"] == id).ok_or_else(|| format!("no document {id}"))?;
+                let stored = d["file"].as_str().and_then(|f| library::rel_inside(f).ok()).map(|f| t.file_root.join(f)).filter(|p| p.is_file());
+                let src = d["src"].as_str().and_then(|f| library::rel_inside(f).ok()).map(|f| t.src_root.join(f));
+                let read_text = |p: &std::path::Path| -> Result<String, String> {
+                    let b = std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
+                    if b.len() as u64 > crate::docs::MAX_DOC {
+                        return Err(format!("{} is too large to show here ({} MB).", p.display(), b.len() >> 20));
+                    }
+                    Ok(String::from_utf8_lossy(&b).into_owned())
+                };
+                match d["kind"].as_str().unwrap_or("") {
+                    "html" => {
+                        let html = match (stored, src) {
+                            (Some(p), _) => read_text(&p)?,
+                            (None, Some(p)) => {
+                                // not converted yet (a project read before 0.4): make it now, and keep it when we can
+                                let base = match &t.github {
+                                    Some((raw, blob)) if !t.relative => crate::docs::Rebase::github(raw, blob),
+                                    _ => crate::docs::Rebase::default(),
+                                };
+                                let h = crate::docs::html_from_file(&p, d["from"].as_str().unwrap_or("markdown"), base).map_err(e2s)?;
+                                if let Some(dir) = &t.keep_dir {
+                                    if std::fs::create_dir_all(dir).is_ok() {
+                                        let _ = crate::config::write_atomic(&dir.join(format!("{id}.html")), h.as_bytes());
+                                    }
+                                }
+                                h
+                            }
+                            _ => return Err(format!("document {id} has no file")),
+                        };
+                        j(json!({ "kind": "html", "html": html, "relative": d["relative"].as_bool().unwrap_or(t.relative) }))
+                    }
+                    "text" => {
+                        let p = stored.or(src).ok_or_else(|| format!("document {id} has no file"))?;
+                        j(json!({ "kind": "text", "text": read_text(&p)? }))
+                    }
+                    "pdf" => {
+                        let p = src.ok_or_else(|| format!("document {id} has no file"))?;
+                        std::fs::read(&p).map(Reply::Bytes).map_err(|e| format!("{}: {e}", p.display()))
+                    }
+                    k => Err(format!("unknown kind of document: {k}")),
+                }
             }
             "source_remove" => {
                 let lib = self.library()?;
@@ -994,11 +1052,83 @@ impl App {
     }
 
     /// A file in the open library, for the library:// protocol (thumbnails, part files).
+    /// Where a project's or an app library's documents are (see `docs_list`).
+    fn doc_target(&self, args: &Value) -> Result<DocTarget> {
+        if let Some(name) = args["library"].as_str() {
+            let b = self.bundled().iter().find(|b| b.info.name.eq_ignore_ascii_case(name)).with_context(|| format!("no library {name}"))?;
+            let docs_dir = b.root.parent().map(|p| p.join("docs").join(&b.info.name)).unwrap_or_default();
+            let docs = std::fs::read(docs_dir.join("docs.json"))
+                .ok()
+                .and_then(|v| serde_json::from_slice::<Vec<Value>>(&v).ok())
+                .unwrap_or_else(|| crate::docs::library_docs(&b.info, &b.root, None));
+            return Ok(DocTarget {
+                docs,
+                file_root: docs_dir,
+                src_root: b.root.clone(),
+                folder_rel: None,
+                github: crate::docs::library_bases(&b.info),
+                relative: false,
+                keep_dir: None,
+            });
+        }
+        let id = arg(args, "source")?;
+        let lib = self.library().map_err(|e| anyhow!(e))?;
+        let src = lib.source(id)?;
+        let version = src["version"].as_str().unwrap_or("").to_string();
+        let c = self.catalog().map_err(|e| anyhow!(e))?;
+        let (derived, dir) = match c.derived.get(id) {
+            Some((d, dir)) => (Some(d.clone()), dir.clone()),
+            None => (None, lib.version_dir(&src, &version)?),
+        };
+        let docs = derived.as_ref().and_then(|d| d["docs"].as_array().cloned()).unwrap_or_else(|| {
+            // read before 0.4: find them now (the HTML is made when first opened)
+            let mut d = crate::docs::find(&dir);
+            for x in d.iter_mut().filter(|x| x["kind"] == "html") {
+                x["file"] = json!(format!("docs/{version}/{}.html", x["id"].as_str().unwrap_or("readme")));
+                x["relative"] = json!(true);
+            }
+            d
+        });
+        let github = (src["kind"] == "github")
+            .then(|| {
+                let o = &src["origin"];
+                crate::docs::github_bases(&format!("{}/{}", o["owner"].as_str()?, o["repo"].as_str()?), &version, o["subdir"].as_str().unwrap_or(""))
+            })
+            .flatten();
+        let writable = lib.writable().is_ok();
+        Ok(DocTarget {
+            docs,
+            file_root: lib.source_dir(id)?,
+            src_root: dir.clone(),
+            folder_rel: lib.relative(&dir),
+            github,
+            relative: true,
+            keep_dir: writable.then(|| lib.source_dir(id).map(|d| d.join("docs").join(&version)).ok()).flatten(),
+        })
+    }
+
     pub fn library_file(&self, rel: &str) -> Result<Vec<u8>> {
         let lib = self.library().map_err(|e| anyhow!(e))?;
         let rel = percent_decode(rel.trim_start_matches('/'));
         Ok(std::fs::read(lib.resolve(&rel)?)?)
     }
+}
+
+/// Where one project's (or app library's) documents live.
+struct DocTarget {
+    docs: Vec<Value>,
+    /// what a document's `file` is relative to (the project's folder in sources/, or libs/docs/<Name>/)
+    file_root: PathBuf,
+    /// the project's (or library's) own files: a document's `src`
+    src_root: PathBuf,
+    /// that folder inside the library, for relative links and images (None: outside it, or an app library)
+    folder_rel: Option<String>,
+    /// GitHub (raw, blob) addresses at the version in use
+    github: Option<(String, String)>,
+    /// documents made on request keep links relative to the project's folder
+    relative: bool,
+    /// where HTML made on request is kept
+    keep_dir: Option<PathBuf>,
 }
 
 /// The library's "Pinned components" project (made on first use; a trashed one is made again).

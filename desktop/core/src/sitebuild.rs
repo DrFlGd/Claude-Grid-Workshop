@@ -131,7 +131,12 @@ pub fn prepare(repo: &Path, out: &Path, opts: &PrepareOptions) -> Result<Plan> {
         if (opts.public && public_use != "ok") || (opts.hide_blocked && public_use == "blocked") {
             continue;
         }
-        families.push(family_entry(&fam));
+        let mut entry = family_entry(&fam);
+        match crate::docs::family_docs(repo, &fam, out) {
+            Ok(d) => entry["docs"] = json!(d),
+            Err(e) => problems.push(format!("{}: README: {e:#}", fam["id"].as_str().unwrap_or(""))),
+        }
+        families.push(entry);
         let editor_cfg = match fam["editor_toml"].as_str() {
             Some(p) => ingest::load_editor_toml(&repo.join(p))?,
             None => json!({}),

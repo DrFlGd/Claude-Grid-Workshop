@@ -269,8 +269,27 @@ pub async fn ingest(
     } else {
         Value::Null
     };
+    // reference documents: the README as HTML (kept in the library, relative to the project's
+    // folder), PDFs and readme.txt as they are
+    on_progress("Reading the documents…".into());
+    let docs = {
+        let root2 = root.clone();
+        let out_dir = lib.source_dir(&id)?.join("docs").join(version);
+        let prefix = format!("docs/{version}/");
+        let (docs, probs) = tokio::task::spawn_blocking(move || {
+            let mut d = crate::docs::find(&root2);
+            let probs = crate::docs::convert_all(&root2, &mut d, &out_dir, &prefix, crate::docs::Rebase::default());
+            (d, probs)
+        })
+        .await?;
+        for p in probs {
+            problems.push(json!({ "kind": "docs", "message": format!("Couldn't read a document: {p}") }));
+        }
+        docs
+    };
     let derived = json!({
         "format": DERIVED_FORMAT,
+        "docs": docs,
         "components": components,
         "libraries_used": used.into_values().collect::<Vec<_>>(),
         "engine": renderer.engine().version,
@@ -381,10 +400,23 @@ pub fn bundle_site(site: &Path, out: &Path) -> Result<Vec<String>> {
             "license": fam["license"], "authors": fam["authors"], "links": first["links"], "source": first["source"],
             "models": details.iter().map(|d| json!({ "id": d["id"], "name": d["name"] })).collect::<Vec<_>>(),
         });
+        // the family's README from the website build, kept like a read project's (already
+        // pointing to GitHub, so not relative to the project's folder)
+        let mut docs = vec![];
+        for d in fam["docs"].as_array().into_iter().flatten() {
+            let Some(url) = d["url"].as_str() else { continue };
+            let ext = if d["kind"] == "text" { "txt" } else { "html" };
+            let did = d["id"].as_str().unwrap_or("readme");
+            let file = format!("docs/{version}/{did}.{ext}");
+            let to = dir.join(&file);
+            std::fs::create_dir_all(to.parent().unwrap())?;
+            std::fs::copy(site.join(library::rel_inside(url)?), &to).with_context(|| format!("copying {url}"))?;
+            docs.push(json!({ "id": did, "title": d["title"], "kind": d["kind"], "file": file, "relative": false }));
+        }
         let derived = json!({
             "format": DERIVED_FORMAT, "engine": catalog["engine"], "made": made, "source": id, "version": version,
             "family": family, "models": details, "parts": [], "blobs": blobs, "problems": [],
-            "stats": { "thumbnails": thumbs_made },
+            "stats": { "thumbnails": thumbs_made }, "docs": docs,
         });
         crate::config::write_atomic(&dir.join("derived").join(format!("{version}.json")), &serde_json::to_vec(&derived)?)?;
         let src = json!({
@@ -491,14 +523,25 @@ pub fn sync_starter(lib: &Library, starter: &Path) -> Result<(Vec<String>, Vec<S
                 installed.push(id);
             }
             Ok(mut have) => {
-                if have["kind"] != "bundled" || have["version"] == version.as_str() || have["update"]["latest"]["id"] == version.as_str() {
+                if have["kind"] == "bundled" && have["version"] == version.as_str() {
+                    // same version from an app before 0.4: bring in its documents
+                    let target = lib.source_dir(&id)?;
+                    let theirs = dir.join(&id).join("docs").join(&version);
+                    if theirs.is_dir() && !target.join("docs").join(&version).is_dir() {
+                        copy_tree(&theirs, &target.join("docs").join(&version))?;
+                        let d = format!("derived/{version}.json");
+                        copy_tree_file(&dir.join(&id).join(&d), &target.join(&d))?;
+                    }
+                    continue;
+                }
+                if have["kind"] != "bundled" || have["update"]["latest"]["id"] == version.as_str() {
                     continue;
                 }
                 // bring the new version in beside the current one; the user accepts it like any update
                 let target = lib.source_dir(&id)?;
                 copy_tree(&dir.join(&id).join("files").join(&version), &target.join("files").join(&version))?;
                 copy_tree(&dir.join(&id).join("derived"), &target.join("derived"))?;
-                for extra in ["thumbs", "previews"] {
+                for extra in ["thumbs", "previews", "docs"] {
                     if dir.join(&id).join(extra).is_dir() {
                         copy_tree(&dir.join(&id).join(extra), &target.join(extra))?;
                     }
@@ -513,6 +556,14 @@ pub fn sync_starter(lib: &Library, starter: &Path) -> Result<(Vec<String>, Vec<S
         }
     }
     Ok((installed, updates))
+}
+
+fn copy_tree_file(from: &Path, to: &Path) -> Result<()> {
+    if let Some(p) = to.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    std::fs::copy(from, to).with_context(|| format!("couldn't copy {}", from.display()))?;
+    Ok(())
 }
 
 /// Copy a folder tree (files overwrite).

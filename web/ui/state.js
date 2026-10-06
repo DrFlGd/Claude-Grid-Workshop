@@ -26,6 +26,8 @@ export const ui = createStore({
   palette: false,
   navOpen: false,          // sidebar drawer on small screens
   catPanel: true,          // the category panel beside the menu is open (false: folded to a strip)
+  side: { open: false, tab: "code", width: 560, wrap: false }, // the side viewer (code, documents)
+  sideFile: null,          // a project file shown in the side viewer's Code tab: { rel, label, ref }
   inspector: true,
   condensed: false,        // grouped results shown as one tile per group
   openGroup: null,         // the condensed group being looked into
@@ -55,6 +57,7 @@ export function initState(store) {
     layouts: saved.layouts || {},
     condensed: !!saved.condensed,
     catPanel: saved.catPanel !== false,
+    side: { ...ui.get().side, ...(saved.side || {}) },
   });
   applyTheme();
   matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
@@ -62,7 +65,7 @@ export function initState(store) {
 
 function savePrefs() {
   const s = ui.get();
-  prefs?.set(LAYOUT_KEY, { theme: s.theme, size: s.size, sort: s.sort, group: s.group, columns: s.columns, inspector: s.inspector, layouts: s.layouts, condensed: s.condensed, catPanel: s.catPanel });
+  prefs?.set(LAYOUT_KEY, { theme: s.theme, size: s.size, sort: s.sort, group: s.group, columns: s.columns, inspector: s.inspector, layouts: s.layouts, condensed: s.condensed, catPanel: s.catPanel, side: s.side });
 }
 
 export function setPref(patch) {

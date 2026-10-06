@@ -576,6 +576,7 @@ pub fn clean_versions(lib: &Library, src: &Value) -> Result<Vec<String>> {
         if !keep.contains(&name.as_str()) && e.path().is_dir() {
             std::fs::remove_dir_all(e.path())?;
             let _ = std::fs::remove_file(lib.source_dir(id)?.join("derived").join(format!("{name}.json")));
+            let _ = std::fs::remove_dir_all(lib.source_dir(id)?.join("docs").join(&name));
             removed.push(name);
         }
     }

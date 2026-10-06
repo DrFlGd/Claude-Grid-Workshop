@@ -2,8 +2,9 @@
 // Everything else in web/ talks only to these two interfaces, so the same
 // front end works on the website and in the desktop app (docs/DESKTOP_PLAN.md).
 //
-// createPlatform() -> { kind, store, makeEngine(catalog), fetch(path), save?(blob, name) }
+// createPlatform() -> { kind, store, makeEngine(catalog), fetch(path), modelFile(sha), openUrl(url), save?(blob, name) }
 //   fetch: site files (data/, parts/) by relative path; the desktop app reads them from its bundle
+//   modelFile: a model file's text by its content hash (the side viewer's Code tab)
 //   save:  desktop only; a save dialog instead of a browser download
 //
 // engine (from makeEngine)
@@ -34,6 +35,12 @@ export async function createPlatform() {
     kind: "browser",
     store: new BrowserStore(),
     fetch: (path) => fetch(path),
+    modelFile: async (sha) => {
+      const r = await fetch(`fs/${sha}`);
+      if (!r.ok) throw new Error(`Couldn't read the file (${r.status}).`);
+      return r.text();
+    },
+    openUrl: (url) => window.open(url, "_blank", "noopener"),
     makeEngine(catalog) {
       const engine = new EngineClient({ commonFiles: catalog.common_files });
       engine.label = `OpenSCAD ${catalog.engine}, in your browser`;

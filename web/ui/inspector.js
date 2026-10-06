@@ -8,6 +8,7 @@ import { LICENSE_TEXT } from "./index-local.js";
 import { bytes, FORMAT_LABEL, plural } from "../lib/util.js";
 import { isDesktop, readOnly, api } from "./library.js";
 import { ItemActions } from "./actions.js";
+import { SideButtons } from "./sideview.js";
 
 const canEdit = () => isDesktop() && !readOnly();
 
@@ -68,6 +69,7 @@ function ComponentInspector({ it, fav }) {
         title="Favourite (F)" onClick=${() => toggleFav([it.id])}>${Icon.star(17, fav)}</button>
       ${it.needs?.length ? null : html`<button type="button" class="ghost" onClick=${() => ui.set({ quicklook: it.id })} title="Quick look (Space)">${Icon.eye(16)} Quick look</button>`}
     </div>
+    <div class="insp-actions insp-side"><${SideButtons} modelKey=${it.key} /></div>
     ${it.summary ? html`<p class="insp-summary">${it.summary}</p>` : null}
     ${it.needs?.length ? html`<p class="insp-flag" role="note">Needs values before it can be made: ${it.needs.join(", ")}.</p>` : null}
     <dl class="insp-dl">
@@ -130,6 +132,9 @@ export function Inspector() {
         title="Favourite (F)" onClick=${() => toggleFav([it.id])}>${Icon.star(17, fav)}</button>
       <button type="button" class="ghost" onClick=${() => ui.set({ quicklook: it.id })} title="Quick look (Space)">${Icon.eye(16)} Quick look</button>
     </div>
+    <div class="insp-actions insp-side">${it.kind === "part"
+      ? (isDesktop() ? html`<${SideButtons} refObj=${{ source: it.sourceId }} />` : null)
+      : html`<${SideButtons} modelKey=${it.key} />`}</div>
     ${it.broken ? html`<p class="insp-flag broken" role="note">${Icon.alert(14)} Flagged as broken${it.broken.date ? ` on ${it.broken.date}` : ""}${it.broken.note ? html`: <span>${it.broken.note}</span>` : "."}</p>` : null}
     ${it.hidden ? html`<p class="insp-flag" role="note">${Icon.eye(14)} Hidden${it.hidden === "item" ? "" : it.hidden === "project" ? " with its project" : " with its folder"}: it only shows with “Show hidden”.</p>` : null}
     ${it.summary ? html`<p class="insp-summary">${it.summary}</p>` : null}

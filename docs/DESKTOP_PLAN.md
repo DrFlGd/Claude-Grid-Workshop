@@ -10,7 +10,7 @@ Status (2026-10-05):
 - **Phase 2 done:** the portable library, adding projects, update checks, metadata editing; see "Phase 2 notes" at the end.
 - **0.2.x (Phase 2 follow-ups):** numbered releases, the left menu by category (Parametric Models and Parts Library), Library settings, hide / delete / flag as broken, the trash; see "0.2 notes" at the end.
 - **Phase 3 done (0.3):** bundled libraries and their modules as **Components**, pinning, the form editor; see "Components" in section 2 and "0.3 notes" at the end.
-- **Next:** Phase 4 (0.4), the model library and file formats.
+- **Phase 4 (0.4) started:** the side viewer (a model's code, a project's reference documents) in 0.4.0; see "Reference documents and the side viewer" in section 5. Next: importing ready-made models and Printables ZIPs, one item per file name, 3MF export, collections.
 
 ## Goal
 
@@ -424,25 +424,27 @@ These are saved as overlays in the same form as `catalog/families` `ui`. A good 
 - **Accessibility:** everything reachable by keyboard, with visible focus, labelled controls and enough contrast. The layout works down to a 900 px wide window.
 - **Website:** gets the browser views and search, in read-only form over the built-in catalog. Editing, sources and collections stay desktop-only.
 
-### Reference documents
+### Reference documents and the side viewer
 
-(Requested 2026-10-05; Phase 4. Talk through the implementation before building it.)
+(Requested 2026-10-05; Phase 4, first part in 0.4.0. The owner's answers to the questions below are folded in.)
 
-Every project gets a **reference document** in the interface: the project's own documentation, kept with it in the library and readable offline.
+Every project gets a **reference document**: the project's own documentation, kept with it in the library and readable offline. It opens in the **side viewer**, which also shows a model's OpenSCAD code.
 
-- **GitHub projects:** a copy of the README, at the pinned version (updated with the project). NopSCADlib's README is the model: a long, structured reference with a section and pictures for each part.
-- **Printables downloads:** the information from the PDF in the ZIP (description, creator, license, dates, print settings, and the pictures where they can be extracted).
-- **Other sources:** a ZIP or folder's README or PDF; the bundled libraries (BOSL2, NopSCADlib and the rest) too, so the Components from a library can open its reference.
+**Side viewer.** A collapsible panel on the right edge of the window. Tabs along its edge choose what it shows: **Code** (the model's OpenSCAD files, read-only for now) and each of the project's documents (README, a PDF, readme.txt). Choosing "Code" or "README" on a model page, in the inspector or on a project's page opens the panel on that tab; clicking the open tab, or ×, folds it back to the tabs. It follows what's on screen: the open model, or in the library the selected item or the project page. Open or folded, the tab chosen and the panel's width (drag its edge) are remembered. When open it lies over the right of the window (the 3D view, the inspector) rather than squeezing the form.
 
-What exists now: a project's page has an About tab with its README rendered, and the bundled libraries keep their README file but have no page to show it.
+- **Code:** the model's files, entry file first, with line numbers and simple highlighting (comments, strings, numbers, keywords), a file picker when it has several, and Copy. A component shows the file made for its current settings (as Copy code), then the library file that defines the module, opened at the module. A README link to one of the project's `.scad` files opens it here.
+- **Documents are project-level** (owner): a model or component shows its project's (or library's) documents; for NopSCADlib, every part has its section in the one README, so you scroll to it. No per-part links.
+- **Three kinds, stored as** (owner):
+  - **HTML** — a Markdown README (GitHub projects, and any project with `README.md`) is converted when the project is read (pulldown-cmark: CommonMark plus GitHub's tables, strikethrough, task lists and footnotes; headings get GitHub's anchors so the README's own contents links work) and kept in the library at `sources/<id>/docs/<version>/readme.html`. Raw HTML in the README is kept, minus scripts, frames, forms, styles and event handlers; it's shown in a frame that can't run scripts, in the app's colours. Images and links stay relative to the project's folder, so they work offline. A `README.html` is used as it is (cleaned the same way).
+  - **PDF** — kept raw (Printables downloads): the project's PDFs at the top level or one folder down, shown in the webview's own PDF viewer where it has one (Windows), with "Open in your PDF viewer" always offered (Linux's webview has none).
+  - **Text** — `readme.txt` (or `README` with no extension), shown as it is.
 
-Questions for when it's built:
-- where it opens: the project's page, its own tab or panel next to a model, or from the inspector and a component's page;
-- links from a model or component to its section of the document (NopSCADlib has one section per part);
-- images: copy the ones the README uses into the library, so the document works offline;
-- PDFs: show the extracted text and images, the PDF itself, or both;
-- whether documents are searchable from the main search;
-- whether you can add your own notes to a project's document, kept as edits so updates don't overwrite them.
+  Tabs in that order: README, PDFs, readme.txt.
+- **The app's libraries** (BOSL2, NopSCADlib, …): their README is converted when the app is built (`libs/docs/<Name>/readme.html`), with images and links pointing to GitHub at the pinned commit (online only: the app ships their OpenSCAD files, not their pictures).
+- **Built-in models** (the starter library and the website): the family's README from its vendored folder, converted by the website build (`data/docs/<family>.html`, images and links to GitHub at the pinned commit) and copied into the starter projects. The website has the side viewer too: Code from the model's files, the README from the build.
+- **Projects read by 0.3** have no stored documents yet: they're found when first asked for, and the HTML is made then.
+
+**Later (owner):** a **scratch pad** of notes per part, saved with it in the library (kept as edits, so updates don't overwrite them); editing the code.
 
 ### Front-end structure
 
@@ -467,7 +469,7 @@ Each phase ends with something usable and with checks in CI.
 | **1.5 Interface** | Mockup first. Then: front end split into modules (Preact + htm); app layout with sidebar, browser, inspector, workbench tabs, status bar; grid, list, table and grouped views; search with filters and command palette; `index` seam (in-memory over `catalog.json` for now); thumbnails for the 58 models; favourites, recent; light/dark/night themes; "Updated" filter and sort from source dates | All 58 models and the parts library browsable in all four views; search and filters answer in under 100 ms; the website keeps working with the new browser views; WebDriver tests updated |
 | **2. Ingest + index** | Add from GitHub / file / ZIP; update checks with change summary; Rust ingest CLI shared with the website build; the index rebuilt from the library behind the `index` seam (SQLite deferred, see Phase 2 notes), with open metadata fields that become filters, sorts and columns; source pages; "Needs attention"; portable library folder (choose, open, move, merge; versioned format; workspace migrated); the built-in projects packaged as a starter library installed with the app and copied into the library; layered metadata editing at library, project, folder and item level (inspector, overlays, bulk edit, undo, provenance); condensed groups in the browser, with editable group icons | Add 3 public repos by URL; search finds their generators; a simulated upstream change is detected and summarised; edits survive a source update; a project-level license change shows on all its items except those with their own; the library folder, moved to another path and opened on the other operating system's CI runner, shows the same items and metadata; a condensed project shows the icon chosen for it |
 | **3. Libraries + modules** | Bundled libraries; BOSL2 doc parser; signature parser; module → form; pinned generators; form editor (labels, box names, conditions, presets as overlays); category editor | The bevel-gear acceptance test passes; every BOSL2 module with geometry gets a form that renders its first doc example; a form edit made in the app matches what a family manifest `ui` block produces |
-| **4. Model library + file formats** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); reference documents for projects (README, Printables PDF; section 5); one item per file name with a download format picker (built-in parts, imports and generator output); multi-colour and multi-part 3MF export; recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection; a pack with STL, 3MF and STEP copies of each part imports as one item per name; a two-colour label and the Rugged Box download as 3MF files that open in Bambu Studio and OrcaSlicer with their colours and separate parts |
+| **4. Model library + file formats** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); reference documents for projects and a model's code in a side viewer (README as HTML, Printables PDF, readme.txt; section 5; done in 0.4.0); notes per part (a scratch pad, later); one item per file name with a download format picker (built-in parts, imports and generator output); multi-colour and multi-part 3MF export; recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection; a pack with STL, 3MF and STEP copies of each part imports as one item per name; a two-colour label and the Rugged Box download as 3MF files that open in Bambu Studio and OrcaSlicer with their colours and separate parts |
 | **5. Productivity** | Batch from CSV, multi-setting sweeps, multi-part 3MF arranged on the bed for the printer profile, send to slicer (open the file in Bambu Studio / OrcaSlicer / PrusaSlicer), live reload when a watched .scad file is saved | As listed |
 
 ## Testing
@@ -586,3 +588,14 @@ Phase 3 as built.
 - **Library settings:** Edit… on each project's row opens its details (as the project page's Edit details).
 - **Long text stays in its box:** dialogs and their fields are one column no wider than the dialog (a long folder path pushed the Add a project dialog's contents past its edge); a chosen file or folder path wraps; the details editor's one-line fields (name, tags, authors, origin, a detail's value) wrap and grow to show all their text (Enter still saves). Category and License keep their suggestion lists as single-line fields.
 
+
+## 0.4 notes
+
+Phase 4, first part (0.4.0): the side viewer and reference documents, as described in "Reference documents and the side viewer" (section 5). Where it went beyond or differs:
+
+- **Conversion** is pulldown-cmark (a new dependency) plus a small cleaner in `desktop/core/src/docs.rs` (regular expressions over tags and attributes; one pattern per removed element). Pictures get `loading="lazy"` (NopSCADlib's README has about 500). The page makes relative pictures and links absolute before showing the HTML: the frame's own `<base>` came too late for Chromium's preloader, which fetched pictures from the page's address first.
+- **The frame** is `sandbox="allow-same-origin"` without `allow-scripts`: nothing in the README runs, and the page (same origin) styles it in the app's colours, follows the theme, and handles its links: `#anchors` scroll (wired as soon as the document exists, since "load" waits for every picture), the project's `.scad` files open in Code, other project files open on GitHub at the version in use (or in the system), web links in the browser.
+- **Starter projects** keep their version id (it hashes the models, not the documents), so a library made by 0.3 gets the documents copied in on the next start rather than as an update to accept.
+- **Code tab:** a model's files come from its content hashes (`blob` in the app, `fs/<sha>` on the website), so every file a model uses is listed (entry first). Find jumps between matching lines (Enter, Shift+Enter).
+- **PDFs:** WebView2 (Windows) shows them; WebKitGTK (Linux) has no PDF viewer (`navigator.pdfViewerEnabled` is false), so the panel offers "Open in your PDF viewer". A PDF.js viewer could close that gap later.
+- **Testing:** the acceptance test covers a GitHub project's code and README (with a picture from its files), a component's code at its module, the app's BOSL2 README, a starter project's README and a project file; the website test covers Code and README; the app test opens the viewer in the real window on Linux and Windows.

@@ -224,6 +224,18 @@ try:
     open_model("@bosl2/bevel_gear")
     time.sleep(1)
     shot("04b-component-bevel-gear")
+    # the side viewer (0.4): the component's code, and its library's README in a frame that can't run scripts
+    d.execute_script("document.querySelector('#model-extra [data-side-open=code]')?.click()")
+    if wait("document.querySelector('.side-panel[data-side-panel=code] .code .cl')", 30, "the side viewer's Code"):
+        code = text(".side-panel .code")
+        d.execute_script("document.querySelector('[data-side-tab=readme]')?.click()")
+        ok = wait("/BOSL2/.test(document.querySelector('.doc-frame')?.contentDocument?.querySelector('h1')?.textContent || '')", 30, "the BOSL2 README")
+        report["side_viewer"] = {"code": code[:80], "readme": ok, "pdf_viewer": d.execute_script("return navigator.pdfViewerEnabled")}
+        print("side viewer:", report["side_viewer"], flush=True)
+        if "bevel_gear(" not in code:
+            failures.append(f"side viewer code: {code[:120]}")
+        shot("04c-side-viewer")
+        d.execute_script("document.querySelector('.side-close')?.click()")
     open_model("@threads-scad/MetricBolt")
     d.execute_script("location.hash = '#/library-settings'")
     if wait("document.querySelectorAll('#ls-libraries tbody tr').length >= 5", 30, "the libraries in Library settings"):

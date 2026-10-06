@@ -9,12 +9,14 @@
 //! - [`library`]: the portable library folder; [`meta`]: layered metadata
 //! - [`sources`]: adding projects (GitHub, ZIP, folders); [`scan`], [`project`]: reading them
 //! - [`catalog`]: the page's catalog from the library; [`merge`]: merging libraries
+//! - [`docs`]: projects' reference documents (README as HTML, PDF, text)
 //! - [`api`]: the commands the page calls
 
 pub mod api;
 pub mod catalog;
 pub mod components;
 pub mod config;
+pub mod docs;
 pub mod engine;
 pub mod ingest;
 pub mod library;

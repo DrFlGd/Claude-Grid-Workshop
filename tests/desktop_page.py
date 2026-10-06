@@ -18,8 +18,9 @@ the doc example's values, change teeth and module, preview, download, in under a
 minute), pinning a component as a model, the OpenSCAD code, a form edit stored in
 the shape of a manifest's ui block, and switching between your BOSL2 and the
 app's; 0.3.1: the left menu's category panel, a doc-listed setting as a drop-down,
-Edit… in Library settings, long text kept inside its box; and the library opening
-the same after being moved (library-summary). Writes
+Edit… in Library settings, long text kept inside its box; 0.4: the side viewer (a
+model's code, a project's README, a component's file at its module); and the
+library opening the same after being moved (library-summary). Writes
 <out>/library-summary.json and <out>/library.zip for the cross-platform check.
 """
 import argparse
@@ -276,6 +277,53 @@ async def main():
             status = await pg.inner_text("#status")
             check("a setting whose doc lists its values is a drop-down (spheroid style), and renders with the choice",
                   tag == "SELECT" and opts == ["orig", "aligned", "stagger", "octa", "icosa"] and "matches" in status, (tag, opts, status))
+
+            # 5d. the side viewer (Phase 4): a model's code and its project's README (HTML kept in the
+            # library, pictures from the project's own files), a component's file at its module, the
+            # app's README for a built-in model, a project file from its Files tab, folding away
+            gears = ids["gears"]
+            await pg.goto(B + f"#/m/{gears}/examples-bevel-gear")
+            await pg.wait_for_function(f"()=>document.body.dataset.model==='{gears}/examples-bevel-gear'")
+            await pg.click("#model-extra [data-side-open=code]")
+            await pg.wait_for_selector(".side-panel[data-side-panel=code] .code .cl")
+            code = await pg.inner_text(".side-panel .code")
+            await pg.click("[data-side-tab=readme]")
+            await pg.wait_for_selector(".side-panel[data-side-panel=readme] .doc-frame")
+            await pg.wait_for_function("() => document.querySelector('.doc-frame')?.contentDocument?.querySelector('h1')")
+            h1 = await pg.frame_locator(".doc-frame").locator("h1").first.inner_text()
+            await pg.wait_for_function("""() => [...(document.querySelector('.doc-frame').contentDocument.images || [])]
+                .some((i) => i.src.includes('/library/') && i.complete && i.naturalWidth > 0)""", timeout=15000)
+            stored = any((library / f"sources/{gears}/docs").rglob("readme.html"))
+            await pg.screenshot(path=str(out / "p4-01-readme.png"))
+            check("side viewer: a model's code, its project's README as HTML kept in the library, pictures from its files",
+                  "include" in code and "Gear" in h1 and stored, (code[:60], h1, stored))
+            await pg.goto(B + "#/m/@bosl2/bevel_gear")
+            await pg.wait_for_function("()=>document.body.dataset.model==='@bosl2/bevel_gear'")
+            await pg.wait_for_selector(".side-panel[data-side-panel=readme] .doc-frame")
+            await pg.wait_for_function("() => /BOSL2/.test(document.querySelector('.doc-frame')?.contentDocument?.querySelector('h1')?.textContent || '')")
+            await pg.click("[data-side-tab=code]")
+            await pg.wait_for_selector(".side-panel[data-side-panel=code] .code .cl")
+            generated = await pg.inner_text(".side-panel .code")
+            await pg.select_option("#side-file", index=1)
+            await pg.wait_for_selector(".side-panel .code .cl.mark")
+            marked = await pg.inner_text(".side-panel .code .cl.mark")
+            await pg.screenshot(path=str(out / "p4-02-component-code.png"))
+            await pg.goto(B + "#/m/gridfinity-extended/bin")
+            await pg.wait_for_function("()=>document.body.dataset.model==='gridfinity-extended/bin'")
+            await pg.click("[data-side-tab=readme]")
+            await pg.wait_for_function("() => /Gridfinity Extended/.test(document.querySelector('.doc-frame')?.contentDocument?.querySelector('h1')?.textContent || '')")
+            await pg.click("[data-side-tab=readme]")
+            await pg.wait_for_selector(".side-panel", state="detached")
+            await pg.goto(B + f"#/browse/source/{gears}")
+            await pg.wait_for_selector(".source-panel")
+            await pg.click("[data-source-tab=files]")
+            await pg.click("[data-code-file] >> nth=0")
+            await pg.wait_for_selector(".side-panel[data-side-panel=code] .code .cl")
+            from_files = await pg.inner_text(".side-head")
+            await pg.click(".side-close")
+            await pg.wait_for_selector(".side-panel", state="detached")
+            check("side viewer: a component's generated code and its module's file, the BOSL2 and Gridfinity Extended READMEs, a project file",
+                  "bevel_gear(" in generated and "module bevel_gear(" in marked and ".scad" in from_files, (generated[:80], marked[:60], from_files))
 
             # 6. upstream change: edit first, then detect, summarise, accept; edits survive
             v76 = ids["vector76-gridfinity"]

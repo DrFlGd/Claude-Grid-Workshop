@@ -1,5 +1,5 @@
 // The library in the desktop app: adding projects, project pages (details,
-// README, files, versions, updates), "Needs attention", thumbnails for newly
+// documents, files, versions, updates), "Needs attention", thumbnails for newly
 // read models, and the library section of Settings. On the website none of
 // this shows (there is no library there).
 import { html, useState, useEffect, useMemo } from "../lib/html.js";
@@ -10,6 +10,7 @@ import { Icon } from "./icons.js";
 import { Viewer } from "../viewer.js";
 import { bytes, plural } from "../lib/util.js";
 import { hideProject, deleteProject } from "./actions.js";
+import { SideButtons, openSide } from "./sideview.js";
 
 export const isDesktop = () => ctx.platform?.kind === "desktop";
 export const api = (cmd, args) => ctx.platform.api(cmd, args);
@@ -31,65 +32,6 @@ export async function runJob(startPromise, label) {
 
 const KIND_TEXT = { github: "GitHub", zip: "ZIP file", folder: "Folder (copied)", linked: "Linked folder", local: "Your project (local/)", bundled: "Comes with the app" };
 export const kindText = (s) => KIND_TEXT[s?.kind] || s?.kind || "";
-
-// ---------------------------------------------------------------- markdown (README)
-const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function inline(t, base) {
-  let s = esc(t);
-  s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
-  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (m, alt) => (alt ? `<em>[${alt}]</em>` : "")); // no remote images
-  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, (m, text, href) => {
-    const url = /^https?:\/\//.test(href) ? href : base && !href.startsWith("#") ? `${base}/${href}` : null;
-    return url ? `<a href="${url}" target="_blank" rel="noopener">${text}</a>` : text;
-  });
-  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|\W)\*([^*\s][^*]*)\*/g, "$1<em>$2</em>").replace(/(^|\W)_([^_\s][^_]*)_(?=\W|$)/g, "$1<em>$2</em>");
-  return s;
-}
-/** A README rendered safely: text is escaped first, then simple Markdown applied. */
-export function markdown(text, base = null) {
-  const out = [];
-  const lines = (text || "").replace(/\r\n/g, "\n").split("\n");
-  let i = 0;
-  while (i < lines.length) {
-    const l = lines[i];
-    if (/^```/.test(l)) {
-      const code = [];
-      for (i++; i < lines.length && !/^```/.test(lines[i]); i++) code.push(lines[i]);
-      out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`);
-      i++;
-      continue;
-    }
-    const h = l.match(/^(#{1,6})\s+(.*)/);
-    if (h) { const n = Math.min(h[1].length + 2, 6); out.push(`<h${n}>${inline(h[2], base)}</h${n}>`); i++; continue; }
-    if (/^\s*([-*+]|\d+\.)\s+/.test(l)) {
-      const ordered = /^\s*\d+\./.test(l);
-      const items = [];
-      while (i < lines.length && /^\s*([-*+]|\d+\.)\s+/.test(lines[i])) { items.push(`<li>${inline(lines[i].replace(/^\s*([-*+]|\d+\.)\s+/, ""), base)}</li>`); i++; }
-      out.push(`<${ordered ? "ol" : "ul"}>${items.join("")}</${ordered ? "ol" : "ul"}>`);
-      continue;
-    }
-    if (/^\s*\|.*\|\s*$/.test(l)) {
-      const rows = [];
-      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(lines[i]); i++; }
-      const cells = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
-      const body = rows.filter((r) => !/^\s*\|[\s:|-]+\|\s*$/.test(r));
-      out.push(`<table>${body.map((r, n) => `<tr>${cells(r).map((c) => (n === 0 ? `<th>${inline(c, base)}</th>` : `<td>${inline(c, base)}</td>`)).join("")}</tr>`).join("")}</table>`);
-      continue;
-    }
-    if (/^\s*>/.test(l)) {
-      const q = [];
-      while (i < lines.length && /^\s*>/.test(lines[i])) { q.push(lines[i].replace(/^\s*>\s?/, "")); i++; }
-      out.push(`<blockquote>${inline(q.join(" "), base)}</blockquote>`);
-      continue;
-    }
-    if (!l.trim() || /^\s*(-{3,}|={3,}|\*{3,})\s*$/.test(l) || /^\s*<\/?[a-z]/i.test(l)) { i++; continue; }
-    const para = [];
-    while (i < lines.length && lines[i].trim() && !/^(#|```|\s*([-*+]|\d+\.)\s|\s*>|\s*\|)/.test(lines[i]) && !/^\s*<\/?[a-z]/i.test(lines[i])) { para.push(lines[i]); i++; }
-    if (para.length) out.push(`<p>${inline(para.join(" "), base)}</p>`);
-    else i++;
-  }
-  return out.join("\n");
-}
 
 // ---------------------------------------------------------------- adding a project
 export function AddProject() {
@@ -253,13 +195,16 @@ export function SourcePanel({ id }) {
       <ul>${problems.map((p) => html`<li>${p.message}</li>`)}</ul></details>` : null}
     <div class="seg tabs-seg source-tabs" role="tablist">${tabs.map(([t, l]) => html`<button type="button" role="tab" class=${`seg-btn${tab === t ? " on" : ""}`}
       aria-selected=${tab === t ? "true" : "false"} onClick=${() => setTab(t)} data-source-tab=${t}>${l}</button>`)}</div>
-    ${tab === "about" ? html`<div class="readme">${!info ? html`<p class="muted">Loading…</p>` : info.readme
-      ? html`<div dangerouslySetInnerHTML=${{ __html: markdown(info.readme, url && /github\.com/.test(url) ? `${url}/blob/HEAD` : null) }}></div>`
-      : html`<p class="muted">${src.meta?.summary || "No README."}</p>`}
+    ${tab === "about" ? html`<div class="readme">
+      ${src.meta?.summary ? html`<p>${src.meta.summary}</p>` : null}
+      <p class="muted">The project's README and other documents open beside the page (the tabs on the right).</p>
+      <div class="button-row source-docs"><${SideButtons} refObj=${{ source: id }} small=${false} /></div>
       ${info?.license_text ? html`<details><summary>License text</summary><pre class="license-text">${info.license_text}</pre></details>` : null}</div>` : null}
     ${tab === "files" ? html`<div class="file-list">${!info ? html`<p class="muted">Loading…</p>` : html`
-      <p class="muted">${plural(info.files.length, "file")}${info.files.length >= 2000 ? " (first 2000)" : ""} in <code>${info.folder}</code></p>
-      <ul>${info.files.map(([p, n]) => html`<li><span>${p}</span><span class="muted">${bytes(n)}</span></li>`)}</ul>`}</div>` : null}
+      <p class="muted">${plural(info.files.length, "file")}${info.files.length >= 2000 ? " (first 2000)" : ""} in <code>${info.folder}</code>. OpenSCAD files open in the Code tab on the right.</p>
+      <ul>${info.files.map(([p, n]) => html`<li>${/\.scad$/i.test(p) && info.folder_rel != null
+        ? html`<button type="button" class="link-btn" data-code-file=${p} onClick=${() => openSide("code", { sideFile: { rel: `${info.folder_rel}/${p}`, label: p, ref: { source: id } } })}>${p}</button>`
+        : html`<span>${p}</span>`}<span class="muted">${bytes(n)}</span></li>`)}</ul>`}</div>` : null}
     ${tab === "versions" ? html`<div class="versions">${!info ? html`<p class="muted">Loading…</p>` : html`
       <ul>${(info.source.versions || []).slice().reverse().map((ver) => html`<li class=${ver.id === info.source.version ? "current" : ""}>
         <code>${ver.id}</code> ${when(ver.date)} ${ver.message ? html`<span class="muted">${ver.message}</span>` : null}

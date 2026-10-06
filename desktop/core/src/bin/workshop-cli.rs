@@ -531,6 +531,9 @@ fn content_type(path: &str) -> &'static str {
         "wasm" => "application/wasm",
         "ttf" => "font/ttf",
         "stl" => "model/stl",
+        "gif" => "image/gif",
+        "pdf" => "application/pdf",
+        "txt" | "md" | "scad" => "text/plain; charset=utf-8",
         _ => "application/octet-stream",
     }
 }

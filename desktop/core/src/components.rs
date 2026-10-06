@@ -1542,6 +1542,10 @@ pub fn write_bundled_indexes(libs: &Path) -> Result<Vec<(String, usize)>> {
         let index = index_library(&info, &libs.join(&info.name), curated(libs).get(&info.name), curated(libs).get("$no_guess").and_then(|n| n.get(&info.name)))?;
         let n = index["components"].as_array().map(|c| c.len()).unwrap_or(0);
         std::fs::write(libs.join("index").join(format!("{}.json", info.name)), serde_json::to_vec(&index)?)?;
+        // its README for the side viewer, pointing to GitHub at the pinned commit
+        let docs = crate::docs::library_docs(&info, &libs.join(&info.name), Some(&libs.join("docs").join(&info.name)));
+        std::fs::create_dir_all(libs.join("docs").join(&info.name))?;
+        std::fs::write(libs.join("docs").join(&info.name).join("docs.json"), serde_json::to_vec(&docs)?)?;
         out.push((info.name, n));
     }
     Ok(out)

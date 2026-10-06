@@ -199,6 +199,11 @@ export async function createPlatform() {
     info,
     store,
     api,
+    apiBytes,
+    /** A model file's text (by its content hash), for the side viewer's Code tab. */
+    modelFile: async (sha) => new TextDecoder().decode(await apiBytes("blob", { sha })),
+    /** A web link in the default browser. */
+    openUrl: (url) => invoke("open_url", { url }).catch((err) => console.warn("open_url", err)),
     makeEngine: (catalog) => new DesktopEngine(info, catalog, store.prefs),
     /** App files and the library's catalog, model pages and files (by relative path). */
     async fetch(path) {
