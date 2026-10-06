@@ -33,6 +33,7 @@ export const ui = createStore({
   openGroup: null,         // the condensed group being looked into
   showHidden: false,       // list hidden items and projects too
   catalogVersion: 0,       // bumps when the catalog is reloaded (desktop: library changes)
+  codeRev: 0,              // bumps when an open model's code edits change (the Code tab follows)
   dialog: null,            // { type: "add-project" | "edit" | "merge", ... }
   undo: [],                // [{ label, run }] newest last (metadata edits)
 });

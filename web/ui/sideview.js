@@ -1,5 +1,7 @@
 // The side viewer (Phase 4): a collapsible panel on the right of the window with
-// tabs along its edge. "Code" shows the model's OpenSCAD files (read-only), and the
+// tabs along its edge. "Code" shows the model's OpenSCAD files (editable on the model's
+// own page: the edits render in place of the files and are kept with saved settings,
+// never written over the project's files), and the
 // other tabs the project's reference documents: its README (HTML, made from the
 // Markdown when the project was read), PDFs, readme.txt. It follows what's on
 // screen: the open model, or in the library the selected item or the project page.
@@ -180,15 +182,26 @@ function modelFiles(detail, extra) {
   return { files, first: extra ? files[0].id : files[0]?.id };
 }
 
-function CodeView({ detail, extra }) {
+/** A file of an open model's own that the Code tab can edit (not a library's file, not a component's). */
+const editableFile = (f) => !!(f && f.sha && !f.generated && !f.id.startsWith("/libraries/"));
+
+function CodeView({ detail, extra, editable = false }) {
   const { files, first } = modelFiles(detail, extra);
   const [pick, setPick] = useState(first);
-  const [state, setState] = useState({ text: null, error: null });
+  const [state, setState] = useState({ text: null, error: null }); // the file as it is
   const [find, setFind] = useState("");
   const wrap = useStore(ui, (s) => !!s.side?.wrap);
+  useStore(ui, (s) => s.codeRev || 0); // edits changed (typed, a saved variant picked, Defaults)
   const box = useRef(null);
+  const ta = useRef(null);
+  const hl = useRef(null);
   const hit = useRef(-1);
   const file = files.find((f) => f.id === pick) || files[0];
+  // editing: on a model's own page, its own files; the edited text lives on the page (app.js) until saved
+  const canEdit = editable && !!detail && editableFile(file);
+  const edits = editable && detail ? ctx.codeEdits?.(detail.key) || {} : {};
+  const edited = canEdit ? edits[file.id] : undefined;
+  const text = state.text == null ? null : edited ?? state.text;
   useEffect(() => { setPick(first); }, [detail?.key, extra?.rel]);
   useEffect(() => {
     if (!file) return;
@@ -196,53 +209,104 @@ function CodeView({ detail, extra }) {
     setState({ text: null, error: null });
     const values = detail && (ctx.currentValues?.(detail.key) || Object.fromEntries((detail.parameters || []).map((p) => [p.name, p.default])));
     const p = file.generated ? ctx.platform.api("component_code", { key: detail.key, values }) : readFile(file);
-    p.then((text) => live && setState({ text, error: null }), (e) => live && setState({ text: null, error: String(e.message || e) }));
+    p.then((t) => live && setState({ text: t, error: null }), (e) => live && setState({ text: null, error: String(e.message || e) }));
     return () => { live = false; };
   }, [file?.id, detail?.key]);
   // a component's own file opens at the module
   useEffect(() => {
-    if (state.text == null || !box.current) return;
+    if (state.text == null || !box.current || canEdit) return;
     hit.current = -1;
     const line = file?.line;
     const el = line ? box.current.querySelector(`.cl:nth-child(${line})`) : null;
     if (el) { el.classList.add("mark"); el.scrollIntoView({ block: "start" }); box.current.scrollTop -= 24; } else box.current.scrollTop = 0;
   }, [state.text]);
+  // the editor's text follows edits made elsewhere (a saved variant, Defaults, Revert), not its own typing
+  useEffect(() => {
+    const t = ta.current;
+    if (!t || state.text == null) return;
+    const want = (ctx.codeEdits?.(detail.key) || {})[file.id] ?? state.text;
+    if (t.value !== want) t.value = want;
+  });
+  // the highlighted copy under the editor scrolls with it, and wraps at the same width
+  const follow = () => {
+    const t = ta.current, h = hl.current;
+    if (!t || !h) return;
+    h.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
+    h.style.width = wrap ? `${t.clientWidth}px` : "";
+  };
+  useEffect(() => {
+    const t = ta.current;
+    if (!t) return;
+    follow();
+    const ro = new ResizeObserver(follow);
+    ro.observe(t);
+    return () => ro.disconnect();
+  });
   if (!file) return html`<p class="side-empty">No OpenSCAD files to show.</p>`;
-  const lines = state.text != null ? highlight(state.text) : null;
+  const lines = text != null ? highlight(text) : null;
   const findNext = (back = false) => {
     const q = find.trim().toLowerCase();
     if (!q || !lines || !box.current) return;
-    const rows = state.text.split("\n");
+    const rows = text.split("\n");
     const n = rows.length;
+    const holder = canEdit ? hl.current : box.current;
     for (let k = 1; k <= n; k++) {
       const i = (hit.current + (back ? -k : k) + n * 2) % n;
       if (rows[i].toLowerCase().includes(q)) {
         hit.current = i;
-        box.current.querySelectorAll(".cl.found").forEach((e) => e.classList.remove("found"));
-        const el = box.current.children[i];
+        holder.querySelectorAll(".cl.found").forEach((e) => e.classList.remove("found"));
+        const el = holder.children[i];
         el?.classList.add("found");
-        el?.scrollIntoView({ block: "center" });
+        if (canEdit && el) ta.current.scrollTop = el.offsetTop - ta.current.clientHeight / 2;
+        else el?.scrollIntoView({ block: "center" });
         return;
       }
     }
     ctx.toast?.(`“${find}” isn't in this file.`);
   };
+  const type = (v) => ctx.setCodeEdit(detail.key, file.id, v === state.text ? null : v);
+  const onKey = (e) => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (e.key === "Tab" && !mod && !e.altKey && !e.shiftKey) {
+      // indent (Shift+Tab still leaves the editor)
+      e.preventDefault();
+      if (!document.execCommand?.("insertText", false, "    ")) { e.target.setRangeText("    ", e.target.selectionStart, e.target.selectionEnd, "end"); type(e.target.value); }
+    } else if (mod && e.key === "Enter") { e.preventDefault(); ctx.generate?.(); }
+    else if (mod && (e.key === "s" || e.key === "S")) { e.preventDefault(); ctx.saveCode?.(); }
+  };
+  const status = detail && Object.keys(edits).length ? ctx.codeStatus?.(detail.key) : "none";
+  const label = (f) => (edits[f.id] != null ? `${f.label} (edited)` : f.label);
+  const foot = !lines ? null
+    : !canEdit ? "read-only"
+    : edited != null ? (status === "saved" ? "edited · saved with these settings" : "edited · not saved · Generate uses it")
+    : "editable · the project's file stays as it is";
+  const rowsHtml = (ls, pad) => ls.map((l, i) => `<div class="cl" data-n="${i + 1}">${l || " "}</div>`).join("") + (pad ? '<div class="cl" data-n=""> </div>' : "");
   return html`<div class="side-code">
     <div class="side-tools">
       ${files.length > 1 ? html`<select class="side-file" aria-label="File" value=${file.id} onChange=${(e) => setPick(e.target.value)} id="side-file">
-        ${files.map((f) => html`<option value=${f.id}>${f.label}</option>`)}</select>` : html`<span class="side-file-one" title=${file.label}>${file.label}</span>`}
+        ${files.map((f) => html`<option value=${f.id}>${label(f)}</option>`)}</select>` : html`<span class="side-file-one" title=${file.label}>${label(file)}</span>`}
       <input type="search" class="side-find" placeholder="Find" aria-label="Find in this file" value=${find}
         onInput=${(e) => { setFind(e.target.value); hit.current = -1; }} onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); findNext(e.shiftKey); } }} />
       <button type="button" class="ghost small" aria-pressed=${wrap ? "true" : "false"} title="Wrap long lines"
         onClick=${() => setPref({ side: { ...ui.get().side, wrap: !wrap } })}>Wrap</button>
-      <button type="button" class="ghost small" title="Copy this file's code" disabled=${state.text == null} id="side-copy"
-        onClick=${() => navigator.clipboard.writeText(state.text).then(() => ctx.toast?.("Code copied."), () => ctx.toast?.("The clipboard isn't available."))}>${Icon.code(14)} Copy</button>
+      <button type="button" class="ghost small" title="Copy this file's code" disabled=${text == null} id="side-copy"
+        onClick=${() => navigator.clipboard.writeText(text).then(() => ctx.toast?.("Code copied."), () => ctx.toast?.("The clipboard isn't available."))}>${Icon.code(14)} Copy</button>
+      ${canEdit && edited != null ? html`<button type="button" class="ghost small" id="side-revert" title="Back to the project's own version of this file"
+        onClick=${() => ctx.setCodeEdit(detail.key, file.id, null)}>Revert</button>` : null}
+      ${editable && status === "unsaved" ? html`<button type="button" class="ghost small" id="side-save" title="Keep these edits with the settings, as a variant you can pick later (Ctrl+S). The original file isn't changed."
+        onClick=${() => ctx.saveCode?.()}>Save…</button>` : null}
     </div>
     ${state.error ? html`<p class="side-empty">${state.error}</p>`
       : !lines ? html`<p class="side-empty">Loading…</p>`
+      : canEdit ? html`<div class=${`code edit${wrap ? " wrap" : ""}`} ref=${box}>
+          <div class="ed-hl" ref=${hl} aria-hidden="true" dangerouslySetInnerHTML=${{ __html: rowsHtml(lines, true) }}></div>
+          <textarea class="ed-ta" ref=${ta} id="side-editor" spellcheck="false" autocapitalize="off" autocomplete="off" wrap=${wrap ? "soft" : "off"}
+            aria-label=${`${file.label}: OpenSCAD code, editable. Ctrl+Enter generates, Ctrl+S saves, Shift+Tab leaves.`}
+            onInput=${(e) => type(e.target.value)} onScroll=${follow} onKeyDown=${onKey}></textarea>
+        </div>`
       : html`<div class=${`code${wrap ? " wrap" : ""}`} ref=${box} tabindex="0" aria-label=${`${file.label}, ${lines.length} lines, read-only`}
-          dangerouslySetInnerHTML=${{ __html: lines.map((l, i) => `<div class="cl" data-n="${i + 1}">${l || " "}</div>`).join("") }}></div>`}
-    ${lines ? html`<p class="side-foot muted">${lines.length.toLocaleString()} lines · read-only</p>` : null}
+          dangerouslySetInnerHTML=${{ __html: rowsHtml(lines, false) }}></div>`}
+    ${lines ? html`<p class="side-foot muted" id="side-foot">${lines.length.toLocaleString()} lines · ${foot}</p>` : null}
   </div>`;
 }
 
@@ -288,6 +352,10 @@ function DocView({ refObj, doc, info, onOpenCode }) {
   const [state, setState] = useState({ data: null, error: null });
   const frame = useRef(null);
   const theme = useStore(ui, (s) => s.theme);
+  // a link that still opened a page in the frame (a PDF's, say): a way back to the document
+  const [away, setAway] = useState(false);
+  const [round, setRound] = useState(0);
+  const loads = useRef(0);
   useEffect(() => {
     let live = true;
     setState({ data: null, error: null });
@@ -333,7 +401,7 @@ function DocView({ refObj, doc, info, onOpenCode }) {
       if ((d && d.URL === "about:srcdoc" && d.body && d.readyState !== "loading") || ++n > 100) { clearInterval(t); if (d?.URL === "about:srcdoc") wire(); }
     }, 50);
     return () => clearInterval(t);
-  }, [state.data]);
+  }, [state.data, round]);
   // the app's colours follow the theme
   useEffect(() => {
     const st = frame.current?.contentDocument?.getElementById("app-style");
@@ -346,6 +414,16 @@ function DocView({ refObj, doc, info, onOpenCode }) {
     setPdfUrl(u);
     return () => URL.revokeObjectURL(u);
   }, [data]);
+  const onFrameLoad = () => {
+    loads.current += 1;
+    let d = null;
+    try { d = frame.current?.contentDocument; } catch { /* another site's page */ }
+    if (data?.kind === "html") { if (d && d.URL === "about:srcdoc") wire(); else setAway(true); }
+    else if (loads.current > 1) setAway(true); // a PDF: its first load is the PDF itself
+  };
+  const back = () => { loads.current = 0; setAway(false); setRound((r) => r + 1); };
+  const awayBar = away ? html`<div class="side-tools doc-away" role="status"><span>A link opened a web page here.</span>
+    <button type="button" class="ghost small" id="side-doc-back" onClick=${back}>Back to ${doc.title}</button></div>` : null;
   if (state.error) return html`<p class="side-empty">${state.error}</p>`;
   if (!data) return html`<p class="side-empty">Loading…</p>`;
   if (data.kind === "text") return html`<pre class="doc-text">${data.text}</pre>`;
@@ -355,14 +433,14 @@ function DocView({ refObj, doc, info, onOpenCode }) {
     if (navigator.pdfViewerEnabled === false) {
       return html`<div class="side-empty"><p>This window can't show PDFs.</p>${external}</div>`;
     }
-    return html`<div class="doc-pdf">${external ? html`<div class="side-tools">${external}</div>` : null}
-      ${pdfUrl ? html`<iframe class="doc-frame" title=${doc.title} src=${pdfUrl}></iframe>` : null}</div>`;
+    return html`<div class="doc-pdf">${external ? html`<div class="side-tools">${external}</div>` : null}${awayBar}
+      ${pdfUrl ? html`<iframe class="doc-frame" title=${doc.title} src=${pdfUrl} ref=${frame} key=${round} onLoad=${onFrameLoad}></iframe>` : null}</div>`;
   }
   const base = data.relative ? folderUrl(info) : null;
   const body = base ? absolutize(data.html, base) : data.html;
   const srcdoc = `<!doctype html><html><head><meta charset="utf-8"><style id="app-style">${docCss()}</style></head><body>${body}</body></html>`;
   // (no scripts run in the frame: sandbox without allow-scripts; same origin only so the page can style it and follow its links)
-  return html`<iframe class="doc-frame" title=${doc.title} sandbox="allow-same-origin" srcdoc=${srcdoc} ref=${frame} onLoad=${wire}></iframe>`;
+  return html`<div class="doc-box">${awayBar}<iframe class="doc-frame" title=${doc.title} sandbox="allow-same-origin" srcdoc=${srcdoc} ref=${frame} key=${round} onLoad=${onFrameLoad}></iframe></div>`;
 }
 
 // ---------------------------------------------------------------- the panel
@@ -437,7 +515,8 @@ export function SideView() {
         <button type="button" class="ghost small side-close" aria-label="Fold away" title="Fold away (Esc)" onClick=${close}>${Icon.close(14)}</button>
       </header>
       <div class="side-body">
-        ${current.kind === "code" ? (extra || detail ? html`<${CodeView} detail=${extra ? null : detail} extra=${extra} key=${extra ? extra.rel : detail?.key} />` : html`<p class="side-empty">Loading…</p>`)
+        ${current.kind === "code" ? (extra || detail ? html`<${CodeView} detail=${extra ? null : detail} extra=${extra} key=${extra ? extra.rel : detail?.key}
+              editable=${!!(target.open && !extra && detail && detail.kind !== "component" && !detail.pinned_from)} />` : html`<p class="side-empty">Loading…</p>`)
           : html`<${DocView} refObj=${ref} doc=${current} info=${info} key=${`${refKey(ref)}/${current.id}`}
               onOpenCode=${(f) => openSide("code", { sideFile: { ...f, ref } })} />`}
       </div>

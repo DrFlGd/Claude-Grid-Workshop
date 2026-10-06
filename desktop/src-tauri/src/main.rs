@@ -144,6 +144,23 @@ fn open_url(app: AppHandle, url: String) -> Result<(), String> {
     app.opener().open_url(url, None::<&str>).map_err(err)
 }
 
+/// The app's own addresses: its pages, the library's files, and the frames it makes (a README,
+/// a PDF). Anything else a link or a PDF leads to opens in the browser instead of replacing the app.
+fn in_app(url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "tauri" | "library" | "asset" | "ipc" | "about" | "blob" | "data" => true,
+        "http" | "https" => url.host_str().is_some_and(|h| h == "localhost" || h == "127.0.0.1" || h.ends_with(".localhost")),
+        _ => false,
+    }
+}
+
+/// A web or mail link that tried to open in the app: hand it to the system.
+fn open_outside(app: &AppHandle, url: &tauri::Url) {
+    if matches!(url.scheme(), "http" | "https" | "mailto") {
+        let _ = app.opener().open_url(url.to_string(), None::<&str>);
+    }
+}
+
 fn mime(path: &str) -> &'static str {
     match path.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str() {
         "webp" => "image/webp",
@@ -201,6 +218,25 @@ fn main() {
             };
             let core = App::new(paths)?;
             app.manage(AppState { app: core });
+            // the window (tauri.conf.json, "create": false), made here so that a link in a README or a
+            // PDF can't take it over: the web opens in the browser, and no other windows open
+            let cfg = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("tauri.conf.json has no main window")?;
+            let (to_browser, to_browser2) = (app.handle().clone(), app.handle().clone());
+            tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?
+                .on_navigation(move |url| {
+                    if in_app(url) {
+                        return true;
+                    }
+                    open_outside(&to_browser, url);
+                    false
+                })
+                .on_new_window(move |url, _features| {
+                    if !in_app(&url) {
+                        open_outside(&to_browser2, &url);
+                    }
+                    tauri::webview::NewWindowResponse::Deny
+                })
+                .build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![api, api_bytes, render, render_cancel, save_file, pick_folder, pick_file, reveal, open_path, open_url])

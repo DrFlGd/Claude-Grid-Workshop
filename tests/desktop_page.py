@@ -21,7 +21,8 @@ app's; 0.3.1: the left menu's category panel, a doc-listed setting as a drop-dow
 Edit… in Library settings, long text kept inside its box; 0.4: the side viewer (a
 model's code, a project's README, a component's file at its module), settings from
 the values in a model's module call (the Gears examples; LEGO.scad's style, borrowing the library's
-descriptions and drop-downs); and the library opening
+descriptions and drop-downs); 0.4.1: the Code tab as an editor (Generate uses the
+edits, saved as a variant with the settings, the project's file untouched); and the library opening
 the same after being moved (library-summary). Writes
 <out>/library-summary.json and <out>/library.zip for the cross-platform check.
 """
@@ -91,6 +92,14 @@ def start_server():
         except Exception:
             time.sleep(0.2)
     raise SystemExit("the server didn't start; see serve.log")
+
+
+async def gen(pg):
+    """Generate and wait for it; the dimensions shown."""
+    await pg.click("#generate")
+    await pg.wait_for_function("()=>!document.querySelector('#generate').disabled", timeout=120000)
+    await pg.wait_for_function(DONE, timeout=120000)
+    return (await pg.inner_text("#dims")).split("\n")[0]
 
 
 async def index_items(pg, project):
@@ -330,6 +339,46 @@ async def main():
                   fields.get("width") == ["number", "Width of the block, in studs"] and fields.get("height", [None])[0] == "1/3"
                   and fields.get("type", [None])[0] == "Tile" and "15.8 × 31.8 × 3.2" in dims0 and "× 9.6" in dims1.split("\n")[0],
                   (fields, dims0.split("\n")[0], dims1.split("\n")[0]))
+            # 5e. the Code tab edits the model (0.4.1): Generate uses the edits, Save keeps them with the
+            # settings as a variant (not a copy of the model), Defaults goes back to the original code, and
+            # the project's file is never written
+            plate = (library / "local/bricks/examples/plate.scad").read_text()
+            await pg.click("#model-extra [data-side-open=code]")
+            await pg.wait_for_selector("#side-editor")
+            await pg.wait_for_function("() => document.querySelector('#side-editor').value.includes('width = 2;')")
+            original = await pg.input_value("#side-editor")
+            await pg.fill("#side-editor", original.replace("width = 2;", "width = 3;"))
+            stale = await pg.inner_text("#status")
+            dims_edit = await gen(pg)
+            await pg.click("#side-save")
+            await pg.wait_for_selector("#save-dialog[open]")
+            await pg.fill("#save-name", "Three wide")
+            await pg.click("#save-primary")
+            await pg.wait_for_selector("#save-dialog", state="hidden")
+            recs = [json.loads(f.read_text()) for f in (library / "recipes").glob("*.json")]
+            rec = next((r for r in recs if r.get("model") == "local-bricks/examples-plate" and r.get("name") == "Three wide"), {})
+            stored = rec.get("edits") or {}
+            entry_edit = stored.get("/examples/plate.scad") or {}
+            await pg.select_option("#settings-pick", "default")
+            await pg.wait_for_function("() => !document.querySelector('#side-editor').value.includes('width = 3;')")
+            await pg.wait_for_function(DONE, timeout=120000)
+            dims_default = (await pg.inner_text("#dims")).split("\n")[0]
+            await pg.select_option("#settings-pick", f"saved:{rec.get('id')}")
+            await pg.wait_for_function("() => document.querySelector('#side-editor').value.includes('width = 3;')")
+            await pg.wait_for_function(DONE, timeout=120000)
+            dims_variant = (await pg.inner_text("#dims")).split("\n")[0]
+            listed = await pg.eval_on_selector_all("#settings-pick option", "els => els.map((e) => e.textContent)")
+            items_after = [i for i in await index_items(pg, "local-bricks") if "plate" in i["id"]]
+            check("the Code tab edits a model: Generate uses the edits; saved as a variant with the settings; Defaults is the original code; the file is untouched",
+                  "Code changed" in stale and "23.8 × 31.8 × 9.6" in dims_edit and "width = 3;" in entry_edit.get("text", "")
+                  and len(entry_edit.get("base") or "") == 64 and rec.get("values") == {"height": 1}
+                  and "15.8 × 31.8 × 3.2" in dims_default and "23.8 × 31.8 × 9.6" in dims_variant
+                  and "Three wide · code edited" in listed and len(items_after) == 1
+                  and (library / "local/bricks/examples/plate.scad").read_text() == plate,
+                  (stale, dims_edit, dims_default, dims_variant, rec.get("values"), list(stored), listed, len(items_after)))
+            await pg.screenshot(path=str(out / "p4-03-code-edited.png"))
+            await pg.select_option("#settings-pick", "default")
+            await pg.wait_for_function(DONE, timeout=120000)
             await pg.goto(B + f"#/m/{gears}/examples-bevel-gear")
             await pg.wait_for_function(f"()=>document.body.dataset.model==='{gears}/examples-bevel-gear'")
             await pg.wait_for_function(DONE, timeout=120000)

@@ -1,6 +1,8 @@
 // Page side of the browser engine: compiles OpenSCAD once, runs each render in
 // its own worker, and remembers finished renders for this visit.
 
+import { editsKey } from "./lib/edits.js";
+
 const resolve = (p) => new URL(p, document.baseURI).href;
 
 export class EngineClient {
@@ -23,7 +25,7 @@ export class EngineClient {
   }
 
   static key(model, values) {
-    return JSON.stringify([model.key, Object.keys(values).sort().map((k) => [k, values[k]])]);
+    return JSON.stringify([model.key, Object.keys(values).sort().map((k) => [k, values[k]]), editsKey(model.edits)]);
   }
 
   /**
@@ -36,13 +38,16 @@ export class EngineClient {
     const cached = this.results.get(key);
     if (cached) return { promise: Promise.resolve({ ...cached, cached: true }), cancel() {} };
 
-    const entries = Object.entries({ ...this.commonFiles, ...model.files });
-    const filesReady = this.readFile
+    // (edited files, from the Code tab, go in as their text instead of the original)
+    const edits = model.edits || {};
+    const entries = Object.entries({ ...this.commonFiles, ...model.files }).filter(([p]) => !(p in edits));
+    const edited = Object.entries(edits).map(([p, text]) => [p, new TextEncoder().encode(text)]);
+    const filesReady = (this.readFile
       ? Promise.all(entries.map(async ([p, sha]) => {
           if (!this.fileCache.has(sha)) this.fileCache.set(sha, await this.readFile(sha));
           return [p, this.fileCache.get(sha).slice()];
-        })).then(Object.fromEntries)
-      : Promise.resolve(Object.fromEntries(entries.map(([p, sha]) => [p, resolve(`fs/${sha}`)])));
+        }))
+      : Promise.resolve(entries.map(([p, sha]) => [p, resolve(`fs/${sha}`)]))).then((list) => Object.fromEntries([...list, ...edited]));
     let worker = null;
     let cancelled = false;
     let rejectRun;

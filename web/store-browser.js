@@ -69,13 +69,14 @@ export class BrowserStore {
       async persistent() { return (await backend()).persistent; },
       async list(model) { return (await backend()).list(model); },
       async get(id) { return (await backend()).get(id); },
-      /** Create ({model, name, values}) or update ({id, ...changes}); returns the stored record. */
+      /** Create ({model, name, values, edits?}) or update ({id, ...changes}); returns the stored record.
+       *  edits: the Code tab's edited files, { path: { text, base } } (null: none). */
       async save(rec) {
         const b = await backend();
         const now = new Date().toISOString();
         const old = rec.id ? await b.get(rec.id) : null;
         const row = old ? { ...old, ...rec, updated: now }
-          : { id: newId(), model: rec.model, name: rec.name, values: rec.values, created: now, updated: now };
+          : { id: newId(), model: rec.model, name: rec.name, values: rec.values, ...(rec.edits ? { edits: rec.edits } : {}), created: now, updated: now };
         return b.put(row);
       },
       async remove(id) { return (await backend()).remove(id); },

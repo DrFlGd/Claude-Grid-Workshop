@@ -120,7 +120,10 @@ class DesktopEngine {
         defines: (model.parameters || []).filter((p) => p.define).map((p) => p.name),
         call: model.call || null, // a component: the app writes the call with these values
       };
-      invoke("render", { job, req, onEvent: channel }).then((buf) => {
+      // edited files (the Code tab): stored by their hash in the app's data folder, used in place of the originals
+      const edited = Object.entries(model.edits || {});
+      Promise.all(edited.map(async ([p, text]) => { req.files[p] = await api("blob_put", { text }); }))
+        .then(() => (settled ? Promise.reject(cancelledError()) : invoke("render", { job, req, onEvent: channel }))).then((buf) => {
         settled = true;
         const ms = meta?.ms ?? performance.now() - started;
         resolve({ blob: new Blob([buf], { type: "model/stl" }), ms, cached: meta ? !!meta.cached : ms < 40, logs: meta?.logs || [], engine: "native" });
@@ -152,7 +155,7 @@ export async function createPlatform() {
       const now = new Date().toISOString();
       const old = rec.id ? await api("settings_get", { id: rec.id }) : null;
       const row = old ? { ...old, ...rec, updated: now }
-        : { id: newId(), model: rec.model, name: rec.name, values: rec.values, created: now, updated: now };
+        : { id: newId(), model: rec.model, name: rec.name, values: rec.values, ...(rec.edits ? { edits: rec.edits } : {}), created: now, updated: now };
       await api("settings_put", { record: row });
       return row;
     },

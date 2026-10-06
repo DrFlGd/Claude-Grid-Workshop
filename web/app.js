@@ -4,10 +4,11 @@ import { Viewer } from "./viewer.js";
 import { createPlatform } from "./platform.js";
 import { makeZip } from "./zip.js";
 import { changedValues, withChanges, encodeShare, decodeShare, toOpenSCAD, fromOpenSCAD } from "./settings-codec.js";
+import { editsKey } from "./lib/edits.js";
 import { $, el, humanize, fmt, same, bytes, plural, safeHTML, compileCondition, STATUS_TEXT, spdx, FORMAT_LABEL } from "./lib/util.js";
 import { LocalIndex } from "./ui/index-local.js";
 import { mountShell } from "./ui/shell.js";
-import { sideModelButtons } from "./ui/sideview.js";
+import { sideModelButtons, openSide } from "./ui/sideview.js";
 import { setContext } from "./ui/context.js";
 import { html, render } from "./lib/html.js";
 import { LibrarySettingsPage } from "./ui/libsettings.js";
@@ -106,16 +107,64 @@ function stashTab() {
   if (!state.model) return;
   const st = $("#status");
   tabStates.set(state.model.key, {
-    model: state.model, values: state.values, rendered: state.rendered, lastResult: state.lastResult,
+    model: state.model, values: state.values, rendered: state.rendered, renderedEdits: state.renderedEdits, lastResult: state.lastResult,
     lastResultValues: state.lastResultValues, savedActive: saved.active, status: [st.className.replace("status", "").trim(), st.textContent],
   });
 }
+
+// ---------------------------------------------------------------- code edits
+// The side viewer's Code tab edits an open model's files: { "/path.scad": text } per model,
+// rendered in place of the originals (never written over them) and kept with saved settings
+// (`edits: { path: { text, base } }`, base = the original's hash). docs/DESKTOP_PLAN.md, "Editing the code".
+const codeEdits = new Map();
+const editsOf = (key) => codeEdits.get(key) || {};
+const hasEdits = (key) => Object.keys(editsOf(key)).length > 0;
+const editTexts = (recEdits) => Object.fromEntries(Object.entries(recEdits || {}).map(([p, e]) => [p, typeof e === "string" ? e : e.text]));
+
+function setEdits(key, edits) {
+  if (edits && Object.keys(edits).length) codeEdits.set(key, edits);
+  else codeEdits.delete(key);
+  ui.set((s) => ({ codeRev: (s.codeRev || 0) + 1 }));
+  if (state.model?.key === key) { updateStatusForEdits(); renderSettingsPick(); renderCodeNote(); }
+}
+
+/** Above the form while the code is edited: where a setting's default now comes from. */
+function renderCodeNote() {
+  const n = $("#code-note");
+  if (!n || !state.model) return;
+  const files = Object.keys(editsOf(state.model.key)).length;
+  n.hidden = !files;
+  if (files) n.replaceChildren(`Code edited (${plural(files, "file")}): settings left at their defaults take the code's values. `,
+    el("button", { type: "button", class: "link-btn", text: "Show the code", onclick: () => openSide("code", { sideFile: null }) }));
+}
+
+/** One file's edit (null: back to the original). */
+function setCodeEdit(key, path, text) {
+  const e = { ...editsOf(key) };
+  if (text == null) delete e[path];
+  else e[path] = text;
+  setEdits(key, e);
+}
+
+/** "none", "saved" (the saved settings on screen have these edits) or "unsaved". */
+function codeStatus(key) {
+  if (!hasEdits(key)) return "none";
+  const rec = state.model?.key === key ? activeSaved() : null;
+  return rec?.edits && editsKey(editTexts(rec.edits)) === editsKey(editsOf(key)) ? "saved" : "unsaved";
+}
+
+/** The model as the engines get it: its edited files go in place of the originals. */
+const forRender = (model) => (hasEdits(model.key) ? { ...model, edits: editsOf(model.key) } : model);
+/** The values the engines get: while the code is edited, only those changed from the defaults, so a
+ *  default changed in the code applies unless the form changes it. */
+const renderValues = (model, values) => (hasEdits(model.key) ? changedValues(model, values) : values);
 
 function closeModelTab(key) {
   const tabs = ui.get().tabs;
   const i = tabs.indexOf(key);
   const rest = tabs.filter((k) => k !== key);
   tabStates.delete(key);
+  codeEdits.delete(key);
   const showing = ui.get().view === "model" && state.model?.key === key;
   if (state.model?.key === key) { cancelJob(); state.model = null; }
   setTabs(rest, showing ? null : ui.get().activeTab);
@@ -285,13 +334,13 @@ async function openModel(key, shareCode = null, savedId = null) {
   const kept = !shareCode && tabStates.get(key);
   if (kept) {
     // back to an open tab: its settings and last result, no new render
-    Object.assign(state, { model: kept.model, values: kept.values, rendered: kept.rendered, lastResult: kept.lastResult, lastResultValues: kept.lastResultValues });
+    Object.assign(state, { model: kept.model, values: kept.values, rendered: kept.rendered, renderedEdits: kept.renderedEdits, lastResult: kept.lastResult, lastResultValues: kept.lastResultValues });
     saved.active = kept.savedActive;
     buildForm();
     await loadSaved();
     if (savedId) chooseSettings(`saved:${savedId}`);
     else if (kept.lastResult) {
-      await showResult(kept.lastResult, kept.lastResultValues, true);
+      await showResult(kept.lastResult, kept.lastResultValues, true, kept.renderedEdits);
       setStatus(kept.status[0], kept.status[1]);
       updateStatusForEdits();
     } else generate();
@@ -300,7 +349,9 @@ async function openModel(key, shareCode = null, savedId = null) {
   }
   state.model = detail;
   state.rendered = null;
+  state.renderedEdits = "";
   state.lastResult = null;
+  if (shareCode) setEdits(key, null); // a shared link opens the original code
   state.viewer.clear();
   $("#dims").hidden = true;
   setDownload(null);
@@ -566,9 +617,10 @@ function settingsBar(presets) {
     el("button", { type: "button", class: "ghost", id: "settings-share", text: "Share", title: "Copy a link that opens this model with these settings", onclick: shareSettings }),
     more);
   const note = el("p", { id: "settings-note", class: "settings-note", role: "status", hidden: true });
+  const codeNote = el("p", { id: "code-note", class: "settings-note code-note", hidden: true });
   saved.presets = presets;
-  queueMicrotask(renderSettingsPick);
-  return el("div", { class: "settings-bar" }, bar, note);
+  queueMicrotask(() => { renderSettingsPick(); renderCodeNote(); });
+  return el("div", { class: "settings-bar" }, bar, note, codeNote);
 }
 
 const closeMenu = () => { const m = $("#settings-more"); if (m) m.open = false; };
@@ -581,7 +633,8 @@ function renderSettingsPick() {
   pick.replaceChildren(
     el("option", { value: "default", text: "Defaults" }),
     presets.length ? el("optgroup", { label: "Presets" }, presets.map((ps, i) => el("option", { value: `preset:${i}`, text: ps.label }))) : null,
-    saved.list.length ? el("optgroup", { label: "Saved" }, saved.list.map((r) => el("option", { value: `saved:${r.id}`, text: r.name }))) : null);
+    saved.list.length ? el("optgroup", { label: "Saved" }, saved.list.map((r) => el("option", { value: `saved:${r.id}`,
+      text: r.edits && Object.keys(r.edits).length ? `${r.name} · code edited` : r.name }))) : null);
   pick.value = saved.active || "default";
   if (pick.selectedIndex < 0) pick.value = "default";
   const isSaved = (saved.active || "").startsWith("saved:");
@@ -612,8 +665,17 @@ function note(text, kind = "") {
 const skippedText = (n) => (n ? ` ${plural(n, "setting")} didn't match this version of the model and stayed at the default.` : "");
 
 function chooseSettings(value) {
-  if (value === "default") setAllValues({});
-  else if (value.startsWith("preset:")) {
+  const key = state.model.key;
+  // Defaults and saved settings bring their own code (saved without edits: the original), presets only values
+  const replacesCode = value === "default" || value.startsWith("saved:");
+  if (replacesCode && codeStatus(key) === "unsaved" && !confirm("Go back to the original code? Your edits to the code aren't saved.")) {
+    renderSettingsPick();
+    return;
+  }
+  if (value === "default") {
+    setAllValues({});
+    setEdits(key, null);
+  } else if (value.startsWith("preset:")) {
     const ps = state.model.presets[+value.slice(7)];
     if (!ps) return;
     setAllValues({ ...state.values, ...ps.values }); // author presets set only what they're about (e.g. size)
@@ -622,7 +684,11 @@ function chooseSettings(value) {
     if (!rec) return;
     const { values, skipped } = withChanges(state.model, rec.values);
     setAllValues(values);
-    if (skipped.length) note(skippedText(skipped.length).trim(), "warn");
+    setEdits(key, editTexts(rec.edits));
+    // the project's file changed since (an update): the edited copy is still what's used
+    const moved = Object.entries(rec.edits || {}).filter(([p, e]) => e?.base && state.model.files?.[p] !== e.base).map(([p]) => p.split("/").pop());
+    if (moved.length) note(`${moved.join(", ")} changed in the project since “${rec.name}” was saved; your edited copy is used.`, "warn");
+    else if (skipped.length) note(skippedText(skipped.length).trim(), "warn");
   }
   saved.active = value;
   renderSettingsPick();
@@ -643,8 +709,10 @@ function openSaveDialog(mode) {
   $("#save-alt").hidden = !updating; // "Save as new"
   $("#save-primary").textContent = mode === "rename" ? "Rename" : updating ? `Update “${cur.name}”` : "Save";
   store.settings.persistent().then((keep) => {
+    const files = Object.keys(editsOf(state.model.key)).length;
     $("#save-note").textContent = mode === "rename" ? "" :
-      `Keeps the ${plural(changes, "setting")} you changed from the defaults` +
+      (files && !changes ? `Keeps your edits to ${plural(files, "file")} of code (the original stays as it is)`
+        : `Keeps the ${plural(changes, "setting")} you changed from the defaults` + (files ? ` and your edits to ${plural(files, "file")} of code (the original stays as it is)` : "")) +
       (platform.kind === "browser" ? (keep ? ", in this browser." : ". This browser isn't keeping site data (private window?), so they'll be gone when you close the tab.") : ".");
   });
   dlg.showModal();
@@ -673,13 +741,17 @@ async function saveSettings(asNew) {
   const key = state.model.key;
   try {
     let rec;
+    // code edits go with the values, each with the hash of the file it started from
+    const ed = Object.entries(editsOf(key)).map(([p, text]) => [p, { text, base: state.model.files?.[p] || null }]);
+    const edits = ed.length ? Object.fromEntries(ed) : null;
     if (mode === "rename" && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id) });
-    else if (!asNew && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id), values: changedValues(state.model, state.values) });
-    else rec = await store.settings.save({ model: key, name: uniqueName(name), values: changedValues(state.model, state.values) });
+    else if (!asNew && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id), values: changedValues(state.model, state.values), edits });
+    else rec = await store.settings.save({ model: key, name: uniqueName(name), values: changedValues(state.model, state.values), edits });
     dlg.close();
     saved.active = `saved:${rec.id}`;
     await loadSaved();
-    note(mode === "rename" ? `Renamed to “${rec.name}”.` : `Saved “${rec.name}”.`, "ok");
+    ui.set((s) => ({ codeRev: (s.codeRev || 0) + 1 })); // the Code tab says "saved"
+    note(mode === "rename" ? `Renamed to “${rec.name}”.` : `Saved “${rec.name}”${edits ? " with your code" : ""}.`, "ok");
   } catch (e) {
     note(`Couldn't save: ${e.message}`, "warn");
   }
@@ -761,13 +833,15 @@ function setStatus(kind, text) {
 }
 
 function updateStatusForEdits() {
-  if (state.job) return;
+  if (state.job || !state.model) return;
   const a = $("#download");
-  if (state.rendered && same(JSON.parse(state.rendered), state.values)) {
+  const valuesSame = state.rendered && same(JSON.parse(state.rendered), state.values);
+  const codeSame = (state.renderedEdits || "") === editsKey(editsOf(state.model.key));
+  if (valuesSame && codeSame) {
     setStatus("ok", "Preview matches your settings.");
     if (!a.classList.contains("is-disabled")) a.textContent = "Download STL";
   } else if (state.rendered) {
-    setStatus("stale", "Settings changed. Generate to update the preview and download.");
+    setStatus("stale", valuesSame ? "Code changed. Generate to update the preview and download." : "Settings changed. Generate to update the preview and download.");
     if (!a.classList.contains("is-disabled")) a.textContent = "Download last render";
   }
 }
@@ -802,11 +876,13 @@ function generate() {
   cancelJob();
   const values = structuredClone(state.values);
   const model = state.model;
+  const sent = forRender(model); // with the Code tab's edits
+  const ek = editsKey(sent.edits);
   const started = Date.now();
   $("#generate").disabled = true;
   $("#log").hidden = true;
   let stage = "Starting…";
-  const job = state.engine.render(model, values, (ev) => { if (ev.type === "stage") stage = ev.stage; });
+  const job = state.engine.render(sent, renderValues(model, values), (ev) => { if (ev.type === "stage") stage = ev.stage; });
   state.job = job;
   const tick = () => {
     if (state.job !== job) return;
@@ -819,7 +895,7 @@ function generate() {
   job.promise.then(async (result) => {
     if (state.job !== job) return;
     finishJob();
-    await showResult(result, values);
+    await showResult(result, values, false, ek);
   }, (err) => {
     if (state.job !== job) return;
     finishJob();
@@ -853,13 +929,14 @@ function cancelJob() {
   j.cancel();
 }
 
-async function showResult(result, values, restoring = false) {
+async function showResult(result, values, restoring = false, ek = state.renderedEdits || "") {
   document.body.dataset.engine = result.engine || ""; // which engine made it (desktop on Windows races two)
   try {
     const url = URL.createObjectURL(result.blob);
     const dims = await state.viewer.load(url);
     URL.revokeObjectURL(url);
     state.rendered = JSON.stringify(values);
+    state.renderedEdits = ek; // the code edits it was made with
     state.lastResult = result;
     state.lastResultValues = values;
     showDims(dims, result.blob.size);
@@ -868,7 +945,7 @@ async function showResult(result, values, restoring = false) {
       setStatus("ok", result.cached ? "Preview matches your settings." : `Preview matches your settings. Made in ${fmt(result.ms / 1000)} s on this device.`);
       if (state.model?.kind === "component") saveComponentThumb(state.model.key, result.blob); // the first render becomes its thumbnail
     }
-    if (!same(values, state.values)) updateStatusForEdits();
+    if (!same(values, state.values) || ek !== editsKey(editsOf(state.model?.key))) updateStatusForEdits();
   } catch (e) {
     setStatus("error", e.message);
   }
@@ -1039,7 +1116,7 @@ $("#batch-run").addEventListener("click", async () => {
       if (run.cancelled) throw Object.assign(new Error("Batch cancelled."), { cancelled: true });
       const i = next++;
       const values = { ...structuredClone(state.values), ...combos[i] };
-      const job = state.engine.render(model, values);
+      const job = state.engine.render(forRender(model), renderValues(model, values));
       run.jobs.add(job);
       try { results[i] = { values, result: await job.promise }; } finally { run.jobs.delete(job); }
       done++;
@@ -1058,7 +1135,7 @@ $("#batch-run").addEventListener("click", async () => {
     }
     const last = results[combos.length - 1];
     state.viewerOwner = "model";
-    await showResult(last.result, last.values, true);
+    await showResult(last.result, last.values, true, editsKey(editsOf(model.key)));
     bar.style.width = "100%";
     const zip = makeZip(files);
     const took = Math.round((Date.now() - started) / 1000);
@@ -1444,7 +1521,10 @@ async function reloadCatalog() {
     for (const l of state.libraries) state.libDetail[l.id] = l;
     state.index = new LocalIndex(state.catalog, state.libraries);
     mountShell({ platform, catalog: state.catalog, libraries: state.libraries, index: state.index, engine: state.engine,
-      loadModel, closeModelTab, openTabs, deliver, reloadCatalog, toast, route, refreshModel, currentValues });
+      loadModel, closeModelTab, openTabs, deliver, reloadCatalog, toast, route, refreshModel, currentValues,
+      // the Code tab's edits (an open model's page)
+      codeEdits: editsOf, setCodeEdit, codeStatus, generate: () => { if (ui.get().view === "model") generate(); },
+      saveCode: () => { if (ui.get().view === "model") openSaveDialog("save"); } });
     ui.set({ ready: true });
   } catch (e) {
     $("#view-browse").hidden = false;

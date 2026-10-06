@@ -453,6 +453,10 @@ impl App {
                 if p.is_file() {
                     return std::fs::read(p).map(Reply::Bytes).map_err(|e| e.to_string());
                 }
+                // an edited file (the Code tab), by its hash
+                if let Some(p) = self.edit_blob(sha).filter(|p| p.is_file()) {
+                    return std::fs::read(p).map(Reply::Bytes).map_err(|e| e.to_string());
+                }
                 let c = self.catalog()?;
                 let p = c.blobs.get(sha).ok_or_else(|| format!("file {sha} isn't in the library"))?;
                 let data = std::fs::read(p).map_err(|e| e.to_string())?;
@@ -460,6 +464,22 @@ impl App {
                 Ok(Reply::Bytes(if scad { crate::sitebuild::replace_crlf(&data) } else { data }))
             }
             "jobs" => j(self.jobs_json()),
+            "blob_put" => {
+                // an edited file's text (the Code tab): kept in the app's data folder by its hash, so a
+                // render can use it in place of the original (the original is never written to)
+                let text = args["text"].as_str().ok_or("no text")?;
+                let bytes = crate::sitebuild::replace_crlf(text.as_bytes());
+                let sha = { use sha2::Digest; hex::encode(sha2::Sha256::digest(&bytes)) };
+                let p = self.edit_blob(&sha).ok_or("bad hash")?;
+                if !p.is_file() {
+                    std::fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
+                    crate::config::write_atomic(&p, &bytes).map_err(e2s)?;
+                }
+                if let Ok(r) = self.renderer().await {
+                    r.add_blobs([(sha.clone(), p)]);
+                }
+                j(json!(sha))
+            }
             "prefs_get" => {
                 let mut p = self.prefs().get();
                 if let Ok(lib) = self.library() {
@@ -1059,6 +1079,11 @@ impl App {
     }
 
     /// A file in the open library, for the library:// protocol (thumbnails, part files).
+    /// Where an edited file's text is kept (`blob_put`).
+    fn edit_blob(&self, sha: &str) -> Option<PathBuf> {
+        (sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_hexdigit())).then(|| self.paths.data_dir.join("edits").join(sha))
+    }
+
     /// Where a project's or an app library's documents are (see `docs_list`).
     fn doc_target(&self, args: &Value) -> Result<DocTarget> {
         if let Some(name) = args["library"].as_str() {
