@@ -99,19 +99,27 @@ async def main():
         await pg.click('.sidebar [data-scope="all"]')
         await pg.wait_for_selector('.results [data-item^="gen:"]')
 
-        # the left menu: Parametric Models and the Parts Library, each by category (collapsed), projects inside
-        heads = await pg.eval_on_selector_all(".sidebar .nav-head", "els => els.map(e => e.textContent.trim())")
-        cats = await pg.locator('.sidebar [data-section="generator"] [data-scope^="cat:"]').count()
-        pcats = await pg.locator('.sidebar [data-section="part"] [data-scope^="pcat:"]').count()
-        projs = await pg.locator('.sidebar [data-scope^="project:"], .sidebar [data-scope^="lib:"]').count()
-        check("left menu: models and parts by category, collapsed", heads[:2] == ["Parametric Models", "Parts Library"] and cats >= 4 and pcats >= 1 and projs == 0,
-              (heads, cats, pcats, projs))
-        await pg.click('.sidebar [data-section="part"] .nav-toggle >> nth=0')
-        await pg.wait_for_selector('.sidebar [data-scope^="lib:"]')
-        await pg.click('.sidebar [data-scope^="lib:"] >> nth=0')
+        # the left menu: Parametric Models and the Parts Library; the section being browsed shows its
+        # categories (projects inside, collapsed) in a panel beside the menu, which folds away
+        sections = await pg.eval_on_selector_all(".sidebar [data-section-row] .nav-label", "els => els.map(e => e.textContent.trim())")
+        cats = await pg.locator('.catpanel [data-section="generator"] [data-scope^="cat:"]').count()
+        projs = await pg.locator('.catpanel [data-scope^="project:"]').count()
+        await pg.click('.sidebar [data-scope="parts"]')
+        await pg.wait_for_selector('.catpanel [data-section="part"] [data-scope^="pcat:"]')
+        pcats = await pg.locator('.catpanel [data-section="part"] [data-scope^="pcat:"]').count()
+        check("left menu: models and parts; their categories beside it, collapsed", sections[:2] == ["Parametric Models", "Parts Library"] and cats >= 4 and pcats >= 1 and projs == 0,
+              (sections, cats, pcats, projs))
+        await pg.click('.catpanel [data-section="part"] .nav-toggle >> nth=0')
+        await pg.wait_for_selector('.catpanel [data-scope^="lib:"]')
+        await pg.click('.catpanel [data-scope^="lib:"] >> nth=0')
         await pg.wait_for_selector('.results [data-item^="part:"]')
         check("a parts category opens to its projects", await items(pg) > 0, await pg.inner_text(".browse-title h1"))
-        await pg.click('.sidebar [data-section="part"] .nav-toggle >> nth=0')
+        await pg.click('.catpanel [data-section="part"] .nav-toggle >> nth=0')
+        await pg.click("#catpanel-toggle")
+        await pg.wait_for_selector(".catpanel.folded")
+        await pg.click("#catpanel-toggle")
+        await pg.wait_for_selector('.catpanel:not(.folded) [data-scope^="pcat:"]')
+        check("the category panel folds away and comes back", True)
         await pg.click('.sidebar [data-scope="all"]')
         await pg.wait_for_selector('.results [data-item^="gen:"]')
 

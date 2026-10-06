@@ -19,8 +19,8 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-/// Version of the index format (bump to read libraries again).
-pub const FORMAT: u64 = 1;
+/// Version of the index format (bump to read libraries again). 2: `listed` (choices from the docs).
+pub const FORMAT: u64 = 2;
 
 /// Files a library keeps (as tools/fetch_libraries.py): OpenSCAD files and the data files they import.
 const KEEP_EXT: [&str; 8] = ["scad", "stl", "dxf", "svg", "dat", "json", "csv", "off"];
@@ -474,6 +474,122 @@ fn parse_arguments(body: &[String]) -> BTreeMap<String, ArgDoc> {
     out
 }
 
+/// The values a setting's doc lists as its only choices: `One of "orig", "aligned", or "icosa"`,
+/// `Select "hull" or "intersect" anchor types`, `"ltr" for left to right.  "rtl" for right to left.`
+/// Runs of two or more quoted values joined by commas, "or", "and" (or each followed by what it
+/// means); not examples (`e.g. "M5x1" or "#8-32"`, `Default is "2B" for UTS and "6H" for ISO`),
+/// and nothing when the doc leaves the list open (`"a", "b", or a number`; `Alternatively, …`).
+pub fn doc_choices(doc: &str) -> Option<Vec<String>> {
+    let lower = doc.to_ascii_lowercase();
+    if ["alternatively", "you can also", "you can give", "can also be"].iter().any(|w| lower.contains(w)) {
+        return None;
+    }
+    // the quoted values (byte ranges inside the quotes)
+    let mut quotes: Vec<(usize, usize)> = vec![];
+    let mut i = 0;
+    while let Some(o) = doc[i..].find('"') {
+        let open = i + o + 1;
+        let Some(c) = doc[open..].find('"') else { break };
+        quotes.push((open, open + c));
+        i = open + c + 1;
+    }
+    let ok_value = |v: &str| {
+        !v.is_empty() && v.len() <= 30 && v.trim() == v && v.chars().all(|ch| ch.is_ascii_alphanumeric() || "#_-+. ".contains(ch))
+    };
+    if quotes.iter().any(|&(a, b)| !ok_value(&doc[a..b])) {
+        return None; // inch marks or quoted prose: the pairing can't be trusted
+    }
+    // between two values of one list: `, `, ` or `, `, and `, ` (alias `, or ` for left to right.  `
+    let joiner = |t: &str| {
+        let t = t.to_ascii_lowercase();
+        let words: Vec<&str> = t.split(|c: char| c.is_whitespace() || ",/()".contains(c)).filter(|w| !w.is_empty()).collect();
+        let plain = words.len() <= 1 && words.iter().all(|w| matches!(*w, "or" | "and" | "alias"));
+        let e = t.trim_end();
+        let described = t.starts_with(" for ")
+            && t.len() < 80
+            && (e.ends_with(',') || e.ends_with('.') || e.ends_with(';') || e.ends_with(" and") || e.ends_with(" or"));
+        plain || described
+    };
+    // the first list that the sentence introduces ("One of …", "Can be …", "Select …", or at the
+    // start of a sentence); lists mentioned in passing ("with "direct" and "reindex" methods") don't count
+    const LEADS: [&str; 14] = ["one of", "can be", "may be", "must be", "either", "are", "is", "select", "choose", "set to", "between", "using", "use", "to"];
+    let mut k = 0;
+    while k < quotes.len() {
+        let mut end = k;
+        while end + 1 < quotes.len() && joiner(&doc[quotes[end].1 + 1..quotes[end + 1].0 - 1]) {
+            end += 1;
+        }
+        let run = &quotes[k..=end];
+        k = end + 1;
+        if run.len() < 2 {
+            continue;
+        }
+        let before = lower[..run[0].0 - 1].trim_end();
+        if ["e.g.", "e.g.,", "such as", "as in", "like", "for example", "for example,", "default is", "default:", "default", "["]
+            .iter()
+            .any(|w| before.ends_with(w))
+        {
+            continue;
+        }
+        let introduced = before.is_empty()
+            || before.ends_with(['.', ':', ';', ',', '('])
+            || LEADS.iter().any(|w| before.ends_with(w) && !before[..before.len() - w.len()].ends_with(|c: char| c.is_ascii_alphanumeric()));
+        if !introduced {
+            continue;
+        }
+        // the rest of the sentence: "…, or a 3D point" leaves it open
+        let after = &lower[run[run.len() - 1].1 + 1..];
+        let sentence = &after[..after.find('.').unwrap_or(after.len())];
+        if [" or a ", " or an ", " or any ", " or other "].iter().any(|w| sentence.contains(w)) {
+            return None;
+        }
+        let mut out: Vec<String> = vec![];
+        for &(a, b) in run {
+            let v = &doc[a..b];
+            if !out.iter().any(|o| o == v) {
+                out.push(v.to_string());
+            }
+        }
+        return Some(out);
+    }
+    None
+}
+
+/// Choices other modules and functions document for their arguments ({name: {argument: values}}),
+/// for docs that point to them ("style = vnf_vertex_array() style to use").
+fn documented_choices(texts: &BTreeMap<String, String>) -> BTreeMap<String, BTreeMap<String, Vec<String>>> {
+    let mut out: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
+    for text in texts.values() {
+        let lines: Vec<&str> = text.lines().collect();
+        for blk in doc_blocks(&lines) {
+            let Some(args) = blk.secs.iter().find(|s| s.name == "Arguments") else { continue };
+            for (arg, d) in parse_arguments(&args.body) {
+                if let Some(list) = doc_choices(&d.doc) {
+                    out.entry(blk.name.clone()).or_default().insert(arg, list);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// A setting's choices: listed in its own doc, or in the doc of the module or function it points to.
+fn arg_choices(arg: &str, doc: &str, own: &str, others: &BTreeMap<String, BTreeMap<String, Vec<String>>>) -> Option<Vec<String>> {
+    doc_choices(doc).or_else(|| {
+        others.iter().filter(|(name, _)| name.as_str() != own).find_map(|(name, args)| {
+            let list = args.get(arg)?;
+            // "vnf_vertex_array() style to use", "vnf_vertex_array style"
+            let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
+            doc.match_indices(name.as_str())
+                .any(|(p, _)| {
+                    let rest = &doc[p + name.len()..];
+                    !word(doc[..p].chars().next_back()) && (rest.starts_with("()") || rest.starts_with(&format!(" {arg}")))
+                })
+                .then(|| list.clone())
+        })
+    })
+}
+
 /// The library's file-level "Includes:" lines (BOSL2 LibFile header).
 fn file_includes(lines: &[&str]) -> Vec<String> {
     let mut out = vec![];
@@ -514,7 +630,11 @@ fn doc_blocks(lines: &[&str]) -> Vec<DocBlock> {
     let mut i = 0;
     while i < lines.len() {
         let l = lines[i];
-        let head = l.strip_prefix("// Module: ").map(|r| ("Module", r)).or_else(|| l.strip_prefix("// Function&Module: ").map(|r| ("Function&Module", r)));
+        let head = l
+            .strip_prefix("// Module: ")
+            .map(|r| ("Module", r))
+            .or_else(|| l.strip_prefix("// Function&Module: ").map(|r| ("Function&Module", r)))
+            .or_else(|| l.strip_prefix("// Function: ").map(|r| ("Function", r)));
         if let Some((kind, rest)) = head {
             let name: String = rest.trim().chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
             let start = i;
@@ -779,6 +899,9 @@ pub struct Component {
     pub examples: Vec<Example>,
     /// choices for an argument: OpenSCAD expressions (NopSCADlib type constants)
     pub choices: BTreeMap<String, Vec<String>>,
+    /// text arguments whose docs list their values (their own doc, or the doc it points to)
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub listed: BTreeMap<String, Vec<String>>,
     /// its defaults don't make a shape (catalog/components.json "$no_guess"): wait for values
     #[serde(default)]
     pub hold: bool,
@@ -1003,6 +1126,7 @@ pub fn index_library(info: &LibInfo, root: &Path, curated: Option<&Value>, no_gu
     let docs_style = texts.values().any(|t| t.contains("\n// Module: ") || t.contains("\n// Function&Module: "));
     let bang_style = !docs_style && texts.values().filter(|t| t.contains("//!")).count() > 3;
     let style = if docs_style { "docs" } else if bang_style { "bang" } else { "signatures" };
+    let others = if docs_style { documented_choices(&texts) } else { BTreeMap::new() };
     let mut comps: Vec<Component> = vec![];
     let mut problems: Vec<String> = vec![];
     for (rel, text) in &texts {
@@ -1019,7 +1143,7 @@ pub fn index_library(info: &LibInfo, root: &Path, curated: Option<&Value>, no_gu
                     _ => l,
                 })
                 .collect();
-            for blk in doc_blocks(&lines) {
+            for blk in doc_blocks(&lines).into_iter().filter(|b| b.kind != "Function") {
                 let get = |n: &str| blk.secs.iter().find(|s| s.name == n);
                 let syntags = get("SynTags").map(|s| s.title.clone()).unwrap_or_default();
                 // needs children ("CHILDREN", "{ BASE; DIFF1; }") or a parent ("PARENT() show_anchors()")
@@ -1074,6 +1198,7 @@ pub fn index_library(info: &LibInfo, root: &Path, curated: Option<&Value>, no_gu
                     format!("{}/{}#{}", d.trim_end_matches('/'), rel, anchor_slug(&format!("{}: {}()", blk.kind, blk.name)))
                 });
                 let group = group_for(&topics, &blk.name, rel, dim).to_string();
+                let arg_docs = get("Arguments").map(|s| parse_arguments(&s.body)).unwrap_or_default();
                 comps.push(Component {
                     module: blk.name.clone(),
                     file: rel.clone(),
@@ -1088,7 +1213,8 @@ pub fn index_library(info: &LibInfo, root: &Path, curated: Option<&Value>, no_gu
                     dim,
                     doc_url,
                     args: def.args.iter().filter(|a| !a.0.starts_with('_') && !a.0.starts_with('$')).cloned().collect(),
-                    arg_docs: get("Arguments").map(|s| parse_arguments(&s.body)).unwrap_or_default(),
+                    listed: arg_docs.iter().filter_map(|(a, d)| arg_choices(a, &d.doc, &blk.name, &others).map(|l| (a.clone(), l))).collect(),
+                    arg_docs,
                     anchors,
                     examples,
                     choices: BTreeMap::new(),
@@ -1159,6 +1285,7 @@ pub fn index_library(info: &LibInfo, root: &Path, curated: Option<&Value>, no_gu
                 doc_url,
                 args: def.args.iter().filter(|a| !a.0.starts_with('$')).cloned().collect(),
                 arg_docs: BTreeMap::new(),
+                listed: BTreeMap::new(),
                 anchors: vec![],
                 examples: vec![],
                 choices,
@@ -1541,6 +1668,32 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
             choice(opts.iter().map(|o| (json!(o), o.clone())).collect(), default.clone(), &mut p);
             raw.push(name.clone());
             base.insert(name.clone(), default);
+        } else if let Some(list) = c.listed.get(name).cloned().or_else(|| doc_choices(&doc.doc)).filter(|_| {
+            // a text setting whose doc lists its values ("One of \"orig\", \"aligned\" …"): a drop-down
+            sig_lit.as_ref().map_or(sig.is_none(), |v| v.is_string() || v.is_null()) && ex_lits.iter().all(|v| v.as_ref().is_some_and(Value::is_string))
+        }) {
+            let sig_s = sig_lit.as_ref().and_then(|v| v.as_str()).map(String::from);
+            let mut values = list;
+            for v in sig_s.iter().cloned().chain(ex_lits.iter().flatten().filter_map(|v| v.as_str().map(String::from))) {
+                if !values.contains(&v) {
+                    values.push(v);
+                }
+            }
+            let mut opts: Vec<Value> = vec![];
+            if sig_s.is_none() {
+                let label = match doc.default_text.as_deref().map(|d| d.trim_matches('"')).filter(|d| !d.is_empty()) {
+                    Some(d) => format!("Default ({d})"),
+                    None => "Default".into(),
+                };
+                opts.push(json!({ "value": null, "label": label }));
+            }
+            opts.extend(values.iter().map(|v| json!({ "value": v, "label": v })));
+            let d = first_text.and_then(|t| parse_literal(t)).or_else(|| sig_s.as_ref().map(|s| json!(s))).unwrap_or(Value::Null);
+            p.insert("type".into(), json!("string"));
+            p.insert("widget".into(), json!("dropdown"));
+            p.insert("options".into(), Value::Array(opts));
+            p.insert("default".into(), d);
+            base.insert(name.clone(), sig_s.map(|s| json!(s)).unwrap_or(Value::Null));
         } else {
             // literal kinds from the signature and the examples; anything mixed is an expression
             let sig_val = sig_lit.clone().filter(|v| !v.is_null());
@@ -1678,12 +1831,16 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
     if c.hold && needs.is_empty() {
         needs.extend(c.args.first().map(|a| a.0.clone()));
     }
-    if c.hold {
-        for p in params.iter_mut().filter(|p| needs.iter().any(|n| p["name"] == n.as_str())) {
+    for p in params.iter_mut().filter(|p| needs.iter().any(|n| p["name"] == n.as_str())) {
+        if c.hold {
             p["default"] = Value::Null;
+        }
+        // a drop-down for a setting that must be filled in starts on "Choose…", not "Default"
+        if p["default"].is_null() {
             if let Some(opts) = p["options"].as_array_mut() {
-                if !opts.iter().any(|o| o["value"].is_null()) {
-                    opts.insert(0, json!({ "value": null, "label": "Choose…" }));
+                match opts.iter_mut().find(|o| o["value"].is_null()) {
+                    Some(o) => o["label"] = json!("Choose…"),
+                    None => opts.insert(0, json!({ "value": null, "label": "Choose…" })),
                 }
             }
         }
@@ -1832,6 +1989,62 @@ mod tests {
         assert_eq!(a["anchor"].default_text.as_deref(), Some("CENTER"));
         assert!(a["anchor"].doc.contains("See anchor."));
         assert!(a["anchor"].named_only);
+    }
+
+    #[test]
+    fn choices_from_the_docs() {
+        let s = |v: &[&str]| Some(v.iter().map(|x| x.to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            doc_choices(r#"The style of the spheroid's construction. One of "orig", "aligned", "stagger", "octa", or "icosa".  Default: "aligned""#),
+            s(&["orig", "aligned", "stagger", "octa", "icosa"])
+        );
+        assert_eq!(
+            doc_choices(r#"Valid options are "default", "alt", "flip1", "flip2",  "min_edge", "min_area", "quincunx", "convex" and "concave"."#).map(|v| v.len()),
+            Some(9)
+        );
+        assert_eq!(doc_choices(r#"Select "hull" or "intersect" anchor types.  Default: "hull""#), s(&["hull", "intersect"]));
+        assert_eq!(doc_choices(r#"A string, "male" or "female", to specify the gender of the dovetail."#), s(&["male", "female"]));
+        assert_eq!(
+            doc_choices(r#"The text direction.  "ltr" for left to right.  "rtl" for right to left. "ttb" for top to bottom. "btt" for bottom to top.  Default: "ltr""#),
+            s(&["ltr", "rtl", "ttb", "btt"])
+        );
+        assert_eq!(
+            doc_choices(r#""none" for no chamfer, "all" for full chamfering, and "bot" or "bottom" for bottom chamfering.  Default: "all"."#),
+            s(&["none", "all", "bot", "bottom"])
+        );
+        assert_eq!(
+            doc_choices(r#"one of "standard" (alias "large"), "medium", "small", or "tiny"."#),
+            s(&["standard", "large", "medium", "small", "tiny"])
+        );
+        // open-ended lists, examples, defaults, a single value: not choices
+        assert_eq!(doc_choices(r#"Can be "centroid", "mean", "box" or a 3D point.  Default: "centroid""#), None);
+        assert_eq!(doc_choices(r#""thin", "normal", "thick", or a thickness in mm.  Default: "normal""#), None);
+        assert_eq!(doc_choices(r#"Set to "circle" for a circle hole, "D" for a D-shaped (semicircular) hole or a path to create a custom hole."#), None);
+        assert_eq!(doc_choices(r#"Standard named paths are "flat", "sawtooth" and "jigsaw".  Alternatively, you can give a cutpath as a 2D path."#), None);
+        assert_eq!(doc_choices(r##"nut specification, e.g. "M5x1" or "#8-32".  See screw naming."##), None);
+        assert_eq!(doc_choices(r#"See tolerance. Default is "2B" for UTS and "6H" for ISO."#), None);
+        assert_eq!(doc_choices(r#"vnf_vertex_array style.  Default: "min_edge""#), None);
+        assert_eq!(doc_choices(r#"NPT size in inches.  1/16", 1/8", or 2".  Default: 1/2""#), None);
+        // the list the sentence introduces, not values mentioned in passing
+        assert_eq!(
+            doc_choices(r#"sampling method to use with "direct" and "reindex" methods.  Can be "length" or "segment".  Ignored if any profile pair uses either the "distance", "fast_distance", or "tangent" methods.  Default: "length"."#),
+            s(&["length", "segment"])
+        );
+        assert_eq!(doc_choices(r#"Change vertical center between "baseline" and "ycenter".  Default: "baseline""#), s(&["baseline", "ycenter"]));
+    }
+
+    #[test]
+    fn choices_pointed_to() {
+        let mut others: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
+        others.entry("vnf_vertex_array".into()).or_default().insert("style".into(), vec!["default".into(), "alt".into()]);
+        assert_eq!(arg_choices("style", "vnf_vertex_array() style to use.  Default: \"default\"", "path_sweep", &others).map(|v| v.len()), Some(2));
+        assert_eq!(arg_choices("style", "vnf_vertex_array() style to use.", "vnf_vertex_array", &others), None);
+        assert_eq!(arg_choices("style", "my_vnf_vertex_array_x style", "path_sweep", &others), None);
+        assert_eq!(arg_choices("method", "vnf_vertex_array() method", "path_sweep", &others), None);
+        assert_eq!(arg_choices("style", "vnf_vertex_array style.  Default: \"min_edge\"", "path_sweep", &others).map(|v| v.len()), Some(2));
+        // a mention isn't a pointer
+        others.entry("text".into()).or_default().insert("valign".into(), vec!["top".into(), "center".into()]);
+        assert_eq!(arg_choices("valign", "align text to the path using \"top\" or \"bottom\".  You can also adjust it.", "path_text", &others), None);
     }
 
     #[test]

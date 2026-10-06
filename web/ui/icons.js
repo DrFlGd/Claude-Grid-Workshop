@@ -18,6 +18,8 @@ export const Icon = {
   menu: (s) => svg(html`<path d="M4 6h16M4 12h16M4 18h16" />`, s),
   close: (s) => svg(html`<path d="M6 6l12 12M18 6L6 18" />`, s),
   chevron: (s) => svg(html`<path d="M9 6l6 6-6 6" />`, s),
+  chevronsLeft: (s) => svg(html`<path d="M11 17l-5-5 5-5M18 17l-5-5 5-5" />`, s),
+  chevronsRight: (s) => svg(html`<path d="M13 17l5-5-5-5M6 17l5-5-5-5" />`, s),
   panel: (s) => svg(html`<rect x="3" y="4" width="18" height="16" rx="1.5" /><path d="M15 4v16" />`, s),
   home: (s) => svg(html`<path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" />`, s),
   clock: (s) => svg(html`<circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />`, s),

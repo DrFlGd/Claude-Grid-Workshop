@@ -140,7 +140,7 @@ export function AddProject() {
         <input type="url" id="add-url" value=${url} onInput=${(e) => setUrl(e.target.value)} placeholder="https://github.com/owner/repository" autofocus />
         <small class="muted">A branch, tag or commit (/tree/…, /commit/…) and a subfolder work too. The app downloads that version as plain files (no git needed) and checks for newer commits later.</small></label>`
       : html`<div class="field-block"><span>${tab === "zip" ? "ZIP file" : "Folder"}</span>
-        <div class="pick-row"><code class="pick-path">${path || "Nothing chosen"}</code><button type="button" class="ghost" onClick=${pick} id="add-pick">Choose…</button></div>
+        <div class="pick-row"><code class="pick-path" id="add-path" title=${path || null}>${path || "Nothing chosen"}</code><button type="button" class="ghost" onClick=${pick} id="add-pick">Choose…</button></div>
         ${tab === "folder" ? html`<label class="check"><input type="checkbox" checked=${link} onChange=${(e) => setLink(e.target.checked)} id="add-link" />
           Link instead of copying (for a project you're still editing; it won't move with the library)</label>` : null}</div>`}
     <label class="check"><input type="checkbox" checked=${asLibrary} onChange=${(e) => setAsLibrary(e.target.checked)} id="add-library" />

@@ -25,6 +25,7 @@ export const ui = createStore({
   quicklook: null,         // item id
   palette: false,
   navOpen: false,          // sidebar drawer on small screens
+  catPanel: true,          // the category panel beside the menu is open (false: folded to a strip)
   inspector: true,
   condensed: false,        // grouped results shown as one tile per group
   openGroup: null,         // the condensed group being looked into
@@ -53,6 +54,7 @@ export function initState(store) {
     inspector: saved.inspector !== false,
     layouts: saved.layouts || {},
     condensed: !!saved.condensed,
+    catPanel: saved.catPanel !== false,
   });
   applyTheme();
   matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
@@ -60,7 +62,7 @@ export function initState(store) {
 
 function savePrefs() {
   const s = ui.get();
-  prefs?.set(LAYOUT_KEY, { theme: s.theme, size: s.size, sort: s.sort, group: s.group, columns: s.columns, inspector: s.inspector, layouts: s.layouts, condensed: s.condensed });
+  prefs?.set(LAYOUT_KEY, { theme: s.theme, size: s.size, sort: s.sort, group: s.group, columns: s.columns, inspector: s.inspector, layouts: s.layouts, condensed: s.condensed, catPanel: s.catPanel });
 }
 
 export function setPref(patch) {

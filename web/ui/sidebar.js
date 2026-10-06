@@ -1,10 +1,12 @@
 // Sidebar: Home, Recent, Favourites; Parametric Models, Components (desktop:
-// library modules by topic, with their libraries inside) and the Parts Library,
-// each as categories (collapsed until opened) with their projects inside;
-// "Needs attention"; Add a project (desktop); Settings, Library settings, Licenses.
+// library modules by topic) and the Parts Library; "Needs attention"; Add a project
+// (desktop); Settings, Library settings, Licenses. The section being browsed shows
+// its categories (each opening to its projects) in a panel attached to the menu,
+// which scrolls on its own and folds away to a thin strip. In the small-window
+// drawer the categories open under each section instead.
 import { html, useState } from "../lib/html.js";
 import { useStore } from "../lib/store.js";
-import { ui } from "./state.js";
+import { ui, setPref } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 import { isDesktop, readOnly, sourceById } from "./library.js";
@@ -76,49 +78,91 @@ function tree(kind) {
     .map((c) => ({ ...c, projects: [...c.projects.values()].map((p) => ({ ...p, n: perProject.get(p.id) })).sort((a, b) => a.name.localeCompare(b.name)) }));
 }
 
-function Row({ scope, label, n, icon, depth = 0, expand, open, onToggle, current }) {
+function Row({ scope, label, n, icon, depth = 0, expand, open, onToggle, current, within, section, toggleEnd }) {
   const active = current === scope;
-  return html`<li class="nav-row" style=${`--depth:${depth}`}>
-    ${expand ? html`<button type="button" class="nav-toggle" aria-expanded=${open ? "true" : "false"} aria-label=${`${open ? "Collapse" : "Expand"} ${label}`}
-      onClick=${onToggle}>${Icon.chevron(12)}</button>` : html`<span class="nav-toggle-space"></span>`}
-    <a href=${scopeHash(scope)} class=${`nav-link${active ? " active" : ""}`} aria-current=${active ? "page" : null}
+  const toggle = expand ? html`<button type="button" class="nav-toggle" aria-expanded=${open ? "true" : "false"} aria-label=${`${open ? "Collapse" : "Expand"} ${label}`}
+      onClick=${onToggle}>${Icon.chevron(12)}</button>` : null;
+  return html`<li class="nav-row" style=${`--depth:${depth}`} data-section-row=${section || null}>
+    ${toggleEnd ? null : toggle || html`<span class="nav-toggle-space"></span>`}
+    <a href=${scopeHash(scope)} class=${`nav-link${active ? " active" : within ? " within" : ""}`} aria-current=${active ? "page" : null}
       onClick=${() => ui.set({ navOpen: false })} data-scope=${scope}>
       ${icon ? html`<span class="nav-icon">${icon}</span>` : null}<span class="nav-label">${label}</span>${n != null ? html`<span class="nav-count">${n}</span>` : null}
     </a>
+    ${toggleEnd ? toggle : null}
   </li>`;
 }
 
-/** A section: "All …", then each category, opening to its projects. */
+/** The three sections: their "everything" place, category and project places, label and icon. */
 const SECTION = {
-  generator: { cat: "cat", proj: "project", all: "all", allLabel: "All models", icon: () => Icon.grid(15) },
-  component: { cat: "ccat", proj: "clib", all: "components", allLabel: "All components", icon: () => Icon.cog(15) },
-  part: { cat: "pcat", proj: "lib", all: "parts", allLabel: "All parts", icon: () => Icon.box(15) },
+  generator: { cat: "cat", proj: "project", all: "all", label: "Parametric Models", icon: () => Icon.grid(15) },
+  component: { cat: "ccat", proj: "clib", all: "components", label: "Components", icon: () => Icon.cog(15) },
+  part: { cat: "pcat", proj: "lib", all: "parts", label: "Parts Library", icon: () => Icon.box(15) },
 };
 
-function Section({ kind, current, open, toggle }) {
-  const { cat: catScope, proj: projScope, all, allLabel, icon } = SECTION[kind];
+/** The section a browse place belongs to (generator, component, part), or null. */
+export function sectionOf(scope) {
+  if (!scope) return null;
+  const head = scope.split(":")[0];
+  return Object.keys(SECTION).find((k) => SECTION[k].all === scope || SECTION[k].cat === head || SECTION[k].proj === head) || null;
+}
+
+/** A section's categories, each opening to its projects. */
+function Categories({ kind, current, open, toggle, depth = 0 }) {
+  const { cat: catScope, proj: projScope } = SECTION[kind];
   return html`<ul class="nav-list" data-section=${kind}>
-    <${Row} scope=${all} label=${allLabel} n=${count({ kind })} current=${current} icon=${icon()} />
     ${tree(kind).map((c) => {
       const key = `${kind}:${c.id}`;
-      return html`<${Row} scope=${`${catScope}:${c.id}`} label=${c.label} n=${c.n} current=${current} key=${key}
-          expand=${true} open=${open[key]} onToggle=${toggle(key)} />
-        ${open[key] ? c.projects.map((p) => html`<${Row} scope=${`${projScope}:${p.id}`} label=${p.name} depth=${1}
+      return html`<${Row} scope=${`${catScope}:${c.id}`} label=${c.label} n=${c.n} current=${current} key=${key} depth=${depth}
+          expand=${true} open=${open[key]} onToggle=${toggle(key)}
+          within=${current?.startsWith(`${projScope}:`) && c.projects.some((p) => current === `${projScope}:${p.id}`)} />
+        ${open[key] ? c.projects.map((p) => html`<${Row} scope=${`${projScope}:${p.id}`} label=${p.name} depth=${depth + 1}
           n=${p.n} current=${current} key=${`${key}/${p.id}`} />`) : null}`;
     })}
   </ul>`;
 }
 
+/** The categories of the section being browsed, attached to the menu; folds to a strip. */
+function CategoryPanel({ kind, current, open, toggle, shown }) {
+  const { label } = SECTION[kind];
+  if (!shown) {
+    return html`<aside class="catpanel folded" aria-label=${`${label}: categories`}>
+      <button type="button" class="catpanel-toggle" id="catpanel-toggle" aria-expanded="false" title="Show the categories"
+        aria-label=${`Show the ${label} categories`} onClick=${() => setPref({ catPanel: true })}>${Icon.chevronsRight(14)}</button>
+      <button type="button" class="catpanel-rail" tabindex="-1" aria-hidden="true" onClick=${() => setPref({ catPanel: true })}>${label}</button>
+    </aside>`;
+  }
+  return html`<aside class="catpanel" aria-label=${`${label}: categories`}>
+    <div class="catpanel-head"><span>${label}</span>
+      <button type="button" class="catpanel-toggle" id="catpanel-toggle" aria-expanded="true" title="Hide the categories"
+        aria-label=${`Hide the ${label} categories`} onClick=${() => setPref({ catPanel: false })}>${Icon.chevronsLeft(14)}</button></div>
+    <div class="catpanel-list"><${Categories} kind=${kind} current=${current} open=${open} toggle=${toggle} /></div>
+  </aside>`;
+}
+
 export function Sidebar() {
-  const s = useStore(ui, (st) => ({ scope: st.scope, view: st.view, favs: st.favs.length, recent: st.recent.length, ready: st.ready, navOpen: st.navOpen, v: st.catalogVersion }));
+  const s = useStore(ui, (st) => ({ scope: st.scope, view: st.view, favs: st.favs.length, recent: st.recent.length, ready: st.ready, navOpen: st.navOpen, v: st.catalogVersion, catPanel: st.catPanel }));
   const [open, setOpen] = useState(() => ({}));
   if (!s.ready) return null;
   const current = s.view === "browse" ? s.scope : null;
   const toggle = (k) => () => setOpen({ ...open, [k]: !open[k] });
-  const hasParts = ctx.index.items.some((i) => i.kind === "part" && !i.hidden);
-  const hasComponents = ctx.index.items.some((i) => i.kind === "component");
+  const has = {
+    generator: true,
+    component: ctx.index.items.some((i) => i.kind === "component"),
+    part: ctx.index.items.some((i) => i.kind === "part" && !i.hidden),
+  };
   const attention = count(scopeInfo("attention").query) + (ctx.catalog.attention || []).filter((a) => a.kind !== "license" && a.kind !== "broken").length;
   const page = location.hash.replace(/^#\/?/, "").split(/[/?]/)[0];
+  const browsing = sectionOf(current);
+  // in the drawer (small windows) each section opens to its categories in place
+  const sectionRow = (kind) => {
+    const { all, label, icon } = SECTION[kind];
+    const key = `section:${kind}`;
+    const inline = s.navOpen && (open[key] ?? browsing === kind);
+    return html`<${Row} scope=${all} label=${label} n=${count({ kind })} current=${current} icon=${icon()} section=${kind}
+        within=${browsing === kind} expand=${s.navOpen} open=${inline} toggleEnd=${true}
+        onToggle=${() => setOpen({ ...open, [key]: !inline })} />
+      ${inline ? html`<li class="nav-inline"><${Categories} kind=${kind} current=${current} open=${open} toggle=${toggle} depth=${1} /></li>` : null}`;
+  };
   return html`${s.navOpen ? html`<div class="nav-backdrop" onClick=${() => ui.set({ navOpen: false })}></div>` : null}
   <nav class=${`sidebar${s.navOpen ? " open" : ""}`} aria-label="Library"
     onKeyDown=${(e) => { if (e.key === "Escape" && ui.get().navOpen) ui.set({ navOpen: false }); }}>
@@ -127,12 +171,9 @@ export function Sidebar() {
       <${Row} scope="recent" label="Recent" n=${s.recent} icon=${Icon.clock(15)} current=${current} />
       <${Row} scope="favs" label="Favourites" n=${s.favs} icon=${Icon.star(15)} current=${current} />
     </ul>
-    <h2 class="nav-head">Parametric Models</h2>
-    <${Section} kind="generator" current=${current} open=${open} toggle=${toggle} />
-    ${hasComponents ? html`<h2 class="nav-head">Components</h2>
-      <${Section} kind="component" current=${current} open=${open} toggle=${toggle} />` : null}
-    ${hasParts ? html`<h2 class="nav-head">Parts Library</h2>
-      <${Section} kind="part" current=${current} open=${open} toggle=${toggle} />` : null}
+    <ul class="nav-list nav-sections">
+      ${Object.keys(SECTION).filter((k) => has[k]).map(sectionRow)}
+    </ul>
     ${isDesktop() && !readOnly() ? html`<ul class="nav-list nav-add"><li>
       <button type="button" class="nav-link" id="add-project" title="Add a project from GitHub, a ZIP or a folder. Its models and parts appear under Parametric Models and the Parts Library."
         onClick=${() => ui.set({ dialog: { type: "add-project" }, navOpen: false })}><span class="nav-icon">${Icon.plus(15)}</span><span class="nav-label">Add a project</span></button>
@@ -145,5 +186,6 @@ export function Sidebar() {
       ${isDesktop() ? html`<li><a class=${`nav-link${page === "library-settings" ? " active" : ""}`} href="#/library-settings" id="nav-library-settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.box(15)}</span><span class="nav-label">Library settings</span></a></li>` : null}
       <li><a class="nav-link" href="#/licenses" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon"></span><span class="nav-label">Licenses & credits</span></a></li>
     </ul>
-  </nav>`;
+  </nav>
+  ${browsing && has[browsing] ? html`<${CategoryPanel} kind=${browsing} current=${current} open=${open} toggle=${toggle} shown=${s.catPanel !== false} key=${browsing} />` : null}`;
 }

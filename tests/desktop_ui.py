@@ -216,7 +216,7 @@ try:
 
     # Components: the libraries shipped with the app, their modules as forms, rendered natively
     n_comp = d.execute_script("return window.__workshop.index.items.filter(i => i.kind === 'component').length")
-    heads = d.execute_script("return [...document.querySelectorAll('.sidebar .nav-head')].map(e => e.textContent.trim())")
+    heads = d.execute_script("return [...document.querySelectorAll('.sidebar [data-section-row] .nav-label')].map(e => e.textContent.trim())")
     report["components"] = {"count": n_comp, "menu": heads}
     print("components:", report["components"], flush=True)
     if n_comp < 700 or "Components" not in heads:

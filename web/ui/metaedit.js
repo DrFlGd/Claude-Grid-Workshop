@@ -4,7 +4,7 @@
 // inherited (so a later project-wide change still reaches it); "Reset" drops a
 // value set at this level. An item can also be listed under another project.
 // Edits are stored in the library (sources/<id>/metadata.json) and can be undone.
-import { html, useState, useEffect } from "../lib/html.js";
+import { html, useState, useEffect, useRef, useLayoutEffect } from "../lib/html.js";
 import { ui, pushUndo, undoLast } from "./state.js";
 import { ctx } from "./context.js";
 import { Icon } from "./icons.js";
@@ -26,6 +26,28 @@ const toText = {
   license: (v) => (v && typeof v === "object" ? v.spdx || "" : v || ""),
   icon: (v) => v || "",
 };
+/** A one-line text box that wraps long text and grows to show all of it; Enter still saves. */
+export function GrowText(props) {
+  const ref = useRef(null);
+  const fit = (el) => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`; } };
+  useLayoutEffect(() => fit(ref.current));
+  useEffect(() => {
+    // the dialog may still be laying out (fonts, width) on the first pass
+    const el = ref.current;
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(() => fit(el)) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
+  const { onInput, ...rest } = props;
+  return html`<textarea rows="1" class="grow" ref=${ref} ...${rest}
+    onInput=${(e) => {
+      if (e.target.value.includes("\n")) e.target.value = e.target.value.replace(/\s*\n\s*/g, " ");
+      fit(e.target);
+      onInput?.(e);
+    }}
+    onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); e.target.form?.requestSubmit(); } }}></textarea>`;
+}
+
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 /** Which fields a level has. */
@@ -217,7 +239,7 @@ export function MetaEditor({ spec }) {
     if (f === "icon") return html`<select id="meta-icon" value=${vals.icon || ""} onChange=${(e) => set(e.target.value)}>
       <option value="">Thumbnails of its items</option>
       ${projectItems.map((i) => html`<option value=${`item:${i.sourceId}/${i.kind === "part" ? `part-${i.key.split("/")[1]}` : i.key.split("/")[1]}`}>${i.name}</option>`)}</select>`;
-    return html`<input ...${common} />`;
+    return html`<${GrowText} ...${common} />`;
   };
   /** Where the value in the field comes from, with Reset for a value set at this level. */
   const note = (f) => {
@@ -251,7 +273,7 @@ export function MetaEditor({ spec }) {
         ${note(f)}</label>`)}
       <fieldset class="meta-custom"><legend>Other details <small class="muted">(any name: material, print time…; they become filters and table columns)</small></legend>
         ${fields.map(([k, v], i) => html`<div class="custom-row"><input aria-label="Name" value=${k} placeholder="name" onInput=${(e) => setFields(fields.map((r, j) => (j === i ? [e.target.value, r[1]] : r)))} />
-          <input aria-label="Value" value=${v} placeholder="value" onInput=${(e) => setFields(fields.map((r, j) => (j === i ? [r[0], e.target.value] : r)))} />
+          <${GrowText} aria-label="Value" value=${v} placeholder="value" onInput=${(e) => setFields(fields.map((r, j) => (j === i ? [r[0], e.target.value] : r)))} />
           <button type="button" class="ghost" aria-label="Remove" onClick=${() => setFields(fields.filter((_, j) => j !== i))}>${Icon.close(12)}</button></div>`)}
         <button type="button" class="ghost" onClick=${() => setFields([...fields, ["", ""]])} id="meta-add-field">Add a detail</button></fieldset>
     </div>`}

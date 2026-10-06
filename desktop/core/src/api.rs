@@ -197,7 +197,9 @@ impl App {
         let mut out = vec![];
         for ls in project::library_sources(lib) {
             let Ok(src) = lib.source(&ls.source) else { continue };
-            let index = match lib.derived(&ls.source, &ls.version).map(|d| d["components"].clone()).filter(|c| c.is_object()) {
+            // (an index stored by an older version is made again, in memory, until the project is read again)
+            let stored = lib.derived(&ls.source, &ls.version).map(|d| d["components"].clone());
+            let index = match stored.filter(|c| c.is_object() && c["format"].as_u64() == Some(components::FORMAT)) {
                 Some(i) => i,
                 None => {
                     let key = (ls.source.clone(), ls.version.clone());

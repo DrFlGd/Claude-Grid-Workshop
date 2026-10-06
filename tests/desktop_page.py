@@ -17,7 +17,9 @@ project through the trash; Components (Phase 3): the bevel-gear flow (search,
 the doc example's values, change teeth and module, preview, download, in under a
 minute), pinning a component as a model, the OpenSCAD code, a form edit stored in
 the shape of a manifest's ui block, and switching between your BOSL2 and the
-app's; and the library opening the same after being moved (library-summary). Writes
+app's; 0.3.1: the left menu's category panel, a doc-listed setting as a drop-down,
+Edit… in Library settings, long text kept inside its box; and the library opening
+the same after being moved (library-summary). Writes
 <out>/library-summary.json and <out>/library.zip for the cross-platform check.
 """
 import argparse
@@ -57,6 +59,10 @@ REPOS = [
     ("gears", "https://github.com/chrisspen/gears", False),
     ("bosl2", "https://github.com/BelfrySCAD/BOSL2", True),
 ]
+# anything in the open dialog that reaches past its edges
+OVERFLOW = """() => { const d = document.querySelector('.dialog'); if (!d) return ['no dialog']; const r = d.getBoundingClientRect();
+  return [...d.querySelectorAll('*')].filter((e) => { const b = e.getBoundingClientRect(); return b.width && (b.right > r.right + 1 || b.left < r.left - 1); })
+    .map((e) => e.tagName + '.' + e.className).slice(0, 5); }"""
 DONE = "()=>{const s=document.querySelector('#status');return s&&(s.classList.contains('ok')||s.classList.contains('error'))}"
 results, errors = [], []
 
@@ -110,12 +116,29 @@ async def main():
             parts = await pg.evaluate("() => window.__workshop.index.items.filter((i) => i.kind === 'part').length")
             projects = await pg.evaluate("() => window.__workshop.catalog.sources.length")
             check("starter library installed", n == 58 and parts == 44 and projects == 19, f"{n} generators, {parts} parts, {projects} projects")
-            heads = await pg.eval_on_selector_all(".sidebar .nav-head", "els => els.map(e => e.textContent.trim())")
-            pcats = await pg.locator('.sidebar [data-scope^="pcat:"]').count()
-            ccats = await pg.locator('.sidebar [data-scope^="ccat:"]').count()
-            check("left menu: Parametric Models, Components and Parts Library by category",
-                  heads[:3] == ["Parametric Models", "Components", "Parts Library"] and pcats >= 1 and ccats >= 8, (heads, pcats, ccats))
             await pg.screenshot(path=str(out / "p2-00-home.png"))
+            # the left menu: the three sections; the one being browsed shows its categories in a panel beside it
+            sections = await pg.eval_on_selector_all(".sidebar [data-section-row] .nav-label", "els => els.map(e => e.textContent.trim())")
+            panel_home = await pg.locator(".catpanel").count()
+            await pg.click('.sidebar [data-scope="components"]')
+            await pg.wait_for_selector('.catpanel [data-scope^="ccat:"]')
+            ccats = await pg.locator('.catpanel [data-scope^="ccat:"]').count()
+            scrolls = await pg.eval_on_selector(".catpanel-list", "e => getComputedStyle(e).overflowY")
+            await pg.click('.sidebar [data-scope="parts"]')
+            await pg.wait_for_selector('.catpanel [data-scope^="pcat:"]')
+            pcats = await pg.locator('.catpanel [data-scope^="pcat:"]').count()
+            await pg.click(".catpanel .nav-toggle >> nth=0")
+            await pg.click('.catpanel [data-scope^="lib:"] >> nth=0')
+            await pg.wait_for_function("() => location.hash.includes('/browse/lib/')")
+            within = await pg.wait_for_selector('.sidebar [data-scope="parts"].within', timeout=5000) and 1
+            await pg.click("#catpanel-toggle")
+            await pg.wait_for_selector(".catpanel.folded")
+            await pg.click("#catpanel-toggle")
+            await pg.wait_for_selector('.catpanel:not(.folded) [data-scope^="pcat:"]')
+            check("left menu: Parametric Models, Components, Parts Library; the categories in a panel beside it (projects inside, folds away, scrolls)",
+                  sections == ["Parametric Models", "Components", "Parts Library"] and panel_home == 0 and ccats >= 8 and pcats >= 1 and within == 1 and scrolls == "auto",
+                  (sections, panel_home, ccats, pcats, within, scrolls))
+            await pg.goto(B + "#/")
 
             # 2. three public projects by URL
             ids = {}
@@ -239,6 +262,20 @@ async def main():
             back = await pg.evaluate("() => window.__workshop.catalog.components.find((c) => c.key === '@bosl2/bevel_gear')?.provider")
             prefer = json.loads((library / "library.json").read_text()).get("prefer_bundled")
             check("switch between your BOSL2 and the app's (projects read again)", switched == ["bundled", 0] and back == "project" and not prefer, (switched, back, prefer))
+
+            # 5c. a setting whose doc lists its values is a drop-down (BOSL2 spheroid's style), and renders with the choice
+            await pg.goto(B + "#/m/@bosl2/spheroid")
+            await pg.wait_for_function("()=>document.body.dataset.model==='@bosl2/spheroid'")
+            await pg.wait_for_function(DONE, timeout=120000)
+            tag = await pg.eval_on_selector("#p-style", "e => e.tagName")
+            opts = await pg.eval_on_selector_all("#p-style option", "els => els.map(e => e.textContent)")
+            await pg.select_option("#p-style", label="icosa")
+            await pg.click("#generate")
+            await pg.wait_for_function("()=>!document.querySelector('#generate').disabled", timeout=120000)
+            await pg.wait_for_function(DONE, timeout=120000)
+            status = await pg.inner_text("#status")
+            check("a setting whose doc lists its values is a drop-down (spheroid style), and renders with the choice",
+                  tag == "SELECT" and opts == ["orig", "aligned", "stagger", "octa", "icosa"] and "matches" in status, (tag, opts, status))
 
             # 6. upstream change: edit first, then detect, summarise, accept; edits survive
             v76 = ids["vector76-gridfinity"]
@@ -392,6 +429,30 @@ async def main():
             await pg.click(f'[data-source="{ids["gears"]}"] [data-act=hide-project]')
             await pg.wait_for_function(f"() => window.__workshop.index.query({{ scope: {{ project: '{ids['gears']}' }} }}).total > 0")
             check("a hidden project hides everything in it", hidden_n == 0)
+            # Edit… on a project's row: its details; long text stays inside the boxes (they grow), and a long folder path too
+            long_tags = "a-very-long-tag-name-that-keeps-going, another-long-tag-for-wrapping, yet-another-tag-so-it-needs-three-lines, edited-from-library-settings"
+            await pg.click(f'[data-source="{ids["gears"]}"] [data-act=edit-project]')
+            await pg.wait_for_selector(".meta-editor #meta-save:not([disabled])")
+            one_line = await pg.eval_on_selector("#meta-tags", "e => e.offsetHeight")
+            await pg.fill("#meta-tags", long_tags)
+            grown = await pg.eval_on_selector("#meta-tags", "e => e.offsetHeight") >= one_line + 15
+            spill = await pg.evaluate(OVERFLOW)
+            await pg.click("#meta-save")
+            await pg.wait_for_selector(".dialog", state="detached")
+            await pg.wait_for_timeout(500)
+            stored_tags = json.loads((library / f"sources/{ids['gears']}/metadata.json").read_text()).get("project", {}).get("tags")
+            long_path = str(home / "a folder with a long name that keeps on going" / "and-another-folder-inside-it-with-no-spaces-at-all" / "project")
+            urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": long_path}).encode(), method="POST"))
+            await pg.click("#settings-add-project")
+            await pg.click("[data-add-tab=folder]")
+            await pg.click("#add-pick")
+            await pg.wait_for_function("() => document.querySelector('#add-path')?.textContent.includes('project')")
+            spill_path = await pg.evaluate(OVERFLOW)
+            await pg.screenshot(path=str(out / "p3-04-long-path.png"))
+            await pg.keyboard.press("Escape")
+            await pg.wait_for_selector(".dialog", state="detached")
+            check("Edit… in Library settings edits the project; long text stays inside its box (folder path, details)",
+                  grown and not spill and not spill_path and "edited-from-library-settings" in (stored_tags or []), (grown, spill, spill_path, stored_tags))
             await pg.click('[data-source="local-bevel"] [data-act=delete-project]')
             await pg.wait_for_selector("[data-entry]")
             in_trash = not (library / "local/bevel").exists() and any((library / "trash").iterdir())

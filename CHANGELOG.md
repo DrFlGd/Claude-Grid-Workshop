@@ -80,6 +80,13 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+Owner's requests of 2026-10-05 (evening), for 0.3.1:
+
+- **Left menu:** Parametric Models, Components and the Parts Library are rows of their own (no more "All models" / "All components" / "All parts"). The section you're browsing shows its categories, each opening to its projects, in a panel attached to the menu that scrolls on its own and folds to a strip (« / », remembered). In the small-window drawer the categories open under each section instead.
+- **Component settings whose docs list their values are drop-downs** (BOSL2 `spheroid()` style: orig, aligned, stagger, octa, icosa; 85 settings in 62 BOSL2 components, including ones that point to another function's list, like `vnf_vertex_array()` style). Lists the docs leave open ("…, or a 3D point") stay text fields. The library index format is now 2.
+- **Library settings:** an Edit… button on each project's row, before Hide, opens its details.
+- **Fixed:** long text spilling out of its box. A long folder or ZIP path in Add a project pushed the field, the Choose… button and the dialog's contents past the dialog's edge (and the "Link instead of copying" checkbox was stretched); paths now wrap. The details editor's one-line fields wrap and grow to show all their text.
+- **Tests:** the acceptance test checks the menu's panel (sections, categories, projects, folding), the spheroid drop-down rendering a choice, Edit… in Library settings, and that a long path and long details stay inside the dialog (34 checks); the website test checks the panel too.
 - **This changelog**, combining the git history, release notes, the plan's notes, the early backlog and the owner's requests. `CLAUDE.md` points agents here.
 - **Plan:** reference documents for projects added to Phase 4 (requested 2026-10-05; to be discussed before building).
 
@@ -216,3 +223,4 @@ What the owner asked for, so the reasons behind the design stay visible. From th
 12. Phase 3 as its own section: "Components" (over "Primitives"); for a library present twice, the user's copy wins with a switch back to the bundled one. → 0.3.
 13. A reference document per project in the interface (a GitHub project's README, a Printables PDF's information); talk through the implementation when the time comes. → roadmap, Phase 4.
 14. One changelog combining all the history, for future agents → this file.
+15. Basic UI changes, then a release: the left menu's sub-categories in a collapsible menu attached to it that scrolls ("All Models" replaced by "Parametric Models" and so on); settings like BOSL2 spheroid's "style" as drop-downs if the SCAD files define their values; an Edit button on each project's row in Library settings, before Hide; text running past the edge of its box (the details editor, the folder path). → 0.3.1.

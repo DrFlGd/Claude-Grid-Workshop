@@ -72,6 +72,8 @@ function Projects({ ro }) {
         <td class="muted">${kindText(s)}${s.role === "library" ? " · library" : ""}</td>
         <td class="num">${s.role === "library" ? "–" : (s.models || 0) + (s.parts || 0)}</td>
         <td class="ls-actions">
+          <button type="button" class="ghost small" disabled=${ro} data-act="edit-project" title="Edit the project's details: name, description, category, license, authors, icon"
+            onClick=${() => ui.set({ dialog: { type: "edit", level: "project", source: s.id } })}>Edit…</button>
           <button type="button" class="ghost small" disabled=${ro} data-act="hide-project" onClick=${() => hideProject(s.id, !s.hidden)}>${s.hidden ? "Unhide" : "Hide"}</button>
           <button type="button" class="ghost small danger-text" disabled=${ro} data-act="delete-project" onClick=${() => deleteProject(s.id)}>Delete…</button>
         </td></tr>`)}
