@@ -226,7 +226,7 @@ try:
     shot("04b-component-bevel-gear")
     # the side viewer (0.4): the component's code, and its library's README in a frame that can't run scripts
     d.execute_script("document.querySelector('#model-extra [data-side-open=code]')?.click()")
-    if wait("document.querySelector('.side-panel[data-side-panel=code] .code .cl')", 30, "the side viewer's Code"):
+    if wait("/bevel_gear\\(/.test(document.querySelector('.side-panel[data-side-panel=code] .code')?.textContent || '')", 30, "the side viewer's Code"):
         code = text(".side-panel .code")
         d.execute_script("document.querySelector('[data-side-tab=readme]')?.click()")
         ok = wait("/BOSL2/.test(document.querySelector('.doc-frame')?.contentDocument?.querySelector('h1')?.textContent || '')", 30, "the BOSL2 README")

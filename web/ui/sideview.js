@@ -378,22 +378,26 @@ export function SideView() {
   const tRef = target?.ref ? refKey(target.ref) : "";
   // in the library, a model's details load only when its code is shown (its documents are known from the index)
   const needDetail = !!modelKey && (target.open || !target.ref || (s.side.open && s.side.tab === "code"));
+  // (what's shown stays while it's fetched again after a library change, e.g. a thumbnail saved:
+  // only another model or project clears it, so the panel doesn't flicker or lose its place)
+  const shownKey = useRef(null);
   useEffect(() => {
     let live = true;
-    setDetail(null);
+    if (shownKey.current !== modelKey) { shownKey.current = modelKey; setDetail(null); }
     if (target?.ref) setRef(target.ref);
-    if (!needDetail) { if (!target?.ref) setRef(null); return; }
+    if (!needDetail) { setDetail(null); shownKey.current = null; if (!target?.ref) setRef(null); return; }
     ctx.loadModel(modelKey).then(async ({ detail: d }) => {
       if (!live) return;
-      setDetail(d);
-      if (!target.ref) { const r = await projectRefFor(d); if (live) setRef(r); }
+      setDetail((old) => (old && old.key === d.key && JSON.stringify(old.files) === JSON.stringify(d.files) ? old : d));
+      if (!target.ref) { const r = await projectRefFor(d); if (live) setRef((old) => (refKey(old) === refKey(r) ? old : r)); }
     }, () => live && !target.ref && setRef(null));
     return () => { live = false; };
   }, [modelKey, tRef, needDetail, s.v]);
+  const shownRef = useRef("");
   useEffect(() => {
     let live = true;
-    setInfo(null);
-    listDocs(ref).then((i) => live && setInfo(i));
+    if (shownRef.current !== refKey(ref)) { shownRef.current = refKey(ref); setInfo(null); }
+    listDocs(ref).then((i) => live && setInfo((old) => (old && JSON.stringify(old) === JSON.stringify(i) ? old : i)));
     return () => { live = false; };
   }, [refKey(ref), s.v]);
   // a project file asked for (a README link, the Files tab) shows while its project is on screen
