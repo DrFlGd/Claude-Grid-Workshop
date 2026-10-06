@@ -15,9 +15,18 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// Version of the derived-data format (bump to re-read every project). 2 (0.4): settings lifted from
-/// module calls, reference documents.
-pub const DERIVED_FORMAT: u64 = 2;
+/// Version of the derived-data format (bump to re-read projects; see `outdated`). 2 (0.4): settings
+/// lifted from module calls, reference documents. 3 (0.4.1): lifted settings borrow the library's
+/// descriptions and choice lists, and fractions are lifted.
+pub const DERIVED_FORMAT: u64 = 3;
+
+/// Whether a project's derived data was made by an app that reads it differently. Format 3 changed
+/// only settings lifted from module calls, so a project read at format 2 needs reading again only
+/// when it has such models.
+pub fn outdated(derived: &Value) -> bool {
+    let f = derived["format"].as_u64().unwrap_or(0);
+    f < 2 || (f < DERIVED_FORMAT && derived["family"]["models"].as_array().into_iter().flatten().any(|m| m["settings_from"] == "calls"))
+}
 
 /// A blob owner's suffix for files the app made for a version (`<source>@<version>~gen:<path>`, in
 /// `sources/<source>/generated/<version>/`).
@@ -176,6 +185,7 @@ pub async fn ingest(
     let mut used_ids: Vec<String> = vec![];
     let mut planned = vec![];
     let mut used: BTreeMap<String, Value> = BTreeMap::new(); // libraries the models include, by name
+    let mut project_texts: Option<Vec<String>> = None;
     for entry in &entries {
         let mut mid = model_id(entry);
         let base = mid.clone();
@@ -212,12 +222,30 @@ pub async fn ingest(
         let mut lifted = false;
         if let Some((host, _)) = files.get(&entry_v) {
             let text = String::from_utf8_lossy(&std::fs::read(host).unwrap_or_default()).into_owned();
-            let others: Vec<String> = files
+            // (the files it includes are read only for a file that's just includes and calls)
+            let calls = crate::components::only_calls(&text);
+            let others: Vec<String> = if !calls { vec![] } else { files
                 .iter()
                 .filter(|(v, (h, _))| **v != entry_v && h.extension().is_some_and(|e| e.eq_ignore_ascii_case("scad")))
                 .map(|(_, (h, _))| String::from_utf8_lossy(&std::fs::read(h).unwrap_or_default()).into_owned())
-                .collect();
-            if let Some(copy) = crate::components::lift_call_values(&text, entry, &others) {
+                .collect() };
+            // (the project's other model files are read only for a file that has values to lift: they
+            // may hold the library's own Customizer call, whose descriptions and choices the settings borrow)
+            let mut copy = if calls { crate::components::lift_call_values(&text, entry, &others, &[]) } else { None };
+            if copy.is_some() {
+                let hints = project_texts.get_or_insert_with(|| {
+                    entries
+                        .iter()
+                        .filter_map(|e| library::rel_inside(e).ok())
+                        .map(|r| root.join(r))
+                        .filter(|p| std::fs::metadata(p).is_ok_and(|m| m.len() < 2_000_000))
+                        .filter_map(|p| std::fs::read(p).ok())
+                        .map(|b| String::from_utf8_lossy(&b).into_owned())
+                        .collect()
+                });
+                copy = crate::components::lift_call_values(&text, entry, &others, hints).or(copy);
+            }
+            if let Some(copy) = copy {
                 let gen = lib.source_dir(&id)?.join("generated").join(version).join(library::rel_inside(entry)?);
                 std::fs::create_dir_all(gen.parent().unwrap())?;
                 crate::config::write_atomic(&gen, copy.as_bytes())?;

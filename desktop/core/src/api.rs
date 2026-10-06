@@ -365,7 +365,7 @@ impl App {
         let mut found = vec![];
         let ids: Vec<String> = lib.source_ids().into_iter().filter(|id| only.as_deref().is_none_or(|o| o == id)).collect();
         for id in ids {
-            let mut src = lib.source(&id)?;
+            let src = lib.source(&id)?;
             if src["kind"] != "github" {
                 continue;
             }
@@ -375,6 +375,13 @@ impl App {
             let s2 = src.clone();
             let r = tokio::task::spawn_blocking(move || sources::fetch_update(&lib2, &s2, t)).await?;
             let now = library::now();
+            // the project as it is now: an update accepted (or details edited) while GitHub was being
+            // asked must not be undone by saving the copy read before
+            let mut src = lib.source(&id)?;
+            let r = match r {
+                Ok(Some((version, _))) if src["version"] == version.as_str() => Ok(None),
+                r => r,
+            };
             match r {
                 Err(e) => {
                     src["update"] = json!({ "state": "error", "checked": now, "error": e2s(e) });
@@ -691,7 +698,7 @@ impl App {
                     "source": src, "entry": entry, "metadata": lib.metadata(id), "readme": readme, "license_text": license_text,
                     "files": files, "derived": derived,
                     "folder": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().map(|p| p.display().to_string()),
-                    "folder_rel": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().and_then(|p| lib.relative(&p)),
+                    "folder_rel": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().and_then(|p| folder_rel(&lib, id, &src, &p)),
                 }))
             }
             "docs_list" => {
@@ -1100,7 +1107,7 @@ impl App {
             docs,
             file_root: lib.source_dir(id)?,
             src_root: dir.clone(),
-            folder_rel: lib.relative(&dir),
+            folder_rel: folder_rel(&lib, id, &src, &dir),
             github,
             relative: true,
             keep_dir: writable.then(|| lib.source_dir(id).map(|d| d.join("docs").join(&version)).ok()).flatten(),
@@ -1110,8 +1117,27 @@ impl App {
     pub fn library_file(&self, rel: &str) -> Result<Vec<u8>> {
         let lib = self.library().map_err(|e| anyhow!(e))?;
         let rel = percent_decode(rel.trim_start_matches('/'));
+        if let Some(rest) = rel.strip_prefix(LINKED) {
+            // a linked project's own folder (outside the library)
+            let (id, inner) = rest.trim_start_matches('/').split_once('/').context("no file")?;
+            let src = lib.source(id)?;
+            if src["kind"] != "linked" {
+                bail!("{id} isn't a linked project");
+            }
+            let dir = lib.version_dir(&src, src["version"].as_str().unwrap_or(""))?;
+            return Ok(std::fs::read(dir.join(library::rel_inside(inner)?))?);
+        }
         Ok(std::fs::read(lib.resolve(&rel)?)?)
     }
+}
+
+/// Library paths under this name are a linked project's own folder: `~linked/<id>/<path>`.
+const LINKED: &str = "~linked";
+
+/// A project's folder as a library path (for its pictures and files in the side viewer): inside
+/// the library, or a linked project's folder through `~linked/<id>`.
+fn folder_rel(lib: &Library, id: &str, src: &Value, dir: &Path) -> Option<String> {
+    lib.relative(dir).or_else(|| (src["kind"] == "linked").then(|| format!("{LINKED}/{id}")))
 }
 
 /// Where one project's (or app library's) documents live.

@@ -330,14 +330,38 @@ fn comment_above(lines: &[&str], line: usize) -> Option<String> {
 
 // ------------------------------------------------------------------ settings from a model's calls
 
+/// Whether a file is only includes and calls (what `lift_call_values` works on): a quick look
+/// before reading the files it includes.
+pub fn only_calls(text: &str) -> bool {
+    let masked = mask_comments(text);
+    let mut rest = String::with_capacity(masked.len());
+    for line in masked.split('\n') {
+        let t = line.trim();
+        if !((t.starts_with("include") || t.starts_with("use")) && t.contains('<')) {
+            rest.push_str(line);
+            rest.push('\n');
+        }
+    }
+    !rest.contains('{')
+        && !rest.contains('}')
+        && split_top(&rest, b';').iter().all(|st| {
+            let st = st.trim_start();
+            let name_end = st.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).unwrap_or(st.len());
+            st.trim().is_empty() || (name_end > 0 && st[name_end..].trim_start().starts_with('('))
+        })
+}
+
 /// A model file whose values are typed into its module calls (`spur_gear(modul=1, tooth_number=30);`,
 /// like the Gears project's examples) gives OpenSCAD's Customizer nothing to list. This returns a copy
 /// with each literal argument lifted into a top-level setting after the includes (named after the
 /// argument, described by the library's own comment for it where there is one), which OpenSCAD then
 /// lists as usual; the calls use the settings. `source_rel` names the original in the copy's header;
-/// `libs` are the texts of the files it includes (for argument names, descriptions and their globals).
+/// `libs` are the texts of the files it includes (for argument names, descriptions and their globals),
+/// `hints` the project's other files. A setting borrows the description and choice list the library
+/// gives its own Customizer variable for the argument (see `borrowed_args`), and a number written
+/// as a fraction (`height=1/3`) is lifted too, as the matching choice when there's a list.
 /// None when the file has settings of its own, blocks or definitions, or nothing to lift.
-pub fn lift_call_values(text: &str, source_rel: &str, libs: &[String]) -> Option<String> {
+pub fn lift_call_values(text: &str, source_rel: &str, libs: &[String], hints: &[String]) -> Option<String> {
     let masked = mask_comments(text);
     // includes and uses stay as they are, first
     let mut head: Vec<String> = vec![];
@@ -355,10 +379,12 @@ pub fn lift_call_values(text: &str, source_rel: &str, libs: &[String]) -> Option
     if rest.contains('{') || rest.contains('}') {
         return None; // definitions or blocks: not a plain list of calls
     }
-    // the modules the included files define, and their top-level variables
+    // the modules the included files define, and their top-level variables (which only `include`
+    // brings into the file: a setting of the same name would change the library's, so it's renamed)
     let defs: Vec<ModuleDef> = libs.iter().flat_map(|t| find_modules(t)).collect();
     let mut globals: BTreeSet<String> = BTreeSet::new();
-    for t in libs {
+    let included = head.iter().any(|h| h.starts_with("include"));
+    for t in libs.iter().filter(|_| included) {
         for l in mask_comments(t).lines() {
             if let Some((n, v)) = l.split_once('=') {
                 let n = n.trim_end();
@@ -372,7 +398,10 @@ pub fn lift_call_values(text: &str, source_rel: &str, libs: &[String]) -> Option
         var: String,
         value: String,
         doc: Option<String>,
+        note: Option<String>,
     }
+    let texts: Vec<&str> = libs.iter().chain(hints).map(String::as_str).collect();
+    let mut borrowed: BTreeMap<String, BTreeMap<String, Borrowed>> = BTreeMap::new();
     let mut blocks: Vec<(String, Vec<Lifted>)> = vec![];
     let mut calls: Vec<String> = vec![];
     let mut used: BTreeSet<String> = BTreeSet::new();
@@ -416,6 +445,7 @@ pub fn lift_call_values(text: &str, source_rel: &str, libs: &[String]) -> Option
         };
         let def = defs.iter().find(|d| d.name == module);
         let docs = def.map(|d| arg_descriptions(d)).unwrap_or_default();
+        let lent = borrowed.entry(module.clone()).or_insert_with(|| borrowed_args(&texts, &module));
         let mut lifted = vec![];
         let mut args_out = vec![];
         for (k, a) in split_top(&st[a0..a1], b',').into_iter().enumerate() {
@@ -427,19 +457,30 @@ pub fn lift_call_values(text: &str, source_rel: &str, libs: &[String]) -> Option
                 Some((nm, Some(v))) => (Some(nm), v),
                 _ => (def.and_then(|d| d.args.get(k)).map(|x| x.0.clone()), a.to_string()),
             };
-            let literal = parse_literal(&value).is_some_and(|v| !v.is_null());
-            match name {
-                Some(nm) if literal && !nm.starts_with('$') => {
+            // a literal, or a number written as arithmetic (`1/3`)
+            let literal = parse_literal(&value).filter(|v| !v.is_null()).or_else(|| const_number(&value).map(|x| ingest::int_if_whole(&json!(x))));
+            match (name, literal) {
+                (Some(nm), Some(lit)) if !nm.starts_with('$') => {
                     let mut var = if n > 1 { format!("{nm}_{n}") } else { nm.clone() };
                     if globals.contains(&var) || used.contains(&var) {
                         var = format!("{module}_{var}");
                     }
                     used.insert(var.clone());
                     args_out.push(format!("{nm}={var}"));
-                    lifted.push(Lifted { var, value, doc: docs.get(&nm).cloned() });
+                    let lent = lent.get(&nm);
+                    let fit = lent.and_then(|b| b.note.as_ref()).and_then(|(note, lv)| fit_note(note, lv, &lit, &value));
+                    let (value, note) = match fit {
+                        Some((v, n)) => (v, Some(n)),
+                        None if parse_literal(&value).is_some() => (value, None),
+                        None => (to_scad(&lit), None),
+                    };
+                    let doc = docs.get(&nm).cloned().or_else(|| lent.and_then(|b| b.doc.clone()));
+                    lifted.push(Lifted { var, value, doc, note });
                 }
-                Some(nm) if split_arg(a).is_some_and(|x| x.1.is_some()) => args_out.push(format!("{nm}={value}")),
-                _ => args_out.push(a.to_string()),
+                (name, _) => match name {
+                    Some(nm) if split_arg(a).is_some_and(|x| x.1.is_some()) => args_out.push(format!("{nm}={value}")),
+                    _ => args_out.push(a.to_string()),
+                },
             }
         }
         let prefix = &st[..parts.last().map(|_| a0 - 1 - module.len()).unwrap_or(0)];
@@ -467,7 +508,10 @@ pub fn lift_call_values(text: &str, source_rel: &str, libs: &[String]) -> Option
             if let Some(d) = &l.doc {
                 out.push_str(&format!("// {}\n", d.replace('\n', " ")));
             }
-            out.push_str(&format!("{} = {};\n", l.var, l.value));
+            match &l.note {
+                Some(n) => out.push_str(&format!("{} = {}; // [{n}]\n", l.var, l.value)),
+                None => out.push_str(&format!("{} = {};\n", l.var, l.value)),
+            }
         }
     }
     out.push_str("\n/* [Hidden] */\n\n");
@@ -503,6 +547,299 @@ fn arg_descriptions(def: &ModuleDef) -> BTreeMap<String, String> {
         }
     }
     out
+}
+
+/// A top-level Customizer variable: its comment, its `// [...]` note (without the brackets), its value.
+struct DocVar {
+    doc: Option<String>,
+    note: Option<String>,
+    value: String,
+}
+
+/// The single-line top-level assignments of a file that have a comment above or a `// [...]` note.
+fn documented_vars(text: &str) -> BTreeMap<String, DocVar> {
+    let masked = mask_comments(text);
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut out = BTreeMap::new();
+    let mut depth = 0i32;
+    for (i, (m, orig)) in masked.split('\n').zip(text.split('\n')).enumerate() {
+        let top = depth == 0;
+        let mut in_str = false;
+        let mut esc = false;
+        for c in m.bytes() {
+            match c {
+                _ if esc => esc = false,
+                b'\\' if in_str => esc = true,
+                b'"' => in_str = !in_str,
+                b'{' | b'(' | b'[' if !in_str => depth += 1,
+                b'}' | b')' | b']' if !in_str => depth -= 1,
+                _ => {}
+            }
+        }
+        if !top {
+            continue;
+        }
+        let Some((name, rest)) = m.split_once('=') else { continue };
+        let name = name.trim();
+        if rest.starts_with('=') || name.is_empty() || name.as_bytes()[0].is_ascii_digit() || !name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') {
+            continue;
+        }
+        let Some(semi) = rest.rfind(';') else { continue };
+        let value = rest[..semi].trim().to_string();
+        let after = &orig[(m.len() - rest.len() + semi + 1).min(orig.len())..];
+        let note = after
+            .trim()
+            .strip_prefix("//")
+            .map(str::trim)
+            .and_then(|n| n.strip_prefix('[')?.strip_suffix(']'))
+            .map(|n| n.trim().to_string());
+        // a section header right above (`/* [General] */`) isn't a description
+        let doc = comment_above(&lines, i).filter(|d| !(d.starts_with('[') && d.ends_with(']')));
+        if doc.is_some() || note.is_some() {
+            out.insert(name.to_string(), DocVar { doc, note, value });
+        }
+    }
+    out
+}
+
+/// What a library says about one argument of a module.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct Borrowed {
+    doc: Option<String>,
+    /// The Customizer note of the variable passed straight to the argument (`width=block_width`),
+    /// with that variable's own value (so the note is only used for a value of the same type).
+    note: Option<(String, String)>,
+}
+
+/// Descriptions and choice lists for a module's arguments, from calls in `texts` that pass a
+/// documented top-level variable to them: LEGO.scad's own `block(width=block_width, type=block_type,
+/// reinforcement=(use_reinforcement=="yes"), ...)` under `// Width of the block, in studs` and
+/// `block_type = "brick"; // [brick:Brick, tile:Tile, ...]`. A variable passed straight gives its
+/// description and its note; an expression of one variable gives its description only. The first
+/// text that says something about an argument wins.
+fn borrowed_args(texts: &[&str], module: &str) -> BTreeMap<String, Borrowed> {
+    let mut out: BTreeMap<String, Borrowed> = BTreeMap::new();
+    for text in texts {
+        if !text.contains(module) {
+            continue;
+        }
+        let masked = mask_comments(text);
+        let b = masked.as_bytes();
+        let mut vars: Option<BTreeMap<String, DocVar>> = None;
+        let mut from = 0;
+        while let Some(off) = masked[from..].find(module) {
+            let at = from + off;
+            from = at + module.len();
+            let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'$';
+            if at > 0 && ident(b[at - 1]) || b.get(from).is_some_and(|&c| ident(c)) {
+                continue;
+            }
+            let before = masked[..at].trim_end();
+            if before.ends_with("module") || before.ends_with("function") {
+                continue;
+            }
+            let mut open = from;
+            while open < b.len() && b[open].is_ascii_whitespace() {
+                open += 1;
+            }
+            if b.get(open) != Some(&b'(') {
+                continue;
+            }
+            let Some(end) = matching(b, open) else { continue };
+            let vars = vars.get_or_insert_with(|| documented_vars(text));
+            if vars.is_empty() {
+                break;
+            }
+            for a in split_top(&masked[open + 1..end - 1], b',') {
+                let Some((name, Some(expr))) = split_arg(&a) else { continue };
+                let expr = expr.trim();
+                let got = if let Some(v) = vars.get(expr) {
+                    Borrowed { doc: v.doc.clone(), note: v.note.clone().map(|n| (n, v.value.clone())) }
+                } else {
+                    // the variables the expression reads (outside its strings)
+                    let (mut code, mut in_str, mut esc) = (String::new(), false, false);
+                    for c in expr.chars() {
+                        match c {
+                            _ if esc => esc = false,
+                            '\\' if in_str => esc = true,
+                            '"' => in_str = !in_str,
+                            c if !in_str => code.push(c),
+                            _ => {}
+                        }
+                        if in_str {
+                            code.push(' ');
+                        }
+                    }
+                    let mut names: BTreeSet<String> = BTreeSet::new();
+                    for t in code.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')) {
+                        if vars.contains_key(t) {
+                            names.insert(t.to_string());
+                        }
+                    }
+                    if names.len() != 1 {
+                        continue;
+                    }
+                    let v = &vars[names.iter().next().unwrap()];
+                    Borrowed { doc: v.doc.clone(), note: None }
+                };
+                let e = out.entry(name).or_default();
+                if e.doc.is_none() {
+                    e.doc = got.doc;
+                }
+                if e.note.is_none() {
+                    e.note = got.note;
+                }
+            }
+            from = end;
+        }
+    }
+    out
+}
+
+/// A number written as arithmetic of numbers (`1/3`, `2+(2/3)`, `-0.5*4`); None for anything else.
+fn const_number(s: &str) -> Option<f64> {
+    fn expr(b: &[u8], i: &mut usize) -> Option<f64> {
+        let mut v = term(b, i)?;
+        loop {
+            skip(b, i);
+            match b.get(*i) {
+                Some(b'+') => {
+                    *i += 1;
+                    v += term(b, i)?;
+                }
+                Some(b'-') => {
+                    *i += 1;
+                    v -= term(b, i)?;
+                }
+                _ => return Some(v),
+            }
+        }
+    }
+    fn term(b: &[u8], i: &mut usize) -> Option<f64> {
+        let mut v = factor(b, i)?;
+        loop {
+            skip(b, i);
+            match b.get(*i) {
+                Some(b'*') => {
+                    *i += 1;
+                    v *= factor(b, i)?;
+                }
+                Some(b'/') => {
+                    *i += 1;
+                    v /= factor(b, i)?;
+                }
+                _ => return Some(v),
+            }
+        }
+    }
+    fn factor(b: &[u8], i: &mut usize) -> Option<f64> {
+        skip(b, i);
+        match b.get(*i)? {
+            b'-' => {
+                *i += 1;
+                Some(-factor(b, i)?)
+            }
+            b'+' => {
+                *i += 1;
+                factor(b, i)
+            }
+            b'(' => {
+                *i += 1;
+                let v = expr(b, i)?;
+                skip(b, i);
+                (b.get(*i) == Some(&b')')).then(|| *i += 1)?;
+                Some(v)
+            }
+            _ => {
+                let s = *i;
+                while *i < b.len() && (b[*i].is_ascii_digit() || b[*i] == b'.' || ((b[*i] == b'e' || b[*i] == b'E') && *i > s)) {
+                    *i += 1;
+                    if matches!(b[*i - 1], b'e' | b'E') && matches!(b.get(*i), Some(b'-') | Some(b'+')) {
+                        *i += 1;
+                    }
+                }
+                std::str::from_utf8(&b[s..*i]).ok()?.parse::<f64>().ok()
+            }
+        }
+    }
+    fn skip(b: &[u8], i: &mut usize) {
+        while *i < b.len() && b[*i].is_ascii_whitespace() {
+            *i += 1;
+        }
+    }
+    let b = s.trim().as_bytes();
+    let mut i = 0;
+    let v = expr(b, &mut i)?;
+    skip(b, &mut i);
+    (i == b.len() && v.is_finite()).then_some(v)
+}
+
+/// A lifted value's Customizer note, from the library's note for the same argument: a choice list
+/// keeps the value when it's one of the choices (a number written as `1/3` takes the choice's own
+/// spelling, `.33333333333`), else gets it as one more choice, labelled as the file wrote it; a
+/// range is kept when the value is inside it. Returns (the value to write, the note). None when
+/// the note doesn't fit the value (another type: `reinforcement=true` for `"yes"`/`"no"`).
+fn fit_note(note: &str, lib_value: &str, value: &Value, written: &str) -> Option<(String, String)> {
+    let kind = |v: &Value| match v {
+        Value::Number(_) => 1,
+        Value::String(_) => 2,
+        Value::Array(_) => 3,
+        _ => 0,
+    };
+    let lib = parse_literal(lib_value)?;
+    if kind(&lib) == 0 || kind(&lib) != kind(value) {
+        return None;
+    }
+    let num = |s: &str| {
+        let s = s.trim();
+        s.parse::<f64>().ok().or_else(|| s.strip_prefix('.').and_then(|r| format!("0.{r}").parse().ok()))
+    };
+    let parts: Vec<&str> = note.split(':').collect();
+    if !note.contains(',') && parts.len() <= 3 && parts.iter().all(|p| num(p).is_some()) {
+        // a slider: [max], [min:max], [min:step:max]
+        let (lo, hi) = (if parts.len() == 1 { None } else { num(parts[0]) }, num(parts[parts.len() - 1])?);
+        let fits = match value {
+            Value::Number(n) => n.as_f64().is_some_and(|x| lo.is_none_or(|lo| x >= lo) && x <= hi),
+            _ => true,
+        };
+        return fits.then(|| (to_scad(value), note.to_string()));
+    }
+    if matches!(value, Value::Array(_)) {
+        return None;
+    }
+    let items: Vec<(String, Option<String>)> = split_top(note, b',')
+        .iter()
+        .map(|it| match it.split_once(':') {
+            Some((v, l)) => (v.trim().to_string(), Some(l.trim().to_string())),
+            None => (it.trim().to_string(), None),
+        })
+        .collect();
+    let unquote = |s: &str| s.trim_matches('"').to_string();
+    match value {
+        Value::Number(n) => {
+            let x = n.as_f64()?;
+            let vals: Option<Vec<f64>> = items.iter().map(|(v, _)| num(v)).collect();
+            let vals = vals?;
+            let close = |a: f64| (a - x).abs() <= 1e-9 * x.abs().max(1.0);
+            if let Some(k) = vals.iter().position(|a| close(*a)) {
+                return Some((items[k].0.clone(), note.to_string()));
+            }
+            // one more choice, in order
+            let at = vals.iter().position(|a| *a > x).unwrap_or(vals.len());
+            let label: String = written.chars().filter(|c| !c.is_whitespace()).collect();
+            let mut list: Vec<String> = items.iter().map(|(v, l)| l.as_ref().map(|l| format!("{v}:{l}")).unwrap_or_else(|| v.clone())).collect();
+            list.insert(at, format!("{}:{label}", to_scad(value)));
+            Some((to_scad(value), list.join(", ")))
+        }
+        Value::String(s) => {
+            if items.iter().any(|(v, _)| unquote(v) == *s) {
+                return Some((to_scad(value), note.to_string()));
+            }
+            let plain = !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || " _.-".contains(c));
+            plain.then(|| (to_scad(value), format!("{note}, {s}:{s}")))
+        }
+        _ => None,
+    }
 }
 
 // ------------------------------------------------------------------ BOSL2-style docs
@@ -2232,7 +2569,7 @@ mod tests {
     fn values_in_calls_become_settings() {
         let lib = "$fn = 50;\nclearance = 0.05;\n\n/*  Spur gear\n    modul = Height of the Tooth Tip\n    tooth_number = Number of Gear Teeth\n    optimized = Create holes; where\n        geometry allows */\nmodule spur_gear(modul, tooth_number, width, bore, pressure_angle = 20, helix_angle = 0, optimized = true, clearance = 0) {\n    cylinder(r = modul * tooth_number, h = width);\n}\n".to_string();
         let ex = "include <../gears.scad>\n\nspur_gear(modul=1, tooth_number=30, width=5, bore=4, optimized=true, clearance=0.1, $fn=20);\n\ntranslate([80, 0, 0])\nspur_gear(2, 16, width=w, bore=4);\n";
-        let out = lift_call_values(ex, "examples/spur_gear.scad", &[lib]).expect("lifted");
+        let out = lift_call_values(ex, "examples/spur_gear.scad", &[lib], &[]).expect("lifted");
         assert!(out.contains("include <../gears.scad>\n"), "{out}");
         assert!(out.contains("/* [Spur gear 1] */\n// Height of the Tooth Tip\nmodul = 1;\n// Number of Gear Teeth\ntooth_number = 30;\nwidth = 5;\nbore = 4;\n// Create holes; where geometry allows\noptimized = true;\n"), "{out}");
         // a library global keeps its name for the library: the setting gets the module's name
@@ -2243,9 +2580,91 @@ mod tests {
         assert!(out.contains("translate([80, 0, 0])\nspur_gear(modul=modul_2, tooth_number=tooth_number_2, width=w, bore=bore_2);"), "{out}");
         assert!(out.find("/* [Hidden] */").unwrap() < out.find("spur_gear(modul=modul").unwrap());
         // files with settings of their own, definitions or blocks are left alone
-        assert!(lift_call_values("include <g.scad>\nteeth = 20;\nspur_gear(modul=1, tooth_number=teeth);\n", "a.scad", &[]).is_none());
-        assert!(lift_call_values("difference() { cube(10); sphere(6); }\n", "a.scad", &[]).is_none());
-        assert!(lift_call_values("include <g.scad>\nspur_gear(modul=m, tooth_number=t);\n", "a.scad", &[]).is_none());
+        assert!(lift_call_values("include <g.scad>\nteeth = 20;\nspur_gear(modul=1, tooth_number=teeth);\n", "a.scad", &[], &[]).is_none());
+        assert!(lift_call_values("difference() { cube(10); sphere(6); }\n", "a.scad", &[], &[]).is_none());
+        assert!(lift_call_values("include <g.scad>\nspur_gear(modul=m, tooth_number=t);\n", "a.scad", &[], &[]).is_none());
+    }
+
+    #[test]
+    fn settings_borrow_the_librarys_own() {
+        // LEGO.scad: Customizer variables passed to the module by the library's own call
+        let lib = r#"/* [General] */
+
+// Width of the block, in studs
+block_width = 2;
+
+// Height of the block. A ratio of "1" is a standard LEGO brick height; a ratio of "1/3" is a standard LEGO plate height.
+block_height_ratio = 1; // [.33333333333:1/3, .5:1/2, 1:1, 1.5:1 1/2, 2:2, 3:3]
+
+// What type of block should this be?
+block_type = "brick"; // [brick:Brick, tile:Tile, wing:Wing]
+
+// Should extra reinforcement be included?
+use_reinforcement = "no"; // [no:No, yes:Yes]
+
+// Corner radius
+round_radius = 3; // [0:10]
+
+block(
+    width=block_width,
+    height=block_height_ratio,
+    type=block_type,
+    reinforcement=(use_reinforcement=="yes"),
+    stud_notches=(block_type == "wing" && use_reinforcement=="yes"),
+    round_radius=round_radius
+);
+
+module block(width=1, length=2, height=1, type="brick", reinforcement=false, stud_notches=false, round_radius=0) {
+    cube([width, length, height]);
+}
+"#
+        .to_string();
+        let ex = "use <../LEGO.scad>;\n\nblock(\n    width=1,\n    length=2,\n    height=1/3,\n    type=\"tile\",\n    reinforcement=true,\n    stud_notches=true,\n    round_radius=12\n);";
+        let out = lift_call_values(ex, "examples/3070.scad", &[lib.clone()], &[]).expect("lifted");
+        assert!(out.contains("// Width of the block, in studs\nwidth = 1;\nlength = 2;\n"), "{out}");
+        // 1/3 is the library's own 1/3 choice
+        assert!(out.contains("in studs\nwidth = 1;\nlength = 2;\n// Height of the block. A ratio of \"1\" is a standard LEGO brick height; a ratio of \"1/3\" is a standard LEGO plate height.\nheight = .33333333333; // [.33333333333:1/3, .5:1/2, 1:1, 1.5:1 1/2, 2:2, 3:3]\n"), "{out}");
+        assert!(out.contains("// What type of block should this be?\ntype = \"tile\"; // [brick:Brick, tile:Tile, wing:Wing]\n"), "{out}");
+        // an expression of one variable: its description, not its yes/no list (the value is a boolean)
+        assert!(out.contains("// Should extra reinforcement be included?\nreinforcement = true;\n"), "{out}");
+        // an expression of two: nothing borrowed
+        assert!(out.contains("\nstud_notches = true;\n"), "{out}");
+        // outside the library's range: the description, no slider (and the library's variable of
+        // the same name doesn't matter: `use` doesn't bring it in)
+        assert!(out.contains("// Corner radius\nround_radius = 12;\n"), "{out}");
+        assert!(out.contains("block(width=width, length=length, height=height, type=type, reinforcement=reinforcement, stud_notches=stud_notches, round_radius=round_radius);"), "{out}");
+        let inc = ex.replace("use <", "include <");
+        assert!(lift_call_values(&inc, "a.scad", &[lib.clone()], &[]).unwrap().contains("// Corner radius\nblock_round_radius = 12;\n"));
+        // a value that isn't one of the choices becomes one more, labelled as written
+        let ex2 = "use <../LEGO.scad>;\nblock(width=2, height=2/3, type=\"round-tile\");\n";
+        let out = lift_call_values(ex2, "a.scad", &[lib.clone()], &[]).expect("lifted");
+        assert!(out.contains("height = 0.6666666666666666; // [.33333333333:1/3, .5:1/2, 0.6666666666666666:2/3, 1:1, 1.5:1 1/2, 2:2, 3:3]\n"), "{out}");
+        assert!(out.contains("type = \"round-tile\"; // [brick:Brick, tile:Tile, wing:Wing, round-tile:round-tile]\n"), "{out}");
+        // the library's call in another of the project's files (not one the model includes)
+        let bare = "module block(width=1, length=2, height=1, type=\"brick\") { cube([width, length, height]); }\n".to_string();
+        let main = "use <lib.scad>;\n// Width of the block, in studs\nblock_width = 2;\nblock(width=block_width);\n".to_string();
+        let out = lift_call_values("use <lib.scad>;\nblock(width=4, height=2+(2/3));\n", "b.scad", &[bare.clone()], &[main]).expect("lifted");
+        assert!(out.contains("// Width of the block, in studs\nwidth = 4;\n"), "{out}");
+        // a fraction with no list to pick from: a number
+        assert!(out.contains("\nheight = 2.6666666666666665;\n"), "{out}");
+        assert!(only_calls("use <../LEGO.scad>;\n\nblock(\n    width=1,\n    height=1/3\n);"));
+        assert!(only_calls("include <a.scad>\ntranslate([1, 0, 0]) cube(2); // x = 1;\n"));
+        assert!(!only_calls("include <a.scad>\nx = 1;\ncube(x);\n"));
+        assert!(!only_calls("difference() { cube(2); sphere(1); }\n"));
+        assert_eq!(const_number("1/3"), Some(1.0 / 3.0));
+        assert_eq!(const_number(" -2 * (1 + 0.5) "), Some(-3.0));
+        assert_eq!(const_number("1e-1/2"), Some(0.05));
+        assert_eq!(const_number("a/3"), None);
+        assert_eq!(const_number("[1/3]"), None);
+        assert_eq!(const_number("1/0"), None);
+        // section headers aren't descriptions; notes need a value of the same type
+        let vars = documented_vars("/* [Size] */\nw = 2; // [1:10]\nmodule m() {\n  // inside\n  x = 1;\n}\n");
+        assert_eq!(vars.keys().collect::<Vec<_>>(), vec!["w"]);
+        assert_eq!(vars["w"].doc, None);
+        assert_eq!(vars["w"].note.as_deref(), Some("1:10"));
+        assert_eq!(fit_note("no:No, yes:Yes", "\"no\"", &json!(true), "true"), None);
+        assert_eq!(fit_note("false:False, true:True", "false", &json!(true), "true"), None);
+        assert_eq!(fit_note("0.51:0.01:1.49", "1.00", &json!(1.2), "1.2"), Some(("1.2".into(), "0.51:0.01:1.49".into())));
     }
 
     #[test]

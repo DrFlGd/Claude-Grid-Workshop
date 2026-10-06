@@ -20,7 +20,8 @@ the shape of a manifest's ui block, and switching between your BOSL2 and the
 app's; 0.3.1: the left menu's category panel, a doc-listed setting as a drop-down,
 Edit… in Library settings, long text kept inside its box; 0.4: the side viewer (a
 model's code, a project's README, a component's file at its module), settings from
-the values in a model's module call (the Gears examples); and the library opening
+the values in a model's module call (the Gears examples; LEGO.scad's style, borrowing the library's
+descriptions and drop-downs); and the library opening
 the same after being moved (library-summary). Writes
 <out>/library-summary.json and <out>/library.zip for the cross-platform check.
 """
@@ -165,8 +166,21 @@ async def main():
             (library / "local/bevel/bevel_gear.scad").write_text(
                 "include <BOSL2/std.scad>\ninclude <BOSL2/gears.scad>\n\n// Number of teeth\nteeth = 20; // [8:60]\n"
                 "// Tooth size (module)\nmod = 2; // [0.5:0.5:5]\n\nbevel_gear(mod=mod, teeth=teeth, mate_teeth=teeth, face_width=10);\n")
+            # and one in LEGO.scad's style: Customizer variables passed to the module by the library's own
+            # call, and an example whose values (a fraction among them) are typed into its call
+            (library / "local/bricks/examples").mkdir(parents=True, exist_ok=True)
+            (library / "local/bricks/brick.scad").write_text(
+                "/* [General] */\n\n// Width of the block, in studs\nblock_width = 2;\n\n// Length of the block, in studs\nblock_length = 4;\n\n"
+                "// Height of the block: 1/3 is a plate, 1 a brick\nblock_height_ratio = 1; // [.33333333333:1/3, .5:1/2, 1:1, 2:2]\n\n"
+                "// What type of block should this be?\nblock_type = \"brick\"; // [brick:Brick, tile:Tile]\n\n"
+                "block(width=block_width, length=block_length, height=block_height_ratio, type=block_type);\n\n"
+                "module block(width=1, length=2, height=1, type=\"brick\") {\n    cube([width * 8 - 0.2, length * 8 - 0.2, height * 9.6]);\n"
+                "    if (type == \"brick\")\n        for (x = [0:width - 1], y = [0:length - 1])\n"
+                "            translate([x * 8 + 4, y * 8 + 4, height * 9.6]) cylinder(d=4.8, h=1.8, $fn=24);\n}\n")
+            (library / "local/bricks/examples/plate.scad").write_text(
+                "use <../brick.scad>;\n\nblock(\n    width=2,\n    length=4,\n    height=1/3,\n    type=\"tile\"\n);\n")
             await pg.reload()
-            await pg.wait_for_function("() => window.__workshop?.index.get('gen:local-bevel/bevel-gear')", timeout=180000)
+            await pg.wait_for_function("() => window.__workshop?.index.get('gen:local-bevel/bevel-gear') && window.__workshop?.index.get('gen:local-bricks/examples-plate')", timeout=180000)
             check("local project read (includes BOSL2 from the library)", True)
 
             # 4. search finds the new generators
@@ -298,6 +312,27 @@ async def main():
             check("a model whose values are typed into its module call has them as settings, and renders with a change",
                   {"modul", "tooth_number", "partial_cone_angle", "bore"} <= set(lifted) and "matches" in status and dims0 != dims1,
                   (lifted, status, dims0.split("\n")[0], dims1.split("\n")[0]))
+            # (in LEGO.scad's style, the settings borrow the library's descriptions and drop-downs, and 1/3 is
+            # the library's own 1/3)
+            await pg.goto(B + "#/m/local-bricks/examples-plate")
+            await pg.wait_for_function("()=>document.body.dataset.model==='local-bricks/examples-plate'")
+            await pg.wait_for_function(DONE, timeout=120000)
+            fields = await pg.eval_on_selector_all("#params .field[data-name]", """els => Object.fromEntries(els.map((e) => {
+                const s = e.querySelector('select'); const l = e.querySelector('label');
+                return [e.dataset.name, [s ? s.options[s.selectedIndex].text : e.querySelector('input')?.type, l?.title || '']]; }))""")
+            dims0 = await pg.inner_text("#dims")
+            await pg.select_option("#p-height", label="1")
+            await pg.click("#generate")
+            await pg.wait_for_function("()=>!document.querySelector('#generate').disabled", timeout=120000)
+            await pg.wait_for_function(DONE, timeout=120000)
+            dims1 = await pg.inner_text("#dims")
+            check("settings from a module call borrow the library's descriptions and choices (a fraction is the library's 1/3)",
+                  fields.get("width") == ["number", "Width of the block, in studs"] and fields.get("height", [None])[0] == "1/3"
+                  and fields.get("type", [None])[0] == "Tile" and "15.8 × 31.8 × 3.2" in dims0 and "× 9.6" in dims1.split("\n")[0],
+                  (fields, dims0.split("\n")[0], dims1.split("\n")[0]))
+            await pg.goto(B + f"#/m/{gears}/examples-bevel-gear")
+            await pg.wait_for_function(f"()=>document.body.dataset.model==='{gears}/examples-bevel-gear'")
+            await pg.wait_for_function(DONE, timeout=120000)
             await pg.click("#model-extra [data-side-open=code]")
             await pg.wait_for_selector(".side-panel[data-side-panel=code] .code .cl")
             code = await pg.inner_text(".side-panel .code")
@@ -358,6 +393,8 @@ async def main():
             await pg.wait_for_selector(".status-idle", timeout=600000)
             await pg.click("[data-act=check]")
             await pg.wait_for_selector(".update-banner", timeout=600000)
+            # (the banner can be there already, from the daily check: wait for this check to finish)
+            await pg.wait_for_function("() => document.querySelector('[data-act=check]')?.textContent === 'Check for updates'", timeout=600000)
             await pg.wait_for_selector(".status-idle", timeout=600000)
             banner = await pg.inner_text(".update-banner")
             check("upstream change detected and summarised", "Update ready" in banner, banner.replace("\n", " | ")[:300])

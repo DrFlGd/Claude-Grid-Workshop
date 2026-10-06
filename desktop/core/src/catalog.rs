@@ -140,7 +140,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             sources.push(entry);
             continue;
         };
-        if derived["format"].as_u64().unwrap_or(0) < project::DERIVED_FORMAT && src["kind"] != "bundled" {
+        if project::outdated(&derived) && src["kind"] != "bundled" {
             attention.push(json!({ "kind": "reread", "source": id, "message": "Read with an older version of the app; read it again." }));
         } else if let Some(name) = libraries_changed(&derived, libs) {
             attention.push(json!({ "kind": "libraries", "source": id, "message": format!("Uses {name}, which changed (a new copy, or the other copy is now used); read it again.") }));
