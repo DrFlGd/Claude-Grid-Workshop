@@ -17,15 +17,29 @@ use std::sync::Arc;
 
 /// Version of the derived-data format (bump to re-read projects; see `outdated`). 2 (0.4): settings
 /// lifted from module calls, reference documents. 3 (0.4.1): lifted settings borrow the library's
-/// descriptions and choice lists, and fractions are lifted.
-pub const DERIVED_FORMAT: u64 = 3;
+/// descriptions and choice lists, and fractions are lifted. 4 (0.4.2): files that draw through an
+/// included engine are models and the engine isn't (see `models_differ`); category keywords match
+/// whole words.
+pub const DERIVED_FORMAT: u64 = 4;
 
 /// Whether a project's derived data was made by an app that reads it differently. Format 3 changed
 /// only settings lifted from module calls, so a project read at format 2 needs reading again only
-/// when it has such models.
+/// when it has such models. Format 4: see `models_differ`.
 pub fn outdated(derived: &Value) -> bool {
     let f = derived["format"].as_u64().unwrap_or(0);
-    f < 2 || (f < DERIVED_FORMAT && derived["family"]["models"].as_array().into_iter().flatten().any(|m| m["settings_from"] == "calls"))
+    f < 2 || (f < 3 && derived["family"]["models"].as_array().into_iter().flatten().any(|m| m["settings_from"] == "calls"))
+}
+
+/// Format 4 changed which files are models only for projects with front ends over an included
+/// engine, so a project read before it needs reading again only when looking at its files now
+/// finds other models than it has (cheap: no OpenSCAD). Checked by `source_rescan` at start-up.
+pub fn models_differ(derived: &Value, root: &Path) -> bool {
+    let mut had: Vec<String> =
+        derived["family"]["models"].as_array().into_iter().flatten().filter_map(|m| m["entrypoint"].as_str().map(String::from)).collect();
+    let mut now = scan::survey(root).entries;
+    had.sort();
+    now.sort();
+    had != now
 }
 
 /// A blob owner's suffix for files the app made for a version (`<source>@<version>~gen:<path>`, in

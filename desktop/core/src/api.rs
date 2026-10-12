@@ -688,6 +688,28 @@ impl App {
                             }
                         }
                     }
+                    // read before format 4 (0.4.2), when files that draw through an included engine weren't
+                    // models: read again where looking at the files now finds other models, else mark as current
+                    if lib.read_only().is_none() {
+                        for id in lib.source_ids() {
+                            let Ok(src) = lib.source(&id) else { continue };
+                            if src["kind"] == "bundled" || src["kind"] == "pinned" || unread.contains(&id) {
+                                continue;
+                            }
+                            let version = src["version"].as_str().unwrap_or("").to_string();
+                            let Some(mut derived) = lib.derived(&id, &version) else { continue };
+                            if derived["format"].as_u64().unwrap_or(0) >= 4 {
+                                continue;
+                            }
+                            let Some(dir) = lib.version_dir(&src, &version).ok().filter(|d| d.is_dir()) else { continue };
+                            if project::models_differ(&derived, &dir) {
+                                unread.push(id);
+                            } else {
+                                derived["format"] = json!(project::DERIVED_FORMAT);
+                                let _ = lib.save_derived(&id, &version, &derived);
+                            }
+                        }
+                    }
                     let mut read = vec![];
                     for id in changed.iter().chain(unread.iter()) {
                         if read.contains(id) {

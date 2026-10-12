@@ -9,7 +9,7 @@ use crate::ingest::{self, Resolver};
 use crate::library::slug;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// Folders never read (version control, tooling, dependencies).
@@ -320,14 +320,21 @@ pub fn public_use(spdx: Option<&str>) -> &'static str {
 /// A category from keywords in the project's name, description, topics and files.
 pub fn guess_category(words: &str) -> &'static str {
     let w = words.to_lowercase();
-    let any = |keys: &[&str]| keys.iter().any(|k| w.contains(k));
+    // whole words, with the usual endings ("gears", "boxes", "threaded"), so "design"
+    // doesn't count as "sign" and "showcase" not as "case"
+    let any = |keys: &[&str]| {
+        keys.iter().any(|k| {
+            let k = regex::escape(k.trim()).replace(r"\ ", r"\s+").replace(' ', r"\s+");
+            regex::Regex::new(&format!(r"\b{k}(?:s|es|ed|ing)?\b")).map(|re| re.is_match(&w)).unwrap_or(false)
+        })
+    };
     if any(&["gridfinity"]) {
         "gridfinity"
     } else if any(&["opengrid", "multiboard", "honeycomb", "pegboard", "skadis", "underware"]) {
         "wall"
-    } else if any(&["gear", "bearing", "hinge", "spring", "pulley", "linkage", "servo", "cam ", "sprocket", "rack"]) {
+    } else if any(&["gear", "bearing", "hinge", "spring", "pulley", "linkage", "servo", "cam", "sprocket", "rack"]) {
         "mechanical"
-    } else if any(&["screw", "bolt", " nut", "thread", "fastener", "insert", "washer", "rivet"]) {
+    } else if any(&["screw", "bolt", "nut", "thread", "fastener", "insert", "washer", "rivet"]) {
         "fasteners"
     } else if any(&["label", "sign", "nameplate", "lettering"]) {
         "labels"
@@ -379,12 +386,113 @@ pub struct Found {
     pub scad_files: usize,
 }
 
+/// The files a SCAD file `include`s (not `use`s: `use` doesn't run top-level code), as written.
+fn includes_in(text: &str) -> Vec<String> {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"^\s*include\s*<([^>]+)>").unwrap());
+    ingest::strip_comments(text).lines().filter_map(|l| re.captures(l).map(|c| c[1].trim().to_string())).collect()
+}
+
+/// What deciding "model or library" needs to know about one .scad file.
+struct ScadFile {
+    rel: String,
+    shape: Shape,
+    /// Project files it `include`s (paths inside the project, as resolved from its folder).
+    includes: Vec<String>,
+    /// Names it assigns (anywhere: a conservative "defines").
+    assigns: BTreeSet<String>,
+    /// Every name it mentions.
+    names: BTreeSet<String>,
+}
+
+impl ScadFile {
+    fn read(rel: &str, text: &str) -> ScadFile {
+        static NAME: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        static ASSIGN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let name = NAME.get_or_init(|| regex::Regex::new(r"[A-Za-z_$][A-Za-z0-9_$]*").unwrap());
+        let assign = ASSIGN.get_or_init(|| regex::Regex::new(r"(?m)^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*=[^=]").unwrap());
+        static UNDEF: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let undef = UNDEF.get_or_init(|| regex::Regex::new(r"is_undef\s*\(\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\)").unwrap());
+        let code = blank_strings(&ingest::strip_comments(text));
+        let dir = ingest::dirname(&format!("/{rel}")).to_string();
+        ScadFile {
+            rel: rel.to_string(),
+            shape: shape(text),
+            includes: includes_in(text).into_iter().map(|p| ingest::normpath(&ingest::join(&dir, &p)).trim_start_matches('/').to_string()).collect(),
+            assigns: assign.captures_iter(&code).map(|c| c[1].to_string()).collect(),
+            // `is_undef(flag)` only asks whether a flag exists (BOSL2's `_BOSL2_STD` guard); not a setting it reads
+            names: name.find_iter(&undef.replace_all(&code, " ")).map(|m| m.as_str().to_string()).collect(),
+        }
+    }
+}
+
+/// Which .scad files are models.
+///
+/// A file that makes geometry at top level is a model. So is a "front end": a file of
+/// settings only (no geometry, no modules of its own) that `include`s a project file that
+/// draws at top level (directly or through other includes) and sets something that file
+/// reads but never sets itself. OpenSCAD runs the included file's top level with the front
+/// end's settings, and the drawing file can't render without them: it's an engine, library
+/// code, as is any file a front end includes on the way to it. Birdhouse Workshop is the
+/// example: square, corner and polygon front ends over one shared engine that reads their
+/// `design_preset` and `body_style`. A file that only overrides settings the drawing file
+/// already has (GridFlock's docs/ animations over gridflock.scad) isn't a front end, and the
+/// drawing file stays a model.
+fn models_among(scads: &[ScadFile]) -> Vec<String> {
+    let find = |p: &str| scads.iter().position(|f| f.rel.eq_ignore_ascii_case(p));
+    // the project files reached from i through includes
+    let closure = |i: usize| -> Vec<usize> {
+        let mut seen: Vec<usize> = vec![];
+        let mut todo: Vec<usize> = scads[i].includes.iter().filter_map(|p| find(p)).collect();
+        while let Some(j) = todo.pop() {
+            if j == i || seen.contains(&j) {
+                continue;
+            }
+            seen.push(j);
+            todo.extend(scads[j].includes.iter().filter_map(|p| find(p)));
+        }
+        seen
+    };
+    let mut model = vec![false; scads.len()];
+    let mut engine = vec![false; scads.len()];
+    for (i, f) in scads.iter().enumerate() {
+        if f.shape.geometry {
+            model[i] = true;
+            continue;
+        }
+        if f.shape.modules > 0 || f.shape.assignments == 0 {
+            continue;
+        }
+        let reached = closure(i);
+        // drawing files it reaches that need one of its settings
+        let fed: Vec<usize> = reached
+            .iter()
+            .copied()
+            .filter(|&d| scads[d].shape.geometry)
+            .filter(|&d| {
+                let mut defined = scads[d].assigns.clone();
+                for k in closure(d) {
+                    defined.extend(scads[k].assigns.iter().cloned());
+                }
+                f.assigns.iter().any(|v| scads[d].names.contains(v) && !defined.contains(v))
+            })
+            .collect();
+        if !fed.is_empty() {
+            model[i] = true;
+            for j in reached {
+                engine[j] = true;
+            }
+        }
+    }
+    scads.iter().enumerate().filter(|(i, _)| model[*i] && !engine[*i]).map(|(_, f)| f.rel.clone()).collect()
+}
+
 /// Look through a project folder.
 pub fn survey(root: &Path) -> Found {
     let files = list_files(root);
     let mut found = Found::default();
     let mut imported: Vec<String> = vec![]; // model files read by import() are inputs, not parts
-    let mut entries = vec![];
+    let mut scads: Vec<ScadFile> = vec![];
     for f in &files {
         let lower = f.rel.to_lowercase();
         let name = lower.rsplit('/').next().unwrap_or(&lower).to_string();
@@ -407,15 +515,16 @@ pub fn survey(root: &Path) -> Found {
             for imp in ingest::references(&text).1 {
                 imported.push(ingest::normpath(&ingest::join(&dir, &imp)).trim_start_matches('/').to_lowercase());
             }
-            let sh = shape(&text);
             let in_test_dir = lower.split('/').any(|p| p == "test" || p == "tests");
-            if sh.geometry && !in_test_dir {
-                entries.push(f.rel.clone());
-            } else {
+            if in_test_dir {
                 found.library_files += 1;
+                continue;
             }
+            scads.push(ScadFile::read(&f.rel, &text));
         }
     }
+    let mut entries = models_among(&scads);
+    found.library_files += scads.len() - entries.len();
     if entries.len() > MAX_ENTRIES {
         found.problems.push(format!(
             "{} .scad files render on their own; only the first {MAX_ENTRIES} became generators. If this is a library, mark it as one.",
@@ -612,6 +721,13 @@ mod tests {
         assert_eq!(guess_category("Parametric bevel gear generator"), "mechanical");
         assert_eq!(guess_category("gridfinity bins"), "gridfinity");
         assert_eq!(guess_category("Electronics enclosure"), "enclosures");
+        // whole words: "design" isn't "sign", "showcase" isn't "case", "donut" isn't "nut"
+        assert_eq!(guess_category("A parametric birdhouse design for CNC routers"), "other");
+        assert_eq!(guess_category("A showcase of donut shapes"), "other");
+        assert_eq!(guess_category("Threaded inserts and gears"), "mechanical");
+        assert_eq!(guess_category("Storage boxes"), "carrying");
+        assert_eq!(guess_category("Laser-cut signs"), "labels");
+        assert_eq!(guess_category("Raspberry Pi project box"), "enclosures");
         assert_eq!(humanize("my_bin-v2"), "My bin v2");
     }
 
@@ -640,6 +756,52 @@ mod tests {
         let (files, missing) = r.collect("box.scad");
         assert!(missing.is_empty());
         assert_eq!(files.keys().cloned().collect::<Vec<_>>(), vec!["/box.scad", "/lib/util.scad"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn front_ends_over_a_shared_engine() {
+        // Birdhouse Workshop's layout: front ends set settings and include an engine that
+        // draws at top level; one front end draws itself with the engine switched off
+        let d = std::env::temp_dir().join(format!("workshop-engine-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("src")).unwrap();
+        std::fs::create_dir_all(d.join("lib")).unwrap();
+        std::fs::write(d.join("src/engine.scad"), "module body(s) { cube(s); }\nauto = is_undef(autorun) ? true : autorun;\nif (auto) body(size);\n").unwrap();
+        // the engine never sets `size`: only its front ends do
+        std::fs::write(d.join("src/square.scad"), "size = 10; // [1:50]\ninclude <engine.scad>\n").unwrap();
+        // through another include, and with the include written with a folder
+        std::fs::write(d.join("src/common.scad"), "wall = 2;\ninclude <engine.scad>\n").unwrap();
+        std::fs::write(d.join("tall.scad"), "size = 30;\ninclude <src/common.scad>\n").unwrap();
+        std::fs::write(d.join("src/castle.scad"), "autorun = false;\nsize = 5;\ninclude <engine.scad>\nmodule keep() { body(size * 2); }\nkeep();\n").unwrap();
+        // not front ends: `use` runs no top-level code; a file with modules of its own is a library;
+        // a library with no geometry stays one
+        std::fs::write(d.join("used.scad"), "size = 3;\nuse <src/engine.scad>\n").unwrap();
+        std::fs::write(d.join("lib/shapes.scad"), "r = 1;\nmodule ball() { sphere(r); }\ninclude <../src/engine.scad>\n").unwrap();
+        std::fs::write(d.join("lib/util.scad"), "module plate() { cube(1); }\n").unwrap();
+        std::fs::write(d.join("config.scad"), "w = 2;\ninclude <lib/util.scad>\n").unwrap();
+        // a guard flag checked with is_undef (BOSL2's std.scad over vnf.scad) isn't a setting
+        std::fs::write(d.join("lib/guarded.scad"), "_G = is_undef(_STD) ? echo(\"use std\") : 0;\ncube(1);\n").unwrap();
+        std::fs::write(d.join("lib/std.scad"), "_STD = true;\ninclude <guarded.scad>\n").unwrap();
+        let f = survey(&d);
+        assert_eq!(f.entries, vec!["lib/guarded.scad", "src/castle.scad", "src/square.scad", "tall.scad"]);
+        assert_eq!(f.scad_files, 11);
+        assert_eq!(f.library_files, 7);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_drawing_file_nobody_fronts_stays_a_model() {
+        // an example that includes a library with a demo at top level: both draw, neither is a front end
+        let d = std::env::temp_dir().join(format!("workshop-demo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("examples")).unwrap();
+        std::fs::write(d.join("gear.scad"), "teeth = 10; // [5:50]\nmodule gear(n) { cylinder(r = n); }\ngear(teeth);\n").unwrap();
+        std::fs::write(d.join("examples/big.scad"), "include <../gear.scad>\ngear(40);\n").unwrap();
+        // settings that gear.scad already has (GridFlock's docs/ animations), and one it never reads
+        std::fs::write(d.join("examples/many.scad"), "teeth = 40;\nframes = 100;\ninclude <../gear.scad>\n").unwrap();
+        let f = survey(&d);
+        assert_eq!(f.entries, vec!["examples/big.scad", "gear.scad"]);
         let _ = std::fs::remove_dir_all(&d);
     }
 }
