@@ -481,6 +481,83 @@ Each phase ends with something usable and with checks in CI.
 | **4. Model library + file formats** | Collections; premade import (STL/3MF/OBJ/STEP); Printables ZIPs with their PDF metadata (creator, license, dates); reference documents for projects and a model's code in a side viewer (README as HTML, Printables PDF, readme.txt; section 5; done in 0.4.0); notes per part (a scratch pad, later); one item per file name with a download format picker (built-in parts, imports and generator output); multi-colour and multi-part 3MF export; recipes; quantities, notes, status; ZIP export; collection page; drag and drop in and out; saved-setting thumbnails and variant compare; size search | Import a pack, save 3 recipes, re-render them after a source update, export the collection; a pack with STL, 3MF and STEP copies of each part imports as one item per name; a two-colour label and the Rugged Box download as 3MF files that open in Bambu Studio and OrcaSlicer with their colours and separate parts |
 | **5. Productivity** | Batch from CSV, multi-setting sweeps, multi-part 3MF arranged on the bed for the printer profile, send to slicer (open the file in Bambu Studio / OrcaSlicer / PrusaSlicer), live reload when a watched .scad file is saved | As listed |
 
+## Owner requests of 2026-10-12 (next: 0.5)
+
+Ten features and one bug from the owner using 0.4.1. Each item says what it is, what the app does today, and what to build. They are not yet ordered; the owner picks the order. Items that add to the library folder (2: attachments, 8: made parts) bump its format version and keep older libraries readable, as Phase 2 set out.
+
+### 1. Choose the picture shown for anything
+
+Today a project's icon can only be one of its own items' thumbnails (Edit details › Icon); a model or part always shows its generated thumbnail. Many projects ship better pictures (Birdhouse's `renders/*.jpg`, a Printables pack's photos).
+
+- **Build:** an **Icon** field at every level (project, folder, model, part, saved settings, collection), offering: the generated render (default), any picture in the project's files, a render from a saved setting's current values, or a picture you add (copied into the library, so the folder stays portable). The choice is ordinary metadata (`icon` in `metadata.json`, an own field per level like `name`), so it survives updates and travels with the library.
+- **Where:** `meta.rs` (allow `icon` below project level), `catalog.rs` (`icon_url` for files and added pictures), `metaedit.js` (a picker with thumbnails instead of the drop-down), the browser cards and the inspector.
+
+### 2. Add your own content to a model, component or part
+
+Documents today come only from the project (its README, a Printables PDF, readme.txt; 0.4.0). You can't attach your own build video, assembly PDF, photos or notes.
+
+- **Build:** **Add content…** on a project, model, part or component page: pick files (video, PDF, images, text, links) that are copied into the library under the item, plus a web link as an entry of its own. They show as extra tabs in the side viewer's Docs (PDF and images as now; video with the webview's own player; anything else opens in its own app), and in the project's Files. Removing one moves it to the library's trash.
+- **Where:** a new `attachments/` folder per source (`sources/<id>/attachments/<item>/…`) listed in `metadata.json`, so the project's own files stay untouched and updates don't affect them; `docs.rs` lists them beside the project's documents; the scratch pad of notes per part (Phase 4) becomes one kind of content.
+
+### 3. Category pickers that show every category
+
+Edit details' Category box is a text box with suggestions (`<input list>`). Once it holds a value, the browser only suggests categories that match what's typed, so the other categories you've made can't be seen or picked without clearing the box first.
+
+- **Build:** a real drop-down listing every category (built-in and your own, nested ones indented under their parent, with counts), a filter box at the top, and **New category…** at the bottom. Use the same control wherever a category is chosen: Edit details (one item or several), Pin as model, Library settings › Categories (moving a category under another, or where its items go when it's removed).
+- **Where:** a shared `CategoryPicker` in `web/ui/` used by `metaedit.js`, `forms.js` and `libsettings.js`.
+
+### 4. Grouping (Condense) needs fixing and tests
+
+The owner reports odd behaviour after selecting something in the main area and then turning Condense off. Two likely causes in `browser.js`: turning Condense on from "no grouping" switches grouping to "project", and turning it off leaves that grouping in place instead of going back; and the keyboard anchor (`anchor`) is kept while the selection is cleared, so arrow keys and Shift-click start from an item that's no longer on screen.
+
+- **Build:** Condense off restores the grouping you had before; the selection and anchor are kept when the items are still shown and cleared only when they aren't; the inspector follows. Reproduce the owner's steps first.
+- **Tests:** the acceptance test selects an item (and a range) in each view, condenses, opens a group, goes back and turns Condense off, checking the grouping, the selection, the inspector and arrow-key movement at each step.
+
+### 5. Scan the library for changes
+
+The app notices changes by itself only in `local/` projects and linked folders, and only when it starts. Files changed inside a project's stored copy (`sources/<id>/files/<version>/`), or a folder moved, renamed or deleted under `local/` while the app is open, go unnoticed until Read again is pressed project by project. The Birdhouse report below is an example: its files were moved out of `src/` after it was added, and the app still records `src/`.
+
+- **Build:** **Scan for changes** (the Library menu and Library settings), and the same scan when the window regains focus (cheap: compare file lists and sizes first, then contents only for what differs). It reports new, changed, moved and missing projects, reads the changed ones again, and lists anything it couldn't resolve under "Needs attention". Optionally, a folder watcher for `local/` and linked projects (this is also Phase 5's "live reload of a watched .scad file").
+- **Where:** `sources::sync_local` grows into a `scan` command covering stored copies too (a stored copy that changed is recorded as an edited version, like a linked folder's `live-` version, so a GitHub update still compares against what upstream sent).
+
+### 6. A standard project folder layout (the owner's question: should there be one?)
+
+**Recommendation: yes, as a convention the app reads when it's present, never a requirement.** Projects from GitHub, Printables and ZIPs arrive in whatever shape their authors chose, so the app must keep guessing well; but a project you make yourself, or tidy up, should be able to say exactly what it is.
+
+- **The layout:** a `workshop.json` at the project's top level naming its models (file, name, picture, category), the files that are library code only, its documents and pictures, and its license and authors. Suggested folders: `models/` (the `.scad` files to open), `lib/` (included code), `parts/` (ready-made STL/3MF/STEP), `docs/`, `images/`. Without `workshop.json` the app guesses as now; with it, it doesn't guess. The app can write one for you from what it found plus your edits (**Save as project file**), which makes a project portable to another library or a fresh install with no work.
+- **Relation to today:** `editor.toml` (settings forms) and the family manifests in `catalog/families/` (the website's models) already do part of this; `workshop.json` should reuse the family manifest's shape so one reader serves both. It also settles the Birdhouse kind of case: the project says which file is the engine.
+
+### 7. Open a .scad file without adding it, and generate from it
+
+Today a `.scad` file only gets a page after it's added to the library (as a ZIP, a folder, or dropped into `local/`).
+
+- **Build:** **Open file…** (and dropping a `.scad` file on the window) opens it on a temporary model page: settings from OpenSCAD's export, the Code tab, Generate and download, as for any model, with its folder as the include path. A bar offers **Add to library** (copy or link its folder, as Add project does) and otherwise nothing is written to the library. Recently opened files are listed on Home. On the desktop the file can also be watched, so saving it in another editor re-renders (Phase 5's live reload).
+- **Where:** a `scratch` source kind held in memory (or the app's data folder) rather than in `sources/`; the render path is the same.
+
+### 8. Make parts from a generator and keep them in the Parts Library
+
+Generating today ends in a download. The owner wants the output kept as ready-made parts: one, or a batch.
+
+- **Build:** **Save as part** next to Download (the current settings: one part), and **Make several…** (a table of rows, each a set of values and a name, or the saved settings you tick; Phase 5's batch from CSV and sweeps are the same table filled from a file or a range). Each result becomes a ready-made part in the Parts Library, in a category you choose, with its STL/3MF, its picture, and a link back to the model and the exact values and code edits that made it, so it can be made again after an update (this is Phase 4's "recipes" with their output file).
+- **Where:** a `made/` project in the library (`sources/made/…`, or `local/made/`) holding the files and a manifest of where each came from; renders go through the existing queue.
+
+### 9. Several libraries open at once, and which one an item is from
+
+This moves "Multiple libraries" out of the future options below and makes it a requested feature.
+
+- **Build:** Settings › Libraries lists the open libraries; each can be added, closed, set as the one new things go into, or opened read-only. The browser shows all of them together, with a filter by library, and every card, row, model page and inspector names its library (a short label and a colour chosen per library). Each library keeps its own saved settings, trash, categories and metadata; copying or moving an item to another library is an action of its own.
+- **Decisions:** which copy wins when the same project is in two libraries (show both, labelled, is the simplest); whether favourites and recent belong to the app or to each library.
+- **Where:** `config.rs` (a list instead of one path), `App` holds several `Library` values and every command names the library it acts on, the catalog is built per library and merged with the library's id in each item's key.
+
+### 10. Back up a library to a ZIP
+
+- **Build:** **Back up library…** opens a save dialog (default name `<library name> <date>.zip`) and writes the whole folder to one ZIP, with progress and Stop, leaving out what can be rebuilt (thumbnails, previews, render cache) unless you tick "Include previews". **Restore from backup…** unpacks one as a new library folder and opens it (never over the open one). Later: a reminder after a number of days, and keeping the last N backups in a chosen folder.
+- **Where:** the `zip` crate is already used to read ZIPs; it needs its write side. The backup is the same thing as Phase 4's "ZIP export", for the whole library instead of a collection.
+
+### Bug: Birdhouse Workshop shows only Castle and Engine
+
+Reported with the project's folder from the library (`zip-birdhouse-workshop-main`). Triage: see "0.5 notes" at the end.
+
 ## Future and experimental options
 
 Asked for by the owner on 2026-10-06 (the plugin architecture a little later the same day). None is scheduled, none belongs to a numbered phase, and each needs a decision before building (the open questions are listed). They are ideas to try, not promises; anything that ships is marked experimental in the app until it has been used for a while.
@@ -495,10 +572,7 @@ Slice a rendered model inside the app and show the result (layers, print time, f
 
 ### Multiple libraries
 
-More than one library folder in use at once (for instance personal, work and a shared one), instead of the single selected folder of Phase 2.
-
-- **How it might work:** a list of library folders, one active for writing and the others read-only or switchable, shown in the sidebar with the same layered metadata. The library format is already portable and versioned, so each folder stays self-contained.
-- **Open questions:** whether items from several libraries appear in one browser or one library at a time; which copy wins when the same project is in two (the rule for bundled against user copies in Components, decision 12, is the starting point); where saved settings, favourites and the trash live; how the index is built across them.
+Now a requested feature: see item 9 of "Owner requests of 2026-10-12" above.
 
 ### Agent integration to edit SCAD files
 
@@ -509,7 +583,7 @@ Let an AI agent (Claude, for instance) read and edit a model's OpenSCAD from ins
 
 ### Plugin architecture
 
-A way for outside code to add abilities to the app without changing the app itself. The three ideas above could each be a plugin rather than part of the core, which would keep the core small and let people choose what to install.
+A way for outside code to add abilities to the app without changing the app itself. Direct slicing and agent integration could each be a plugin rather than part of the core, which would keep the core small and let people choose what to install.
 
 - **Example uses:** a slicer plugin per slicer (PrusaSlicer, OrcaSlicer, Bambu Studio, CuraEngine) behind one "slice" interface; inference-engine plugins for the agent integration, so the agent can be Claude, another hosted model or one run locally; model editors that open a part's code or mesh in another tool and bring the result back (a code editor, a mesh sculpting tool, a CAD program); also import and export formats, extra sources to ingest from, and extra views of a model.
 - **How it might work:** a plugin is a folder with a manifest that says what it adds (a command, a panel in the side viewer, an action on a model, a setting page), and the app asks the plugin to do the work through a small, versioned interface. Two shapes are possible and may both be used: separate programs the app starts and talks to over standard input and output (any language, and a crash can't take the app down), and web-page panels in a sandboxed frame for things that need an interface. This matches how the native engine and the library's commands are already separated from the front end (`App::call`).
