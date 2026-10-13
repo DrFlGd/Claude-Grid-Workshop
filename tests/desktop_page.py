@@ -22,7 +22,8 @@ Edit… in Library settings, long text kept inside its box; 0.4: the side viewer
 model's code, a project's README, a component's file at its module), settings from
 the values in a model's module call (the Gears examples; LEGO.scad's style, borrowing the library's
 descriptions and drop-downs); 0.4.1: the Code tab as an editor (Generate uses the
-edits, saved as a variant with the settings, the project's file untouched); and the library opening
+edits, saved as a variant with the settings, the project's file untouched); 0.4.3: Condense with a
+selection, the category picker, Scan for changes, a library backup and restore; and the library opening
 the same after being moved (library-summary). Writes
 <out>/library-summary.json and <out>/library.zip for the cross-platform check.
 """

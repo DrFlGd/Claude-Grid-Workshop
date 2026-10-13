@@ -28,10 +28,13 @@ fn walk(root: &Path) -> Result<Vec<(String, u64)>> {
     Ok(out)
 }
 
-/// A project's thumbnails (`sources/<id>/thumbs/...`): made again when the library opens.
+/// Thumbnails, which the app makes again: a project's (`sources/<id>/thumbs/...`), a trashed
+/// project's (`trash/<entry>/source/thumbs/...`) and components' (`thumbs/...`).
 fn is_thumb(rel: &str) -> bool {
     let p: Vec<&str> = rel.split('/').collect();
-    p.len() >= 4 && p[0] == "sources" && p[2] == "thumbs"
+    (p.len() >= 2 && p[0] == "thumbs")
+        || (p.len() >= 4 && p[0] == "sources" && p[2] == "thumbs")
+        || (p.len() >= 5 && p[0] == "trash" && p[2] == "source" && p[3] == "thumbs")
 }
 
 /// Write the library folder `root` to the ZIP file `dest`. `progress(files done, files, bytes done,
@@ -168,6 +171,11 @@ mod tests {
         std::fs::write(lib.join("sources/zip-a/files/v1/box.scad"), "cube(1);\n".repeat(100)).unwrap();
         std::fs::write(lib.join("sources/zip-a/thumbs/box.webp"), b"RIFF").unwrap();
         std::fs::write(lib.join("recipes/r1.json"), "{}").unwrap();
+        std::fs::create_dir_all(lib.join("thumbs/components/bosl2")).unwrap();
+        std::fs::write(lib.join("thumbs/components/bosl2/cube.webp"), b"RIFF").unwrap();
+        std::fs::create_dir_all(lib.join("trash/2026-old/source/thumbs")).unwrap();
+        std::fs::write(lib.join("trash/2026-old/source/thumbs/a.webp"), b"RIFF").unwrap();
+        std::fs::write(lib.join("trash/2026-old/trash.json"), "{}").unwrap();
         // inside the library: refused
         assert!(backup(&lib, &lib.join("b.zip"), false, |_, _, _, _| {}, || false).is_err());
         // stopped: nothing left
@@ -176,8 +184,8 @@ mod tests {
         assert!(!zip.exists() && !d.join("backup.zip.part").exists());
         // without thumbnails
         let r = backup(&lib, &zip, true, |_, _, _, _| {}, || false).unwrap();
-        assert_eq!(r["files"], json!(3));
-        assert_eq!(r["left_out"], json!(1));
+        assert_eq!(r["files"], json!(4)); // library.json, box.scad, r1.json, trash.json
+        assert_eq!(r["left_out"], json!(3));
         let out = d.join("restored");
         restore(&zip, &out, |_, _| {}, || false).unwrap();
         assert_eq!(std::fs::read_to_string(out.join("sources/zip-a/files/v1/box.scad")).unwrap(), "cube(1);\n".repeat(100));

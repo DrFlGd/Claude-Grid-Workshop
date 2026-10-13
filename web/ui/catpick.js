@@ -45,7 +45,7 @@ export function CategoryPicker({ id, value, onChange, emptyLabel = null, allowNe
     const r = btn.current?.getBoundingClientRect();
     if (!r) return;
     const below = window.innerHeight - r.bottom;
-    const up = below < 260 && r.top > below;
+    const up = below < 320 && r.top > below;
     setPos({ left: r.left, width: Math.max(r.width, 240), ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }), max: Math.max(160, (up ? r.top : below) - 16) });
   };
   useLayoutEffect(() => { if (open) place(); else setNaming(false); }, [open]);
@@ -98,7 +98,7 @@ export function CategoryPicker({ id, value, onChange, emptyLabel = null, allowNe
         style=${{ left: `${pos.left}px`, width: `${pos.width}px`, ...(pos.top != null ? { top: `${pos.top}px` } : { bottom: `${pos.bottom}px` }) }}>
       <input class="catpick-filter" ref=${box} value=${filter} placeholder=${naming ? "Name of the new category" : allowNew ? "Filter, or type a new name" : "Filter"} aria-label="Filter categories"
         onInput=${(e) => { setFilter(e.target.value); setActive(0); /* typing: the best match first */ }} onKeyDown=${onKey} />
-      <ul class="catpick-list" role="listbox" style=${{ maxHeight: `${pos.max - 48}px` }}>
+      <ul class="catpick-list" role="listbox" style=${{ maxHeight: `${pos.max - 76}px` /* the filter box, the hint and the padding */ }}>
         ${options.map((o, i) => html`<li role="option" aria-selected=${o[0] === "cat" && o[1] === value ? "true" : "false"}
             class=${`catpick-opt${i === at ? " active" : ""}${o[0] !== "cat" ? ` catpick-${o[0]}` : ""}${o[0] === "cat" && o[1] === value ? " chosen" : ""}`}
             data-cat=${o[0] === "cat" ? o[1] : o[0]} onMouseMove=${() => i !== at && setActive(i)} onMouseDown=${(e) => e.preventDefault()} onClick=${() => choose(o)}>
