@@ -33,13 +33,91 @@ pub fn outdated(derived: &Value) -> bool {
 /// Format 4 changed which files are models only for projects with front ends over an included
 /// engine, so a project read before it needs reading again only when looking at its files now
 /// finds other models than it has (cheap: no OpenSCAD). Checked by `source_rescan` at start-up.
-pub fn models_differ(derived: &Value, root: &Path) -> bool {
+pub fn models_differ(src: &Value, derived: &Value, root: &Path) -> bool {
     let mut had: Vec<String> =
         derived["family"]["models"].as_array().into_iter().flatten().filter_map(|m| m["entrypoint"].as_str().map(String::from)).collect();
-    let mut now = scan::survey(root).entries;
+    // a project added as a library has no models, whatever its files hold
+    let mut now = if src["role"] == "library" { vec![] } else { scan::survey(root).entries };
     had.sort();
     now.sort();
     had != now
+}
+
+/// What [`scan_changes`] found.
+#[derive(Debug, Default)]
+pub struct Changes {
+    /// Projects to read again: their files changed since they were read, or they were read before
+    /// format 4 and looking at their files now finds other models.
+    pub read: Vec<String>,
+    /// Projects whose files are gone (a stored copy deleted, a local/ folder removed or renamed,
+    /// a linked folder moved).
+    pub missing: Vec<String>,
+}
+
+/// Look at every project's files for changes since it was read, cheaply: names, sizes and
+/// modification times first, contents only when those differ (a file touched but not changed
+/// isn't a change). `local/` projects and linked folders get new versions in
+/// [`sources::sync_local`], so here they're only checked for being gone. Ids in `skip` are being
+/// read anyway. Records the fingerprints of projects read before they were kept.
+pub fn scan_changes(lib: &Library, skip: &[String]) -> Changes {
+    let mut out = Changes::default();
+    for id in lib.source_ids() {
+        let Ok(src) = lib.source(&id) else { continue };
+        let kind = src["kind"].as_str().unwrap_or("");
+        if kind == "bundled" || kind == "pinned" || skip.contains(&id) {
+            continue;
+        }
+        let version = src["version"].as_str().unwrap_or("").to_string();
+        let Some(dir) = lib.version_dir(&src, &version).ok() else { continue };
+        if !dir.is_dir() {
+            out.missing.push(id);
+            continue;
+        }
+        if lib.read_only().is_some() {
+            continue;
+        }
+        let Some(mut derived) = lib.derived(&id, &version) else { continue };
+        if kind == "local" || kind == "linked" {
+            // their changes make a new version (sync_local); only a read before format 4 is checked here
+            if derived["format"].as_u64().unwrap_or(0) < 4 {
+                if models_differ(&src, &derived, &dir) {
+                    out.read.push(id.clone());
+                } else {
+                    derived["format"] = json!(DERIVED_FORMAT);
+                    let _ = lib.save_derived(&id, &version, &derived);
+                }
+            }
+            continue;
+        }
+        let stamp = |derived: &mut Value, quick: String, full: Option<String>| {
+            derived["format"] = json!(DERIVED_FORMAT);
+            derived["files_stat"] = json!(quick);
+            if let Some(f) = full {
+                derived["files_fp"] = json!(f);
+            }
+            let _ = lib.save_derived(&id, &version, derived);
+        };
+        let old_format = derived["format"].as_u64().unwrap_or(0) < 4;
+        if old_format || derived["files_fp"].as_str().is_none() {
+            // read before fingerprints were kept: read again only if its models would change
+            if models_differ(&src, &derived, &dir) {
+                out.read.push(id.clone());
+            } else {
+                stamp(&mut derived, scan::quick_fingerprint(&dir), Some(scan::fingerprint(&dir)));
+            }
+            continue;
+        }
+        let quick = scan::quick_fingerprint(&dir);
+        if derived["files_stat"].as_str() == Some(quick.as_str()) {
+            continue;
+        }
+        if derived["files_fp"].as_str() == Some(scan::fingerprint(&dir).as_str()) {
+            stamp(&mut derived, quick, None); // touched, not changed
+        } else {
+            out.read.push(id.clone());
+        }
+    }
+    out
 }
 
 /// A blob owner's suffix for files the app made for a version (`<source>@<version>~gen:<path>`, in
@@ -375,6 +453,10 @@ pub async fn ingest(
         "readme": found.readme.as_ref().map(|(p, _)| p.clone()),
         "license_file": found.license.as_ref().map(|(p, _)| p.clone()),
         "editor_toml": found.editor_toml,
+        // what the files were when read, for Scan for changes: names, sizes and times (cheap to
+        // compare), and contents (compared only when the first differs)
+        "files_stat": scan::quick_fingerprint(&root),
+        "files_fp": scan::fingerprint(&root),
     });
     lib.save_derived(&id, version, &derived)?;
     Ok(derived)
@@ -663,5 +745,57 @@ mod tests {
     fn model_ids() {
         assert_eq!(model_id("box.scad"), "box");
         assert_eq!(model_id("examples/My Box.scad"), "examples-my-box");
+    }
+
+    #[test]
+    fn scanning_for_changes() {
+        let dir = std::env::temp_dir().join(format!("workshop-scan-changes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (lib, _) = Library::open(&dir.join("lib"), &crate::config::Prefs::new(dir.join("p.json"))).unwrap();
+        // a project added from a ZIP, read at format 4 with fingerprints
+        let files = dir.join("lib/sources/zip-box/files/zip-1");
+        std::fs::create_dir_all(&files).unwrap();
+        std::fs::write(files.join("box.scad"), "w = 2;\ncube(w);\n").unwrap();
+        let src = json!({ "id": "zip-box", "kind": "zip", "role": "project", "version": "zip-1" });
+        lib.save_source(&src).unwrap();
+        let derived = |fmt: u64, fps: bool| {
+            let mut d = json!({ "format": fmt, "family": { "models": [{ "entrypoint": "box.scad" }] } });
+            if fps {
+                d["files_stat"] = json!(scan::quick_fingerprint(&files));
+                d["files_fp"] = json!(scan::fingerprint(&files));
+            }
+            d
+        };
+        lib.save_derived("zip-box", "zip-1", &derived(4, true)).unwrap();
+        let c = scan_changes(&lib, &[]);
+        assert!(c.read.is_empty() && c.missing.is_empty(), "{c:?}");
+        // touched (same contents, new time): not a change, and the quick fingerprint is updated
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(files.join("box.scad"), "w = 2;\ncube(w);\n").unwrap();
+        assert!(scan_changes(&lib, &[]).read.is_empty());
+        assert_eq!(lib.derived("zip-box", "zip-1").unwrap()["files_stat"], json!(scan::quick_fingerprint(&files)));
+        // edited: read again (unless it's being read anyway)
+        std::fs::write(files.join("box.scad"), "w = 3;\ncube(w);\n").unwrap();
+        assert_eq!(scan_changes(&lib, &[]).read, vec!["zip-box"]);
+        assert!(scan_changes(&lib, &["zip-box".into()]).read.is_empty());
+        // read before fingerprints were kept, models unchanged: just recorded
+        lib.save_derived("zip-box", "zip-1", &derived(3, false)).unwrap();
+        assert!(scan_changes(&lib, &[]).read.is_empty());
+        let d = lib.derived("zip-box", "zip-1").unwrap();
+        assert_eq!(d["format"], json!(DERIVED_FORMAT));
+        assert_eq!(d["files_fp"], json!(scan::fingerprint(&files)));
+        // ... but a new model file means reading again
+        lib.save_derived("zip-box", "zip-1", &derived(3, false)).unwrap();
+        std::fs::write(files.join("lid.scad"), "cube(1);\n").unwrap();
+        assert_eq!(scan_changes(&lib, &[]).read, vec!["zip-box"]);
+        // a project added as a library has no models, so its files' models don't count
+        lib.save_source(&json!({ "id": "zip-box", "kind": "zip", "role": "library", "version": "zip-1" })).unwrap();
+        lib.save_derived("zip-box", "zip-1", &json!({ "format": 3, "family": { "models": [] } })).unwrap();
+        assert!(scan_changes(&lib, &[]).read.is_empty());
+        // files gone
+        std::fs::remove_dir_all(&files).unwrap();
+        assert_eq!(scan_changes(&lib, &[]).missing, vec!["zip-box"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

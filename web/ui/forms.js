@@ -6,6 +6,7 @@
 import { html, useState, useEffect } from "../lib/html.js";
 import { ui, pushUndo } from "./state.js";
 import { ctx } from "./context.js";
+import { CategoryPicker } from "./catpick.js";
 import { Icon } from "./icons.js";
 import { api } from "./library.js";
 import { itemTarget } from "./metaedit.js";
@@ -52,7 +53,14 @@ export function PinDialog({ spec }) {
         }
       }
       for (const k of Object.keys(fixed)) if (fixed[k] == null) delete fixed[k];
-      const r = await api("pin_create", { component: d.key, name: name.trim(), category, defaults, hidden, fixed });
+      let cat = category;
+      if (typeof cat === "object") {
+        // a new category named in the picker
+        const label = cat.create.trim();
+        cat = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "other";
+        if (!(ctx.catalog.category_choices || []).some((c) => c.id === cat)) await api("category_set", { id: cat, label });
+      }
+      const r = await api("pin_create", { component: d.key, name: name.trim(), category: cat, defaults, hidden, fixed });
       await ctx.reloadCatalog();
       close();
       ctx.toast(`Pinned as ${name.trim()} under Parametric Models.`);
@@ -65,9 +73,7 @@ export function PinDialog({ spec }) {
     <p class="muted">${d.component?.library} <code>${d.component?.module}()</code> becomes a model under Parametric Models, with the values it has now as its defaults. Settings you don't show stay at those values.</p>
     <label class="field-block"><span>Name</span><input id="pin-name" value=${name} onInput=${(e) => setName(e.target.value)} required /></label>
     <label class="field-block"><span>Category</span>
-      <select id="pin-category" value=${category} onChange=${(e) => setCategory(e.target.value)}>
-        ${(ctx.catalog.category_choices || []).map((c) => html`<option value=${c.id} selected=${c.id === category}>${c.label}</option>`)}
-      </select></label>
+      <${CategoryPicker} id="pin-category" value=${typeof category === "object" ? category.create : category} onChange=${setCategory} /></label>
     <fieldset class="pin-settings"><legend>Settings to show</legend>
       ${groups.map((g) => html`<div class="pin-group"><b>${g}</b>
         ${d.parameters.filter((p) => p.group === g).map((p) => html`<label class="check" key=${p.name}>

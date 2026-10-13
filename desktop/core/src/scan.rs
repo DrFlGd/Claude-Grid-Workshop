@@ -65,6 +65,23 @@ pub fn fingerprint(root: &Path) -> String {
     hex::encode(h.finalize())[..12].to_string()
 }
 
+/// A quick fingerprint of a folder: file paths, sizes and modification times (no contents), to
+/// tell cheaply whether anything might have changed since [`fingerprint`] was taken.
+pub fn quick_fingerprint(root: &Path) -> String {
+    let mut h = Sha256::new();
+    for f in list_files(root) {
+        h.update(f.rel.as_bytes());
+        h.update([0]);
+        h.update(f.bytes.to_le_bytes());
+        let t = std::fs::metadata(root.join(&f.rel)).and_then(|m| m.modified()).ok();
+        // to the nanosecond where the file system keeps it: an edit that keeps the size, in the same
+        // second as the last check, still shows
+        let nanos = t.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+        h.update(nanos.to_le_bytes());
+    }
+    hex::encode(h.finalize())[..12].to_string()
+}
+
 fn ext(rel: &str) -> String {
     Path::new(rel).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
 }

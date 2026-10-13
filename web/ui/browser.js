@@ -246,12 +246,16 @@ export function Browser() {
     scope: st.scope, q: st.q, filters: st.filters, layout: st.layout, size: st.size, sort: st.sort, group: st.group,
     columns: st.columns, selection: st.selection, anchor: st.anchor, favs: st.favs, inspector: st.inspector, ready: st.ready,
     condensed: st.condensed, openGroup: st.openGroup, sourceTab: st.sourceTab, v: st.catalogVersion, showHidden: st.showHidden,
+    groupBefore: st.groupBefore,
   }));
   const res = useResults();
   const scrollRef = useRef();
   const listRef = useRef();
   const [cols, setCols] = useState(4);
   const items = res?.items || [];
+  // the items on screen, in the order they're shown (by group when grouped; none on the condensed
+  // overview; only the open group's inside one): what selecting, arrow keys and Ctrl+A work on
+  const shownRef = useRef([]);
 
   // grid columns, for arrow-key movement
   useEffect(() => {
@@ -265,12 +269,16 @@ export function Browser() {
     return () => ro.disconnect();
   }, [s.layout, s.size, s.scope]);
 
-  // keep the selection to items that are still shown
+  // keep the selection (and the anchor for Shift-click and arrow keys) to items still on screen
   useEffect(() => {
-    const shown = new Set(items.map((i) => i.id));
-    const keep = s.selection.filter((id) => shown.has(id));
-    if (keep.length !== s.selection.length) ui.set({ selection: keep });
-  }, [items]);
+    const st = ui.get();
+    const shown = new Set(shownRef.current.map((i) => i.id));
+    const keep = st.selection.filter((id) => shown.has(id));
+    const patch = {};
+    if (keep.length !== st.selection.length) patch.selection = keep;
+    if (st.anchor && !shown.has(st.anchor)) patch.anchor = keep[keep.length - 1] || null;
+    if (Object.keys(patch).length) ui.set(patch);
+  }, [items, s.condensed, s.openGroup, s.group, s.layout]);
 
   const onPick = useCallback((it, e) => {
     const st = ui.get();
@@ -278,7 +286,7 @@ export function Browser() {
     let selection = [it.id];
     if (e?.ctrlKey || e?.metaKey) selection = st.selection.includes(it.id) ? st.selection.filter((x) => x !== it.id) : [...st.selection, it.id];
     else if (e?.shiftKey && st.anchor) {
-      const ids = items.map((i) => i.id);
+      const ids = shownRef.current.map((i) => i.id);
       const a = ids.indexOf(st.anchor), b = ids.indexOf(it.id);
       if (a >= 0 && b >= 0) selection = ids.slice(Math.min(a, b), Math.max(a, b) + 1);
     }
@@ -290,7 +298,7 @@ export function Browser() {
     if (e.target.closest("input, select, textarea, .filter-panel")) return;
     const st = ui.get();
     if (st.condensed && st.group !== "none" && !st.openGroup) return; // group tiles are plain buttons (Tab, Enter)
-    const ids = items.map((i) => i.id);
+    const ids = shownRef.current.map((i) => i.id);
     const cur = Math.max(0, ids.indexOf(st.anchor ?? ids[0]));
     const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: s.layout === "grid" ? cols : 1, ArrowUp: s.layout === "grid" ? -cols : -1 }[e.key];
     if (step && ids.length) {
@@ -305,7 +313,7 @@ export function Browser() {
     } else if (e.key === "Enter" && st.anchor) { e.preventDefault(); openItem(ctx.index.get(st.anchor)); }
     else if (e.key === " " && st.anchor) { e.preventDefault(); ui.set({ quicklook: st.anchor }); }
     else if ((e.key === "f" || e.key === "F") && st.selection.length) { e.preventDefault(); toggleFav(st.selection); }
-    else if (e.key === "Escape") ui.set({ selection: [] });
+    else if (e.key === "Escape") ui.set({ selection: [], anchor: null });
     else if ((e.ctrlKey || e.metaKey) && e.key === "a") { e.preventDefault(); ui.set({ selection: ids }); }
   };
 
@@ -319,6 +327,8 @@ export function Browser() {
   const overview = condensing && !s.openGroup;
   const groups = condensing && s.openGroup ? allGroups.filter((g) => g.key === s.openGroup) : allGroups;
   const shownItems = condensing && s.openGroup ? groups.flatMap((g) => g.items) : items;
+  // the table lists items as sorted; the other views by group
+  shownRef.current = overview ? [] : s.layout === "table" ? shownItems : groups.flatMap((g) => g.items);
   // a project opened from its tile shows the project's page (details, files, versions, updates)
   const openProject = condensing && s.openGroup && s.group === "project" && isDesktop() ? groups[0]?.items[0]?.projectId : null;
   const panelSource = info.source || (openProject && sourceById(openProject) ? openProject : null);
@@ -330,9 +340,17 @@ export function Browser() {
   const countText = overview && items.length ? `${plural(allGroups.length, noun === "categories" ? "category" : noun.slice(0, -1), noun)} · ${plural(items.length, "item")}`
     : plural(shownItems.length, "item");
   const condense = () => {
-    if (s.group === "none") setPref({ group: "project", condensed: true });
-    else setPref({ condensed: !s.condensed });
-    ui.set({ openGroup: null, sourceTab: "items", selection: [] });
+    if (!condensing) {
+      // one tile per group: nothing selected on the overview. With no grouping, group by project, and
+      // remember that, so turning Condense off goes back to no grouping
+      if (s.group === "none") setPref({ group: "project", condensed: true, groupBefore: "none" });
+      else setPref({ condensed: true, groupBefore: null });
+      ui.set({ openGroup: null, sourceTab: "items", selection: [], anchor: null });
+    } else {
+      // back to the list: the grouping you had before, and what was selected inside an open group stays selected
+      setPref({ condensed: false, ...(s.groupBefore ? { group: s.groupBefore, groupBefore: null } : {}) });
+      ui.set({ openGroup: null, sourceTab: "items" });
+    }
   };
   return html`<div class=${`browser${s.inspector ? " with-inspector" : ""}`}>
     <div class="browse-main">
@@ -351,7 +369,7 @@ export function Browser() {
               ${SORTS.map(([v, l]) => html`<option value=${v}>${v === "default" ? "Sort: " + (s.q ? "best match" : "default") : "Sort: " + l}</option>`)}
             </select></label>
           <label class="tool-select"><span class="visually-hidden">Group</span>
-            <select value=${s.group} onChange=${(e) => { setPref({ group: e.target.value }); ui.set({ openGroup: null, sourceTab: "items" }); }} aria-label="Group">
+            <select value=${s.group} onChange=${(e) => { setPref({ group: e.target.value, groupBefore: null }); ui.set({ openGroup: null, sourceTab: "items" }); }} aria-label="Group">
               ${GROUPS.map(([v, l]) => html`<option value=${v}>${v === "none" ? l : "Group: " + l}</option>`)}
             </select></label>
           <button type="button" class="tool-btn condense-btn" aria-pressed=${condensing ? "true" : "false"} data-condense
@@ -366,7 +384,7 @@ export function Browser() {
         </div>
       </div>
       ${condensing && s.openGroup ? html`<p class="group-crumb"><button type="button" class="link-btn" data-crumb
-        onClick=${() => ui.set({ openGroup: null, selection: [], sourceTab: "items" })}>‹ All ${noun}</button> / <b>${s.openGroup}</b></p>` : null}
+        onClick=${() => ui.set({ openGroup: null, selection: [], anchor: null, sourceTab: "items" })}>‹ All ${noun}</button> / <b>${s.openGroup}</b></p>` : null}
       ${panelSource ? html`<${SourcePanel} id=${panelSource} key=${panelSource} />` : null}
       ${s.scope === "attention" && isDesktop() ? html`<${AttentionList} />` : null}
       ${info.note ? html`<p class="browse-note">${info.note}</p>` : null}

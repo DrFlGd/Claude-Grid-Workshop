@@ -680,7 +680,7 @@ async fn serve(mut a: Args) -> Result<()> {
                             std::fs::write(&p, &req.body)?;
                             respond(&mut stream, 200, "application/json", &[], &serde_json::to_vec(&json!(p.display().to_string()))?)
                         }
-                        "pick_folder" | "pick_file" => {
+                        "pick_folder" | "pick_file" | "pick_save_path" => {
                             let next = { let mut p = picks.lock().unwrap(); if p.is_empty() { None } else { Some(p.remove(0)) } };
                             respond(&mut stream, 200, "application/json", &[], &serde_json::to_vec(&json!(next))?)
                         }

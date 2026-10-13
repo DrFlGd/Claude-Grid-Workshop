@@ -500,6 +500,42 @@ async def main():
             await pg.click("[data-condense]")
             await pg.select_option("select[aria-label=Group]", "none")
 
+            # 8b. Condense with a selection (owner's report, 0.4.3): turning it on clears the selection and
+            # groups by project; inside a group, arrow keys and Ctrl+A stay in it; turning it off goes back
+            # to no grouping and keeps what was selected
+            await pg.wait_for_selector(".results [data-item]")
+            sel_q = "() => [...document.querySelectorAll('.results [data-item][aria-selected=true]')].map((e) => e.dataset.item)"
+            first_ids = await pg.eval_on_selector_all(".results [data-item]", "els => els.slice(0, 3).map((e) => e.dataset.item)")
+            await pg.click(f'.results [data-item="{first_ids[0]}"]')
+            await pg.click(f'.results [data-item="{first_ids[2]}"]', modifiers=["Shift"])
+            ranged = await pg.evaluate(sel_q)
+            await pg.click("[data-condense]")
+            await pg.wait_for_selector(".group-tile")
+            on_group = await pg.eval_on_selector("select[aria-label=Group]", "e => e.value")
+            on_empty = await pg.locator(".inspector .insp-empty").count() == 1
+            # the biggest group, so arrow keys have room to run past it
+            await pg.evaluate("""() => { const t = [...document.querySelectorAll('.group-tile[data-group]')].sort((a, b) => parseInt(b.querySelector('.card-sub').textContent) - parseInt(a.querySelector('.card-sub').textContent))[0]; t.click(); }""")
+            await pg.wait_for_selector(".group-crumb")
+            in_group = await pg.eval_on_selector_all(".results [data-item]", "els => els.map((e) => e.dataset.item)")
+            await pg.click(f'.results [data-item="{in_group[0]}"]')
+            for _ in range(len(in_group) + 5):
+                await pg.keyboard.press("ArrowRight")
+            walked = await pg.evaluate(sel_q)
+            await pg.keyboard.press("Control+a")
+            all_sel = await pg.evaluate(sel_q)
+            keep = in_group[min(1, len(in_group) - 1)]
+            await pg.click(f'.results [data-item="{keep}"]')
+            await pg.click("[data-condense]")
+            await pg.wait_for_selector(".results [data-item]")
+            off_group = await pg.eval_on_selector("select[aria-label=Group]", "e => e.value")
+            kept = await pg.evaluate(sel_q)
+            insp = await pg.locator(".inspector .insp-empty").count() == 0
+            check("Condense: on clears the selection and groups by project; arrow keys and Ctrl+A stay in an open group; off goes back to no grouping, keeping the selection",
+                  len(ranged) == 3 and on_group == "project" and on_empty and walked == [in_group[-1]] and sorted(all_sel) == sorted(in_group)
+                  and off_group == "none" and kept == [keep] and insp,
+                  (len(ranged), on_group, on_empty, walked, in_group[-1], len(all_sel), len(in_group), off_group, kept, insp))
+            await pg.screenshot(path=str(out / "p4-04-condense-off.png"))
+
             # 9. hide, flag as broken, delete and list under another project (with undo and restore)
             gens = sorted(i["id"] for i in await index_items(pg, v76) if i["kind"] == "generator" and i["id"] not in (cup, other))
             hide_id, flag_id, del_id, move_id = gens[:4]
@@ -551,7 +587,8 @@ async def main():
             await pg.click("#category-add")
             await pg.wait_for_selector('[data-category="kitchen"]')
             await pg.click('[data-category="labels"] [data-act=remove-category]')
-            await pg.select_option('[data-category="labels"] [data-move-to]', "gridfinity")
+            await pg.click('[data-category="labels"] #category-move-to')
+            await pg.click('.catpick-opt[data-cat="gridfinity"]')
             await pg.click('[data-category="labels"] [data-act=remove-confirm]')
             await pg.wait_for_selector('[data-category="labels"]', state="detached")
             left = await pg.evaluate("() => window.__workshop.index.items.filter((i) => i.category === 'labels').length")
@@ -614,6 +651,87 @@ async def main():
             await pg.wait_for_selector("#trash-none")
             emptied = not any((library / "trash").iterdir())
             check("deleted project goes to the trash, comes back, trash empties", in_trash and restored and emptied, (in_trash, restored, emptied))
+
+            # 12. (0.4.3) the category picker lists every category even with one chosen, and makes new ones
+            await pg.goto(B + f"#/browse/source/{ids['gears']}")
+            await pg.wait_for_selector(".results [data-item]")
+            await pg.locator(".results [data-item]").first.click()
+            await pg.click(".inspector [data-act=edit]")
+            await pg.wait_for_selector("#meta-save:not([disabled])")
+            await pg.click("#meta-category")
+            await pg.wait_for_selector(".catpick-pop")
+            n_choices = await pg.evaluate("() => window.__workshop.catalog.category_choices.length")
+            listed = await pg.eval_on_selector_all(".catpick-opt[data-cat]", "els => els.map((e) => e.dataset.cat)")
+            await pg.screenshot(path=str(out / "p4-05-category-picker.png"))
+            await pg.fill(".catpick-filter", "Garden tools")
+            await pg.keyboard.press("Enter")
+            shown_new = await pg.inner_text("#meta-category")
+            picked_item = await pg.evaluate("() => document.querySelector('.results [data-item]').dataset.item")
+            await pg.click("#meta-save")
+            await pg.wait_for_selector(".dialog", state="detached")
+            await pg.wait_for_function(f"() => window.__workshop.index.get('{picked_item}')?.category === 'garden-tools'", timeout=20000)
+            made = await pg.evaluate("() => window.__workshop.catalog.category_choices.some((c) => c.id === 'garden-tools' && c.label === 'Garden tools')")
+            cats_listed = [c for c in listed if c not in ("empty", "newprompt", "new")]
+            check("category picker: every category listed with one chosen; a new one typed in is made",
+                  len(cats_listed) == n_choices and "newprompt" in listed and "Garden tools" in shown_new and made, (len(cats_listed), n_choices, listed[-2:], shown_new, made))
+
+            # 13. (0.4.3) Scan for changes: a file added to a project's stored copy, a new local/ project, a missing one
+            await pg.goto(B + "#/library-settings")
+            await pg.wait_for_selector("#library-rescan")
+            gsrc = await pg.evaluate(f"() => window.__workshop.catalog.sources.find((s) => s.id === '{ids['gears']}')")
+            (library / f"sources/{ids['gears']}/files/{gsrc['version']}/scan_extra.scad").write_text("size = 3; // [1:10]\ncube(size);\n")
+            (library / "local/scanned").mkdir(parents=True, exist_ok=True)
+            (library / "local/scanned/plate.scad").write_text("w = 20; // [5:50]\ncube([w, w, 2]);\n")
+            await pg.click("#library-rescan")
+            try:
+                await pg.wait_for_function(f"() => window.__workshop.index.get('gen:{ids['gears']}/scan-extra') && window.__workshop.index.get('gen:local-scanned/plate')", timeout=180000)
+            except Exception:
+                pass
+            seen = await pg.evaluate(f"() => [!!window.__workshop.index.get('gen:{ids['gears']}/scan-extra'), !!window.__workshop.index.get('gen:local-scanned/plate')]")
+            toast1 = await pg.eval_on_selector_all(".toast", "els => els.map((e) => e.textContent).join(' | ')")
+            shutil.rmtree(library / "local/scanned")
+            await pg.click("#library-rescan")
+            try:
+                await pg.wait_for_function("() => window.__workshop.catalog.attention.some((a) => a.kind === 'missing-folder' && a.source === 'local-scanned')", timeout=60000)
+            except Exception:
+                pass
+            missing = await pg.evaluate("() => window.__workshop.catalog.attention.some((a) => a.kind === 'missing-folder' && a.source === 'local-scanned')")
+            toast2 = await pg.eval_on_selector_all(".toast", "els => els.map((e) => e.textContent).join(' | ')")
+            check("Scan for changes: a file added to a stored copy and a new local/ project are read; a folder gone is listed under Needs attention",
+                  all(seen) and missing and "missing" in toast2, (seen, missing, toast1, toast2))
+            await pg.click('[data-source="local-scanned"] [data-act=delete-project]')
+
+            # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
+            backup = home / "backups" / "library backup.zip"
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(backup)}).encode(), method="POST"))
+            await pg.click("#backup-leave-out")
+            await pg.click("#library-backup")
+            for _ in range(600):
+                if backup.is_file():
+                    break
+                await pg.wait_for_timeout(500)
+            import zipfile
+            names = zipfile.ZipFile(backup).namelist() if backup.is_file() else []
+            thumbs_in = any("/thumbs/" in n for n in names)
+            check("Back up library: one ZIP of the library folder, without thumbnails when asked",
+                  "library.json" in names and any(n.startswith("recipes/") for n in names) and any(n.startswith("sources/") for n in names) and not thumbs_in,
+                  (len(names), thumbs_in))
+            n_sources = await pg.evaluate("() => window.__workshop.catalog.sources.length")
+            restored_dir = home / "restored library"
+            for pick in (backup, restored_dir):
+                urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(pick)}).encode(), method="POST"))
+            await pg.click("#library-restore")
+            try:
+                await pg.wait_for_function(f"() => window.__workshop?.catalog?.library?.path?.includes('restored library')", timeout=180000)
+            except Exception:
+                pass
+            await pg.wait_for_function("() => !!window.__workshop?.catalog", timeout=60000)
+            r_path = await pg.evaluate("() => window.__workshop.catalog.library?.path")
+            r_sources = await pg.evaluate("() => window.__workshop.catalog.sources.length")
+            check("Restore from backup: a new library folder, opened, with the same projects",
+                  (restored_dir / "library.json").is_file() and "restored library" in (r_path or "") and r_sources == n_sources, (r_path, r_sources, n_sources))
+            await pg.screenshot(path=str(out / "p4-06-restored.png"))
             await b.close()
     finally:
         server.terminate()

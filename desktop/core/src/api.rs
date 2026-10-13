@@ -51,6 +51,8 @@ struct Job {
     error: Option<String>,
     result: Value,
     started: String,
+    /// Stop asked for (jobs that can stop check it: backups, restores)
+    cancel: bool,
 }
 
 pub struct App {
@@ -287,6 +289,10 @@ impl App {
         }
     }
 
+    fn job_cancelled(&self, id: &str) -> bool {
+        self.jobs.lock().unwrap().iter().any(|j| j.id == id && j.cancel)
+    }
+
     fn job_done(&self, id: &str, r: Result<Value>) {
         if let Some(j) = self.jobs.lock().unwrap().iter_mut().find(|j| j.id == id) {
             j.done = true;
@@ -464,6 +470,48 @@ impl App {
                 Ok(Reply::Bytes(if scad { crate::sitebuild::replace_crlf(&data) } else { data }))
             }
             "jobs" => j(self.jobs_json()),
+            "job_cancel" => {
+                let id = arg(&args, "id").map_err(e2s)?.to_string();
+                let mut jobs = self.jobs.lock().unwrap();
+                let found = jobs.iter_mut().find(|j| j.id == id && !j.done).map(|j| j.cancel = true).is_some();
+                j(json!(found))
+            }
+            "library_backup" => {
+                // the whole library folder to one ZIP (path from a save dialog)
+                let dest = PathBuf::from(arg(&args, "path").map_err(e2s)?);
+                let leave_out_thumbs = args["leave_out_thumbs"].as_bool().unwrap_or(false);
+                let lib = self.library()?;
+                Ok(Reply::Json(self.spawn("Backing up the library", move |app, job| async move {
+                    let root = lib.root().to_path_buf();
+                    let linked = lib.source_ids().into_iter().filter_map(|id| lib.source(&id).ok()).filter(|s| s["kind"] == "linked").count();
+                    let app2 = app.clone();
+                    let mut r = tokio::task::spawn_blocking(move || {
+                        crate::backup::backup(
+                            &root,
+                            &dest,
+                            leave_out_thumbs,
+                            |i, n, done, total| app2.job_stage(&job, format!("{i} of {n} files ({} of {} MB)", done >> 20, total >> 20)),
+                            || app2.job_cancelled(&job),
+                        )
+                    })
+                    .await??;
+                    r["linked"] = json!(linked);
+                    Ok(r)
+                })))
+            }
+            "library_restore" => {
+                // a backup unpacked into a new folder, then opened as the library
+                let zip = PathBuf::from(arg(&args, "zip").map_err(e2s)?);
+                let dest = PathBuf::from(arg(&args, "folder").map_err(e2s)?);
+                Ok(Reply::Json(self.spawn("Restoring a library", move |app, job| async move {
+                    let app2 = app.clone();
+                    let dest = tokio::task::spawn_blocking(move || {
+                        crate::backup::restore(&zip, &dest, |i, n| app2.job_stage(&job, format!("{i} of {n} files")), || app2.job_cancelled(&job))
+                    })
+                    .await??;
+                    Ok(json!({ "path": dest.display().to_string() }))
+                })))
+            }
             "blob_put" => {
                 // an edited file's text (the Code tab): kept in the app's data folder by its hash, so a
                 // render can use it in place of the original (the original is never written to)
@@ -673,9 +721,11 @@ impl App {
                 })))
             }
             "source_rescan" => {
-                // the library's local/ folder and linked folders, read again where they changed
+                // Scan for changes: the library's local/ folder and linked folders, and the stored copies of
+                // added projects; read again where they changed
                 Ok(Reply::Json(self.spawn("Looking for changed projects", move |app, job| async move {
                     let lib = app.library().map_err(|e| anyhow!(e))?;
+                    let known_before = lib.source_ids();
                     let changed = sources::sync_local(&lib)?;
                     let mut unread: Vec<String> = lib.source_ids().into_iter().filter(|id| {
                         lib.source(id).ok().is_some_and(|s| s["kind"] != "bundled" && s["kind"] != "pinned" && lib.derived(id, s["version"].as_str().unwrap_or("")).is_none())
@@ -688,28 +738,10 @@ impl App {
                             }
                         }
                     }
-                    // read before format 4 (0.4.2), when files that draw through an included engine weren't
-                    // models: read again where looking at the files now finds other models, else mark as current
-                    if lib.read_only().is_none() {
-                        for id in lib.source_ids() {
-                            let Ok(src) = lib.source(&id) else { continue };
-                            if src["kind"] == "bundled" || src["kind"] == "pinned" || unread.contains(&id) {
-                                continue;
-                            }
-                            let version = src["version"].as_str().unwrap_or("").to_string();
-                            let Some(mut derived) = lib.derived(&id, &version) else { continue };
-                            if derived["format"].as_u64().unwrap_or(0) >= 4 {
-                                continue;
-                            }
-                            let Some(dir) = lib.version_dir(&src, &version).ok().filter(|d| d.is_dir()) else { continue };
-                            if project::models_differ(&derived, &dir) {
-                                unread.push(id);
-                            } else {
-                                derived["format"] = json!(project::DERIVED_FORMAT);
-                                let _ = lib.save_derived(&id, &version, &derived);
-                            }
-                        }
-                    }
+                    // projects' stored copies changed since they were read (or read before format 4), and
+                    // projects whose files are gone
+                    let scan = project::scan_changes(&lib, &unread);
+                    unread.extend(scan.read.iter().cloned());
                     let mut read = vec![];
                     for id in changed.iter().chain(unread.iter()) {
                         if read.contains(id) {
@@ -718,7 +750,8 @@ impl App {
                         app.read_project(id, None, Some(&job)).await?;
                         read.push(id.clone());
                     }
-                    Ok(json!({ "read": read }))
+                    let added: Vec<&String> = changed.iter().filter(|id| !known_before.contains(id)).collect();
+                    Ok(json!({ "read": read, "added": added, "missing": scan.missing }))
                 })))
             }
             "source_get" => {

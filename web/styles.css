@@ -933,3 +933,36 @@ textarea.grow { resize: none; overflow: hidden; line-height: 1.4; min-height: 0;
 @media (max-width: 560px) {
   .side-panel { width: calc(100vw - 34px); }
 }
+
+/* ---------------------------------------------------------------- category picker (catpick.js) */
+.catpick { display: inline-grid; min-width: 0; }
+.meta-field .catpick, .field-block .catpick { display: grid; }
+.catpick-btn {
+  display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; text-align: left; cursor: pointer;
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--white);
+  border: 1px solid var(--steel-2); border-radius: var(--radius-s); padding: 7px 9px;
+}
+.catpick-btn:hover { border-color: var(--graphite); }
+.catpick-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.catpick-btn[aria-expanded="true"] { border-color: var(--ink); }
+.catpick-btn svg { margin-left: auto; flex: none; transform: rotate(90deg); }
+.catpick-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.catpick-icon { width: 18px; height: 18px; object-fit: contain; flex: none; }
+.catpick-pop {
+  position: fixed; z-index: 400; display: grid; gap: 6px; padding: 8px;
+  background: var(--white); color: var(--ink); border: 1px solid var(--steel-2); border-radius: var(--radius-m); box-shadow: var(--shadow);
+}
+.catpick-filter { width: 100%; }
+.catpick-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 60px; }
+.catpick-opt { display: flex; align-items: baseline; gap: 8px; padding: 7px 8px; border-radius: var(--radius-s); cursor: pointer; font-size: 14px; }
+.catpick-opt.active { background: var(--panel); }
+.catpick-opt.chosen { background: var(--sel); font-weight: 600; }
+.catpick-opt.chosen.active { outline: 1px solid var(--steel-2); }
+.catpick-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.catpick-count { margin-left: auto; white-space: nowrap; font-size: 12px; }
+.catpick-empty .catpick-name { color: var(--graphite); font-style: italic; }
+.catpick-new, .catpick-newprompt { border-top: 1px solid var(--steel); margin-top: 4px; padding-top: 9px; color: var(--ink); font-weight: 600; }
+.catpick-new svg, .catpick-newprompt svg { align-self: center; flex: none; }
+.catpick-none { padding: 7px 8px; font-size: 14px; }
+.catpick-hint { margin: 0; font-size: 12px; }
+.ls-move .catpick { min-width: 180px; vertical-align: middle; }

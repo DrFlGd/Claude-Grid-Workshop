@@ -128,8 +128,13 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             "version": version, "version_date": src["version_date"], "added": src["added"],
             "update": src["update"], "read": derived.is_some(),
         });
-        if src["kind"] == "linked" && !dir.as_ref().is_some_and(|d| d.is_dir()) {
-            attention.push(json!({ "kind": "missing-folder", "source": id, "message": format!("The linked folder {} is missing; relink it or remove the project.", src["origin"]["path"].as_str().unwrap_or("")) }));
+        if src["kind"] != "bundled" && src["kind"] != "pinned" && !dir.as_ref().is_some_and(|d| d.is_dir()) {
+            let message = match src["kind"].as_str().unwrap_or("") {
+                "linked" => format!("The linked folder {} is missing; relink it or remove the project.", src["origin"]["path"].as_str().unwrap_or("")),
+                "local" => format!("The folder {} is gone from the library (moved, renamed or deleted); put it back, or remove the project.", src["origin"]["path"].as_str().unwrap_or("")),
+                _ => format!("The project's files are missing from the library (sources/{id}/files/{version}); remove the project and add it again."),
+            };
+            attention.push(json!({ "kind": "missing-folder", "source": id, "message": message }));
         }
         if src["update"]["state"] == "available" {
             attention.push(json!({ "kind": "update", "source": id, "message": "An update is ready to review." }));

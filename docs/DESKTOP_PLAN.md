@@ -506,6 +506,8 @@ Edit details' Category box is a text box with suggestions (`<input list>`). Once
 - **Build:** a real drop-down listing every category (built-in and your own, nested ones indented under their parent, with counts), a filter box at the top, and **New category…** at the bottom. Use the same control wherever a category is chosen: Edit details (one item or several), Pin as model, Library settings › Categories (moving a category under another, or where its items go when it's removed).
 - **Where:** a shared `CategoryPicker` in `web/ui/` used by `metaedit.js`, `forms.js` and `libsettings.js`.
 
+- **Done (0.4.3).** `web/ui/catpick.js` (`CategoryPicker`): a button showing the category, opening a list of every category with model and part counts, a filter box, "New category…" (or a typed name that isn't listed, then Enter), keyboard (arrows, Enter, Escape). The list is placed with `position: fixed` so dialogs don't clip it, and clicks inside it are kept from reaching the `<label>` around it (a click in a label goes to its first control: the picker's button, which would reopen it). Used in Edit details, Pin as model and Library settings › Categories. Categories are one flat list, so nothing is indented yet.
+
 ### 4. Grouping (Condense) needs fixing and tests
 
 The owner reports odd behaviour after selecting something in the main area and then turning Condense off. Two likely causes in `browser.js`: turning Condense on from "no grouping" switches grouping to "project", and turning it off leaves that grouping in place instead of going back; and the keyboard anchor (`anchor`) is kept while the selection is cleared, so arrow keys and Shift-click start from an item that's no longer on screen.
@@ -513,12 +515,16 @@ The owner reports odd behaviour after selecting something in the main area and t
 - **Build:** Condense off restores the grouping you had before; the selection and anchor are kept when the items are still shown and cleared only when they aren't; the inspector follows. Reproduce the owner's steps first.
 - **Tests:** the acceptance test selects an item (and a range) in each view, condenses, opens a group, goes back and turns Condense off, checking the grouping, the selection, the inspector and arrow-key movement at each step.
 
+- **Done (0.4.3).** Besides the two causes above: arrow keys, Shift-click ranges and Ctrl+A used every result in sorted order, so inside an opened group they reached items of other groups, and with grouping on the arrow keys jumped (the grid shows items by group). `browser.js` now keeps the items on screen, in the order shown (`shownRef`: none on the condensed overview, the open group's inside one, by group otherwise, as sorted in the table), and selecting, keys and the pruning of the selection and its anchor all use it. `groupBefore` (a saved preference) remembers the grouping Condense replaced. The acceptance test covers the owner's steps.
+
 ### 5. Scan the library for changes
 
 The app notices changes by itself only in `local/` projects and linked folders, and only when it starts. Files changed inside a project's stored copy (`sources/<id>/files/<version>/`), or a folder moved, renamed or deleted under `local/` while the app is open, go unnoticed until Read again is pressed project by project. The Birdhouse report below is an example: its files were moved out of `src/` after it was added, and the app still records `src/`.
 
 - **Build:** **Scan for changes** (the Library menu and Library settings), and the same scan when the window regains focus (cheap: compare file lists and sizes first, then contents only for what differs). It reports new, changed, moved and missing projects, reads the changed ones again, and lists anything it couldn't resolve under "Needs attention". Optionally, a folder watcher for `local/` and linked projects (this is also Phase 5's "live reload of a watched .scad file").
 - **Where:** `sources::sync_local` grows into a `scan` command covering stored copies too (a stored copy that changed is recorded as an edited version, like a linked folder's `live-` version, so a GitHub update still compares against what upstream sent).
+
+- **Done (0.4.3).** `project::scan_changes` (called by `source_rescan` after `sync_local`): a stored copy is compared with `files_stat` (paths, sizes, modification times to the nanosecond) and, only when that differs, `files_fp` (contents), both recorded in the derived data when a project is read; changed ones are read again (not recorded as an edited version yet: an update from GitHub still downloads upstream's files beside them). Projects whose files are gone are returned as `missing` and listed under Needs attention (any kind, not just linked). The page scans at start-up, when the window comes back into focus (at most once a minute, not while a dialog is open) and with Scan for changes in Library settings. Not done: a folder watcher.
 
 ### 6. A standard project folder layout (the owner's question: should there be one?)
 
@@ -553,6 +559,8 @@ This moves "Multiple libraries" out of the future options below and makes it a r
 
 - **Build:** **Back up library…** opens a save dialog (default name `<library name> <date>.zip`) and writes the whole folder to one ZIP, with progress and Stop, leaving out what can be rebuilt (thumbnails, previews, render cache) unless you tick "Include previews". **Restore from backup…** unpacks one as a new library folder and opens it (never over the open one). Later: a reminder after a number of days, and keeping the last N backups in a chosen folder.
 - **Where:** the `zip` crate is already used to read ZIPs; it needs its write side. The backup is the same thing as Phase 4's "ZIP export", for the whole library instead of a collection.
+
+- **Done (0.4.3)**, in Library settings › Backups (`backup.rs`, commands `library_backup` and `library_restore`, the app's `pick_save_path` dialog). Changed from the plan: the backup keeps previews (some parts' previews come from the app's own copy of the starter library and wouldn't come back) and offers "Leave out thumbnails" instead; restoring takes an empty folder chosen in a folder dialog. Jobs can now be stopped (`job_cancel`; the status bar's Cancel). Not done: reminders, keeping the last N.
 
 ### Bug: Birdhouse Workshop shows only Castle and Engine
 

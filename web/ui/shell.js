@@ -9,7 +9,7 @@ import { Palette } from "./palette.js";
 import { QuickLook } from "./quicklook.js";
 import { TopSearch, TopButtons, Tabs, StatusBar } from "./chrome.js";
 import { useStore } from "../lib/store.js";
-import { AddProject, MergeConflicts, makeThumbnails, dailyUpdateCheck, rescanLocal } from "./library.js";
+import { AddProject, MergeConflicts, makeThumbnails, dailyUpdateCheck, rescanLocal, scanOnFocus } from "./library.js";
 import { MetaEditor, undoNow } from "./metaedit.js";
 import { FlagDialog } from "./actions.js";
 import { PinDialog, FormEditor } from "./forms.js";
@@ -49,7 +49,7 @@ export function mountShell(context) {
     }
   });
   if (context.platform.kind === "desktop") {
-    setTimeout(async () => { await rescanLocal(); makeThumbnails(); dailyUpdateCheck(); }, 1500);
+    setTimeout(async () => { await rescanLocal(); makeThumbnails(); dailyUpdateCheck(); scanOnFocus(); }, 1500);
   }
 }
 

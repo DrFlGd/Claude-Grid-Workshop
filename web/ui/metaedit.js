@@ -10,6 +10,7 @@ import { ctx } from "./context.js";
 import { Icon } from "./icons.js";
 import { api, sourceById } from "./library.js";
 import { plural } from "../lib/util.js";
+import { CategoryPicker } from "./catpick.js";
 
 const LICENSES = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "GPL-2.0", "GPL-3.0", "LGPL-2.1", "LGPL-3.0", "MPL-2.0", "CC0-1.0",
   "CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0", "CC-BY-NC-SA-4.0", "CC-BY-ND-4.0", "CC-BY-NC-ND-4.0", "Unlicense", "NOASSERTION"];
@@ -235,7 +236,13 @@ export function MetaEditor({ spec }) {
     const common = { id: `meta-${f}`, value: vals[f] ?? "", onInput: (e) => set(e.target.value), placeholder };
     if (f === "summary" || f === "notes") return html`<textarea rows="3" ...${common}></textarea>`;
     if (f === "license") return html`<input list="spdx-list" ...${common} /><datalist id="spdx-list">${LICENSES.map((l) => html`<option value=${l} />`)}</datalist>`;
-    if (f === "category") return html`<input list="cat-list" ...${common} /><datalist id="cat-list">${choices().map((c) => html`<option value=${c.label} />`)}</datalist>`;
+    if (f === "category") {
+      // the field holds the category's name (or a new one's); the picker works in ids
+      const text = (vals.category ?? "").trim();
+      const pick = choices().find((c) => c.label === text || c.id === text)?.id || text;
+      return html`<${CategoryPicker} id="meta-category" value=${pick} emptyLabel=${level === "bulk" ? "Leave as is" : level === "library" ? null : "Not set here"}
+        onChange=${(v) => set(typeof v === "object" ? v.create : v ? choices().find((c) => c.id === v)?.label || v : "")} />`;
+    }
     if (f === "icon") return html`<select id="meta-icon" value=${vals.icon || ""} onChange=${(e) => set(e.target.value)}>
       <option value="">Thumbnails of its items</option>
       ${projectItems.map((i) => html`<option value=${`item:${i.sourceId}/${i.kind === "part" ? `part-${i.key.split("/")[1]}` : i.key.split("/")[1]}`}>${i.name}</option>`)}</select>`;

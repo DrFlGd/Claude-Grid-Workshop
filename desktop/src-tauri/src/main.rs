@@ -99,6 +99,30 @@ async fn save_file(app: AppHandle, request: Request<'_>) -> Result<Option<String
     Ok(Some(path.display().to_string()))
 }
 
+/// Ask where to save a file the app writes itself (a library backup). None if cancelled.
+#[tauri::command]
+async fn pick_save_path(app: AppHandle, title: Option<String>, name: Option<String>, extensions: Option<Vec<String>>) -> Result<Option<String>, String> {
+    let state = app.state::<AppState>();
+    let config_path = state.app.paths.config_dir.join("config.json");
+    let mut cfg = state.app.config();
+    let mut d = app.dialog().file().set_title(title.unwrap_or_else(|| "Save".into()));
+    if let Some(n) = name.filter(|n| !n.is_empty()) {
+        d = d.set_file_name(&n);
+    }
+    if let Some(dir) = cfg.last_save_dir.clone().filter(|d| d.is_dir()) {
+        d = d.set_directory(dir);
+    }
+    if let Some(exts) = extensions.filter(|e| !e.is_empty()) {
+        let refs: Vec<&str> = exts.iter().map(String::as_str).collect();
+        d = d.add_filter(exts.join(", ").to_uppercase(), &refs);
+    }
+    let Some(picked) = d.blocking_save_file() else { return Ok(None) };
+    let path = picked.into_path().map_err(err)?;
+    cfg.last_save_dir = path.parent().map(|p| p.to_path_buf());
+    let _ = cfg.save(&config_path);
+    Ok(Some(path.display().to_string()))
+}
+
 /// Pick a folder (opening a library, adding a project folder). None if cancelled.
 /// (async: blocking dialogs must not run on the main thread)
 #[tauri::command]
@@ -239,7 +263,7 @@ fn main() {
                 .build()?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![api, api_bytes, render, render_cancel, save_file, pick_folder, pick_file, reveal, open_path, open_url])
+        .invoke_handler(tauri::generate_handler![api, api_bytes, render, render_cancel, save_file, pick_save_path, pick_folder, pick_file, reveal, open_path, open_url])
         .run(tauri::generate_context!())
         .expect("error while running SCAD Workshop");
 }

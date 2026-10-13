@@ -8,6 +8,7 @@ import { useStore } from "../lib/store.js";
 import { ui, pushUndo } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
+import { CategoryPicker } from "./catpick.js";
 import { api, runJob, kindText, rescanLocal, when, makeThumbnails } from "./library.js";
 import { hideItems, hideProject, deleteProject, restoreItems } from "./actions.js";
 import { undoNow } from "./metaedit.js";
@@ -53,6 +54,44 @@ function Folder({ info, lib, ro }) {
   </${Section}>`;
 }
 
+// ---------------------------------------------------------------- backups
+function Backups({ lib }) {
+  const [leaveOut, setLeaveOut] = useState(false); // thumbnails
+  const backup = async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    const name = `${(lib.name || "SCAD Workshop library").replace(/[\\/:*?"<>|]+/g, "-")} ${day}.zip`;
+    let path = await ctx.platform.library.pickSavePath("Back up the library", name, ["zip"]);
+    if (!path) return;
+    if (!/\.zip$/i.test(path)) path += ".zip";
+    try {
+      const r = await runJob(api("library_backup", { path, leave_out_thumbs: leaveOut }), "Backing up the library", { stoppable: true });
+      ctx.toast(`Backed up ${plural(r.files, "file")} (${bytes(r.size)}) to ${r.path}.${r.linked ? ` ${plural(r.linked, "linked project")} ${r.linked === 1 ? "lives" : "live"} outside the library and ${r.linked === 1 ? "isn't" : "aren't"} in it.` : ""}`,
+        { label: "Show in folder", run: () => ctx.platform.reveal?.(r.path) });
+    } catch (e) { fail(e); }
+  };
+  const restore = async () => {
+    const zip = await ctx.platform.library.pickFile("Choose a library backup", ["zip"]);
+    if (!zip) return;
+    const folder = await ctx.platform.library.pickFolder("Choose an empty folder for the restored library");
+    if (!folder) return;
+    try {
+      const r = await runJob(api("library_restore", { zip, folder }), "Restoring a library", { stoppable: true });
+      await api("library_open", { path: r.path });
+      location.reload();
+    } catch (e) { fail(e); }
+  };
+  return html`<${Section} id="backups" title="Backups"
+    intro="A backup is the whole library folder in one ZIP file: projects, saved settings, your edits and the trash. Keep it on another disk or in the cloud.">
+    <div class="button-row">
+      <button type="button" class="ghost" onClick=${backup} id="library-backup">${Icon.download(14)} Back up library…</button>
+      <button type="button" class="ghost" onClick=${restore} id="library-restore">Restore from backup…</button>
+    </div>
+    <label class="check"><input type="checkbox" checked=${leaveOut} onChange=${(e) => setLeaveOut(e.target.checked)} id="backup-leave-out" />
+      Leave out thumbnails (a smaller file; the app makes them again)</label>
+    <p class="muted">Restoring makes a new library in a folder you choose and opens it; this library stays as it is. Linked projects live outside the library and aren't in a backup.</p>
+  </${Section}>`;
+}
+
 // ---------------------------------------------------------------- projects
 function Projects({ ro }) {
   const sources = (ctx.catalog?.sources || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
@@ -60,10 +99,11 @@ function Projects({ ro }) {
     intro="A project's models are listed under Parametric Models and its parts in the Parts Library, by category. Libraries that other projects include (like BOSL2) are only listed here.">
     <div class="button-row">
       <button type="button" class="ghost" disabled=${ro} onClick=${() => ui.set({ dialog: { type: "add-project" } })} id="settings-add-project">${Icon.plus(14)} Add a project…</button>
-      <button type="button" class="ghost" disabled=${ro} onClick=${() => rescanLocal(false)} id="library-rescan">Look for changes</button>
+      <button type="button" class="ghost" disabled=${ro} onClick=${() => rescanLocal(false)} id="library-rescan"
+        title="Read projects again whose files changed outside the app (local/ folders, linked folders and the copies of added projects), and list ones whose files are gone">Scan for changes</button>
       <button type="button" class="ghost" disabled=${ro} onClick=${async () => { const r = await api("source_restore_starter"); await ctx.reloadCatalog(); ctx.toast(r.installed.length ? `Brought back ${plural(r.installed.length, "project")}.` : "All the starter projects are there."); }}>Bring back starter projects</button>
     </div>
-    <p class="muted">Your own projects go in the library's <code>local/</code> folder (one folder each); the app reads them when they change.</p>
+    <p class="muted">Your own projects go in the library's <code>local/</code> folder (one folder each). The app looks for changed files when it starts and when its window comes back into focus; Scan for changes looks now.</p>
     <table class="table-view ls-table" id="ls-project-table"><thead><tr><th>Project</th><th>From</th><th class="num">Items</th><th></th></tr></thead><tbody>
       ${sources.map((s) => html`<tr key=${s.id} data-source=${s.id} data-hidden=${s.hidden ? "" : null}>
         <td><a href=${scopeHash(`source:${s.id}`)}>${s.name}</a>
@@ -122,8 +162,7 @@ function Categories({ ro }) {
         <td class="num">${c.models || ""}</td><td class="num">${c.parts || ""}</td>
         <td class="ls-actions">
           ${removing?.id === c.id ? html`<span class="ls-move">Move its items to
-            <select value=${removing.to} onChange=${(e) => setRemoving({ ...removing, to: e.target.value })} data-move-to>
-              ${cats.filter((x) => x.id !== c.id).map((x) => html`<option value=${x.id}>${x.label}</option>`)}</select>
+            <${CategoryPicker} id="category-move-to" value=${removing.to} allowNew=${false} exclude=${[c.id]} onChange=${(v) => setRemoving({ ...removing, to: v })} />
             <button type="button" class="ghost small danger-text" data-act="remove-confirm" onClick=${async () => { const to = removing.to; setRemoving(null);
               await set({ id: c.id, moved_to: to }, `Removed ${c.label}; its items are in ${cats.find((x) => x.id === to)?.label}.`, `removing ${c.label}`); }}>Remove</button>
             <button type="button" class="ghost small" onClick=${() => setRemoving(null)}>Cancel</button></span>`
@@ -259,6 +298,7 @@ export function LibrarySettingsPage() {
     <nav class="ls-toc" aria-label="On this page">${[["folder", "Folder"], ["projects", "Projects"], ["libraries", "Libraries"], ["categories", "Categories"], ["items", "Hidden and deleted"], ["trash", "Trash"], ["defaults", "Defaults"], ["github", "GitHub"]]
       .map(([id, label]) => html`<a href=${`#/library-settings`} onClick=${(e) => { e.preventDefault(); document.getElementById(`ls-${id}`)?.scrollIntoView({ behavior: "smooth" }); }}>${label}</a>`)}</nav>
     <${Folder} info=${info} lib=${lib} ro=${ro} />
+    <${Backups} lib=${lib} />
     <${Projects} ro=${ro} />
     <${Libraries} ro=${ro} />
     <${Categories} ro=${ro} />

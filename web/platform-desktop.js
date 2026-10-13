@@ -240,6 +240,7 @@ export async function createPlatform() {
       url: (rel) => libraryUrl + rel.split("/").map(encodeURIComponent).join("/"),
       pickFolder: (title) => invoke("pick_folder", { title }),
       pickFile: (title, extensions) => invoke("pick_file", { title, extensions }),
+      pickSavePath: (title, name, extensions) => invoke("pick_save_path", { title, name, extensions }),
       openPath: (path) => invoke("open_path", { path }),
       waitJob,
       jobs: () => api("jobs"),

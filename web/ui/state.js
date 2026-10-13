@@ -30,6 +30,7 @@ export const ui = createStore({
   sideFile: null,          // a project file shown in the side viewer's Code tab: { rel, label, ref }
   inspector: true,
   condensed: false,        // grouped results shown as one tile per group
+  groupBefore: null,       // the grouping before Condense switched it to "project" (restored when Condense is off)
   openGroup: null,         // the condensed group being looked into
   showHidden: false,       // list hidden items and projects too
   catalogVersion: 0,       // bumps when the catalog is reloaded (desktop: library changes)
@@ -57,6 +58,7 @@ export function initState(store) {
     inspector: saved.inspector !== false,
     layouts: saved.layouts || {},
     condensed: !!saved.condensed,
+    groupBefore: saved.groupBefore || null,
     catPanel: saved.catPanel !== false,
     side: { ...ui.get().side, ...(saved.side || {}) },
   });
@@ -66,7 +68,7 @@ export function initState(store) {
 
 function savePrefs() {
   const s = ui.get();
-  prefs?.set(LAYOUT_KEY, { theme: s.theme, size: s.size, sort: s.sort, group: s.group, columns: s.columns, inspector: s.inspector, layouts: s.layouts, condensed: s.condensed, catPanel: s.catPanel, side: s.side });
+  prefs?.set(LAYOUT_KEY, { theme: s.theme, size: s.size, sort: s.sort, group: s.group, columns: s.columns, inspector: s.inspector, layouts: s.layouts, condensed: s.condensed, groupBefore: s.groupBefore, catPanel: s.catPanel, side: s.side });
 }
 
 export function setPref(patch) {

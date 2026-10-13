@@ -20,9 +20,10 @@ export const readOnly = () => !!ctx.catalog?.library?.read_only;
 export const sourceById = (id) => (ctx.catalog?.sources || []).find((s) => s.id === id) || null;
 
 /** Start a backend job and follow it in the status bar. Resolves with its result. */
-export async function runJob(startPromise, label) {
+export async function runJob(startPromise, label, { stoppable = false } = {}) {
   const { job } = await startPromise;
-  const done = addJob(label);
+  // a job that can stop gets Cancel in the status bar (the app stops it at the next file)
+  const done = addJob(label, stoppable ? () => api("job_cancel", { id: job }).catch(() => {}) : undefined);
   try {
     return await ctx.platform.library.waitJob(job, (stage) => done.update(`${label}: ${stage}`));
   } finally {
@@ -391,19 +392,56 @@ export function MergeConflicts({ result }) {
   </div>`;
 }
 
-/** Read projects in the library's local/ folder (and linked folders) that changed. */
+/**
+ * Scan for changes: projects in the library's local/ folder and linked folders, and the stored
+ * copies of added projects, read again where their files changed; projects whose files are gone
+ * are listed under Needs attention. Quiet (start-up, the window coming back into focus): a message
+ * only when something changed.
+ */
+let scanning = null;
+let lastScan = 0;
 export async function rescanLocal(quiet = true) {
   if (!isDesktop() || readOnly()) return;
-  try {
-    const r = await runJob(api("source_rescan", {}), "Looking for changed projects");
-    if (r.read?.length) {
-      await ctx.reloadCatalog();
-      if (!quiet) ctx.toast(`Read ${plural(r.read.length, "project")} again.`);
-      makeThumbnails();
-    } else if (!quiet) ctx.toast("No changes found.");
-  } catch (e) {
-    if (!quiet) ctx.toast(String(e.message || e));
-  }
+  if (scanning) return scanning;
+  lastScan = Date.now();
+  scanning = (async () => {
+    try {
+      const r = await runJob(api("source_rescan", {}), "Scanning for changes");
+      const names = (ids) => ids.map((id) => sourceById(id)?.name || id);
+      const parts = [];
+      if (r.read?.length || r.added?.length) {
+        await ctx.reloadCatalog();
+        makeThumbnails();
+      }
+      const reread = (r.read || []).filter((id) => !(r.added || []).includes(id));
+      if (r.added?.length) parts.push(`Added ${listText(names(r.added))}`);
+      if (reread.length) parts.push(`Read ${listText(names(reread))} again`);
+      if (r.missing?.length) parts.push(`${listText(names(r.missing))} ${r.missing.length === 1 ? "is" : "are"} missing (see Needs attention)`);
+      if (parts.length) ctx.toast(`${parts.join(". ")}.`);
+      else if (!quiet) ctx.toast("No changes found.");
+    } catch (e) {
+      if (!quiet) ctx.toast(String(e.message || e));
+    } finally {
+      scanning = null;
+    }
+  })();
+  return scanning;
+}
+
+/** "A", "A and B", "A, B and 3 more" */
+function listText(names) {
+  if (names.length <= 2) return names.join(" and ");
+  if (names.length <= 4) return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;
+}
+
+/** Scan again when the app's window comes back into focus (files may have been changed elsewhere), at most once a minute. */
+export function scanOnFocus() {
+  if (!isDesktop()) return;
+  window.addEventListener("focus", () => {
+    if (Date.now() - lastScan < 60_000 || ui.get().dialog) return;
+    rescanLocal(true);
+  });
 }
 
 /** Check GitHub projects for updates at most once a day (desktop). */

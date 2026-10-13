@@ -13,6 +13,7 @@
 //! - [`api`]: the commands the page calls
 
 pub mod api;
+pub mod backup;
 pub mod catalog;
 pub mod components;
 pub mod config;
