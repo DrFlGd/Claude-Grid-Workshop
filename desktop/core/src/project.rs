@@ -775,7 +775,9 @@ mod tests {
         std::fs::write(files.join("box.scad"), "w = 2;\ncube(w);\n").unwrap();
         assert!(scan_changes(&lib, &[]).read.is_empty());
         assert_eq!(lib.derived("zip-box", "zip-1").unwrap()["files_stat"], json!(scan::quick_fingerprint(&files)));
-        // edited: read again (unless it's being read anyway)
+        // edited: read again (unless it's being read anyway). Same size, so wait for a
+        // new modification time: within the same second the quick look can't tell.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
         std::fs::write(files.join("box.scad"), "w = 3;\ncube(w);\n").unwrap();
         assert_eq!(scan_changes(&lib, &[]).read, vec!["zip-box"]);
         assert!(scan_changes(&lib, &["zip-box".into()]).read.is_empty());
