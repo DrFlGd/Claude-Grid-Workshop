@@ -87,6 +87,7 @@ Multi-colour 3MF (0.4.19).
 
 - **A model's 3MF keeps its colours and separate parts**: with the app's OpenSCAD, Download as 3MF now asks OpenSCAD for its own 3MF (with lazy union), so each top-level object stays its own object and each `color()` is kept. The status line says what's in it ("The 3MF has 3 parts in 3 colours") and the 3D view shows those colours. Collections export their models' 3MF the same way. With the WebAssembly engine the 3MF is written by the app as before, one object without colours.
 - CI: a model with three coloured objects downloads as a 3MF with three objects and its colours, named in the status line.
+- Fixed: a component pinned while the library was being read could be missing from Parametric Models (and its Edit form…) until the next change. The app now drops a list of models built while something changed. Found by CI for 0.4.19; the test also waits for the pin to be listed.
 
 ## 0.4.18 — 2026-10-14 · Review 5: newer Printables downloads as versions, duplicates, Keep apart, a one-line Download
 

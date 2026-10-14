@@ -64,6 +64,8 @@ pub struct App {
     renderer: tokio::sync::Mutex<Option<Arc<Renderer>>>,
     library: RwLock<Option<Library>>,
     catalog: Mutex<Option<Arc<Catalog>>>,
+    /// Bumped by `invalidate`, so a catalog built from the library as it was before isn't kept.
+    catalog_gen: std::sync::atomic::AtomicU64,
     jobs: Mutex<Vec<Job>>,
     job_seq: Mutex<u64>,
     /// one library change at a time (adding, reading, merging)
@@ -108,6 +110,7 @@ impl App {
             renderer: tokio::sync::Mutex::new(None),
             library: RwLock::new(None),
             catalog: Mutex::new(None),
+            catalog_gen: std::sync::atomic::AtomicU64::new(0),
             jobs: Mutex::new(vec![]),
             job_seq: Mutex::new(0),
             busy: tokio::sync::Mutex::new(()),
@@ -184,6 +187,7 @@ impl App {
     }
 
     fn invalidate(&self) {
+        self.catalog_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         *self.catalog.lock().unwrap() = None;
     }
 
@@ -249,6 +253,7 @@ impl App {
         if let Some(c) = self.catalog.lock().unwrap().as_ref() {
             return Ok(c.clone());
         }
+        let gen = self.catalog_gen.load(std::sync::atomic::Ordering::SeqCst);
         let lib = self.library()?;
         let projects = self.project_libraries(&lib);
         let prefer = Self::prefer_bundled(&lib);
@@ -260,7 +265,11 @@ impl App {
                 r.add_blobs(catalog::blob_list(&c));
             }
         }
-        *self.catalog.lock().unwrap() = Some(c.clone());
+        // (kept only if nothing changed the library while it was built: a pin made meanwhile, say)
+        let mut kept = self.catalog.lock().unwrap();
+        if self.catalog_gen.load(std::sync::atomic::Ordering::SeqCst) == gen {
+            *kept = Some(c.clone());
+        }
         Ok(c)
     }
 
