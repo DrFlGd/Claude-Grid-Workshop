@@ -97,6 +97,7 @@ Milestone 3, third part (0.4.8): Review 2's small items (`docs/DESKTOP_PLAN.md`,
 - Small things from Review 2: the listing head wraps instead of cutting the page's name; no stray scrollbar under the side viewer's tabs; Library settings and Licenses have their own menu icons; a yes/no setting's box sits in the value column like every other setting.
 - **The acceptance test adds a ZIP project and a project linked to a folder** and checks they're kept like the others (origin, version files, `workshop.json`, checks, thumbnails), for Review 3.
 - The acceptance test opens Library settings before backing up the library (the new checks before it end on another page), and lets thumbnails finish before it removes a model they would load.
+- A model that's no longer in the library (its project was read again without it) isn't asked for when an open tab or a page refresh still names it; its page says it doesn't exist.
 
 ## 0.4.7 — 2026-10-14 · Projects describe themselves with workshop.json; origin and versions recorded the same way
 

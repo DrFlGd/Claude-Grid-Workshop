@@ -177,6 +177,11 @@ function openTabs(keys) {
 }
 
 async function loadDetail(key) {
+  // a model that's no longer in the library (an open tab, a list made before a project was read again):
+  // say so without asking for it
+  if (platform.kind === "desktop" && !key.startsWith("@") && state.index && !state.index.get(`gen:${key}`)) {
+    throw Object.assign(new Error(`${key} isn't in the library`), { status: 404 });
+  }
   if (!details.has(key)) {
     const d = await getJSON(`data/models/${key.replace("/", "--")}.json`);
     applyProfile(d);
