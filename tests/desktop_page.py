@@ -924,6 +924,8 @@ async def main():
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"
             backup.parent.mkdir(parents=True, exist_ok=True)
+            await pg.goto(B + "#/library-settings")
+            await pg.wait_for_selector("#backup-leave-out")
             urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(backup)}).encode(), method="POST"))
             await pg.click("#backup-leave-out")
             await pg.click("#library-backup")

@@ -96,6 +96,7 @@ Milestone 3, third part (0.4.8): Review 2's small items (`docs/DESKTOP_PLAN.md`,
 - **The library's README explains the folders that differ:** your own projects keep their files in `local/`, `sources/pinned/pins/` must be kept, `previews/` holds models made for parts, and `files/` can hold several versions (F-12). A README from 0.4.4 to 0.4.7 is replaced; one you changed is left alone.
 - Small things from Review 2: the listing head wraps instead of cutting the page's name; no stray scrollbar under the side viewer's tabs; Library settings and Licenses have their own menu icons; a yes/no setting's box sits in the value column like every other setting.
 - **The acceptance test adds a ZIP project and a project linked to a folder** and checks they're kept like the others (origin, version files, `workshop.json`, checks, thumbnails), for Review 3.
+- The acceptance test opens Library settings before backing up the library (the new checks before it end on another page).
 
 ## 0.4.7 — 2026-10-14 · Projects describe themselves with workshop.json; origin and versions recorded the same way
 
