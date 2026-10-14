@@ -241,8 +241,8 @@ export async function exportCollection(c, progress, stop) {
       data = new Uint8Array(await r.arrayBuffer());
     } else {
       progress(`Making ${k + 1} of ${c.items.length}: ${it.name}`);
-      let blob = await ctx.renderModel(it.key, { values: e.values, settings: e.settings });
-      if (fmt === "3mf") blob = new Blob([await ctx.platform.apiBytes("to_3mf", { data: await dataUrl(blob), name: it.name })]);
+      // (a 3MF is OpenSCAD's own where it can be: each object apart, colours kept, 0.4.19)
+      const blob = await ctx.renderModel(it.key, { values: e.values, settings: e.settings, format: fmt === "3mf" ? "3mf" : null });
       data = new Uint8Array(await blob.arrayBuffer());
     }
     const q = Math.max(1, e.quantity || 1);

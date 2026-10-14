@@ -520,7 +520,7 @@ pub async fn ingest(
     for (i, (mid, _, fmap, _, _, entry)) in planned.iter().enumerate() {
         let mut files = common_files.clone();
         files.extend(fmap.clone());
-        let req = RenderRequest { model: format!("{id}/{mid}"), entry: format!("/{entry}"), files, values: Default::default(), defines: vec![], call: None };
+        let req = RenderRequest { model: format!("{id}/{mid}"), entry: format!("/{entry}"), files, values: Default::default(), defines: vec![], call: None, format: None };
         let r = renderer.clone();
         set.spawn(async move { (i, r.export_params(&req).await) });
     }
@@ -551,7 +551,7 @@ pub async fn ingest(
         let (mid, _, fmap, _, _, entry) = &planned[i];
         let mut files = common_files.clone();
         files.extend(fmap.clone());
-        let req = RenderRequest { model: format!("{id}/{mid}"), entry: format!("/{entry}"), files, values: Default::default(), defines: vec![], call: None };
+        let req = RenderRequest { model: format!("{id}/{mid}"), entry: format!("/{entry}"), files, values: Default::default(), defines: vec![], call: None, format: None };
         if let Ok(v) = renderer.export_params(&req).await {
             raws[i] = Some(Ok(v));
         }

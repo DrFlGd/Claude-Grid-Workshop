@@ -1098,3 +1098,11 @@ Review 5's eight items, built as planned, except:
 - **F-24:** Read again never re-read the README or license (the review said it did); it now re-reads the page PDF only. What the PDF no longer says stays in `detected` until edited.
 - **UI-34:** duplicates are found when the page opens (`source_duplicates`: sizes first, then SHA-256 of same-sized files), not kept in `derived/`; a hidden copy drops out of the note.
 - **UI-33:** a stale render's button reads "Last render" beside the picker ("Download last render" without one); the picker's wrapper had the actions' padding, which made the row taller.
+
+### 0.4.19 notes
+
+The first and second points of 0.4.18's multi-colour plan (now 0.4.19), checked against the app's OpenSCAD 2026.10.02:
+
+- **Native OpenSCAD writes the 3MF.** `--enable=lazy-union --export-format=3mf --backend=Manifold` keeps every top-level object apart (one object and one build item each) and writes each `color()` as a material. A render asks for it with `format: "3mf"` (`RenderRequest.format`); it's cached apart from the STL (`-3mf` on the key). The page asks for it only for a 3MF download and a collection's export; previews stay STL. If it fails, the app's own 3MF (`mesh::to_3mf`) is used, as before.
+- **What's in it** is read back by `mesh_info` (`mesh::summary`: objects, distinct colours, triangles) and said in the status line. Objects without a `color()` get OpenSCAD's default yellow (#F9D72C), so it counts as a colour. When there's more than one colour the 3D view loads the 3MF's colours (`mesh_coloured`) until the next render.
+- **Not done:** the format picker still says "3MF" (what's in it is only known after the render, so the status line says it instead); the parts list to show or hide objects; "All parts in one 3MF" from a family manifest's part picker (no project the app ships has a part picker since the starter projects were dropped); Make several's "one 3MF with every variant"; and the WebAssembly engine, which keeps the app-written 3MF without colours. Opening the files in Bambu Studio and OrcaSlicer is still the owner's check.

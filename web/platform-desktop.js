@@ -119,6 +119,7 @@ class DesktopEngine {
         values: { ...values, ...(model.fixed || {}) },
         defines: (model.parameters || []).filter((p) => p.define).map((p) => p.name),
         call: model.call || null, // a component: the app writes the call with these values
+        format: model.format || null, // "3mf": OpenSCAD's own, objects apart and colours kept (0.4.19)
       };
       // edited files (the Code tab): stored by their hash in the app's data folder, used in place of the originals
       const edited = Object.entries(model.edits || {});
@@ -126,7 +127,7 @@ class DesktopEngine {
         .then(() => (settled ? Promise.reject(cancelledError()) : invoke("render", { job, req, onEvent: channel }))).then((buf) => {
         settled = true;
         const ms = meta?.ms ?? performance.now() - started;
-        resolve({ blob: new Blob([buf], { type: "model/stl" }), ms, cached: meta ? !!meta.cached : ms < 40, logs: meta?.logs || [], engine: "native" });
+        resolve({ blob: new Blob([buf], { type: model.format === "3mf" ? "model/3mf" : "model/stl" }), ms, cached: meta ? !!meta.cached : ms < 40, logs: meta?.logs || [], engine: "native" });
       }, (e) => {
         settled = true;
         reject(Object.assign(new Error(e?.message || String(e)), { logs: e?.logs || [], cancelled: !!e?.cancelled }));

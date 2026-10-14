@@ -31,6 +31,16 @@ pub struct RenderRequest {
     /// calling the module with `values` (see [`crate::components::call_source`]).
     #[serde(default)]
     pub call: Option<crate::components::Call>,
+    /// "3mf": OpenSCAD's own 3MF, each top-level object apart (lazy union) and `color()` kept as
+    /// materials (0.4.19); otherwise binary STL.
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+impl RenderRequest {
+    pub fn three_mf(&self) -> bool {
+        self.format.as_deref() == Some("3mf")
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -212,7 +222,7 @@ impl Renderer {
     /// OpenSCAD's Customizer description of a model (`--export-format=param`):
     /// its settings, groups, defaults and choices. Cached like renders.
     pub async fn export_params(&self, req: &RenderRequest) -> Result<Value, RenderFailure> {
-        let key = format!("{}-params", self.cache_key(&RenderRequest { values: BTreeMap::new(), defines: vec![], ..req.clone() }));
+        let key = format!("{}-params", self.cache_key(&RenderRequest { values: BTreeMap::new(), defines: vec![], format: None, ..req.clone() }));
         let cached = self.cache_dir.join("renders").join(format!("{key}.json"));
         if self.use_cache {
             if let Some(v) = std::fs::read(&cached).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
@@ -277,7 +287,9 @@ impl Renderer {
         defines.sort();
         let defines = defines.join("\n");
         let call = req.call.as_ref().map(|c| serde_json::to_vec(c).unwrap_or_default()).unwrap_or_default();
-        sha_hex(&[self.engine.version.as_bytes(), req.entry.as_bytes(), &files, &values, defines.as_bytes(), &call])
+        let key = sha_hex(&[self.engine.version.as_bytes(), req.entry.as_bytes(), &files, &values, defines.as_bytes(), &call]);
+        // (a 3MF is cached beside the STL of the same render, by its own key)
+        if req.three_mf() { format!("{key}-3mf") } else { key }
     }
 
     /// Ask a running or queued job to stop. Returns false if it isn't known (already finished).
@@ -294,7 +306,7 @@ impl Renderer {
     /// Look up a finished render without starting one.
     pub fn cached(&self, req: &RenderRequest) -> Option<RenderOutput> {
         let key = self.cache_key(req);
-        let stl_path = self.cache_dir.join("renders").join(format!("{key}.stl"));
+        let stl_path = self.cache_dir.join("renders").join(format!("{key}.{}", if req.three_mf() { "3mf" } else { "stl" }));
         let stl = std::fs::read(&stl_path).ok()?;
         if let Ok(f) = std::fs::File::options().append(true).open(&stl_path) {
             let _ = f.set_modified(SystemTime::now()); // keep recently used results when pruning
@@ -376,7 +388,7 @@ impl Renderer {
         let _cleanup = RemoveOnDrop(job_dir.clone());
         std::fs::create_dir_all(&job_dir).map_err(|e| RenderFailure::failed(format!("Couldn't create a job folder: {e}"), vec![]))?;
         let params = job_dir.join("params.json");
-        let out = job_dir.join("out.stl");
+        let out = job_dir.join(if req.three_mf() { "out.3mf" } else { "out.stl" });
         let mut cmd = self.engine.command();
         if let Some(call) = &req.call {
             // a component: this render's own file (includes the library, calls the module)
@@ -395,7 +407,12 @@ impl Renderer {
             }
             cmd.args(["-P", "site"]).arg("-p").arg(&params);
         }
-        cmd.args(["--backend=Manifold", "--export-format=binstl"])
+        if req.three_mf() {
+            cmd.args(["--enable=lazy-union", "--export-format=3mf"]);
+        } else {
+            cmd.arg("--export-format=binstl");
+        }
+        cmd.arg("--backend=Manifold")
             .arg("-o")
             .arg(&out)
             .current_dir(&tree)
@@ -477,7 +494,7 @@ impl Renderer {
         let key = self.cache_key(req);
         let renders = self.cache_dir.join("renders");
         let tmp = renders.join(format!("{key}.tmp-{safe_job}"));
-        if std::fs::write(&tmp, &stl).is_ok() && std::fs::rename(&tmp, renders.join(format!("{key}.stl"))).is_ok() {
+        if std::fs::write(&tmp, &stl).is_ok() && std::fs::rename(&tmp, renders.join(format!("{key}.{}", if req.three_mf() { "3mf" } else { "stl" }))).is_ok() {
             let meta = CacheMeta { ms, engine: self.engine.version.clone(), model: req.model.clone() };
             let _ = std::fs::write(renders.join(format!("{key}.json")), serde_json::to_vec(&meta).unwrap_or_default());
             let _ = self.prune();
@@ -499,7 +516,7 @@ impl Renderer {
         let dir = self.cache_dir.join("renders");
         let mut items: Vec<(SystemTime, u64, PathBuf)> = std::fs::read_dir(&dir)?
             .flatten()
-            .filter(|e| e.path().extension().is_some_and(|x| x == "stl"))
+            .filter(|e| e.path().extension().is_some_and(|x| x == "stl" || x == "3mf"))
             .filter_map(|e| {
                 let m = e.metadata().ok()?;
                 Some((m.modified().ok()?, m.len(), e.path()))
@@ -657,6 +674,7 @@ pub fn default_request(model: &Value, common_files: &Value) -> Result<RenderRequ
         values,
         defines,
         call: serde_json::from_value(model["call"].clone()).ok(),
+        format: None,
     })
 }
 

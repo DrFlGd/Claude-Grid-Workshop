@@ -83,7 +83,14 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-Review 5's items (0.4.18).
+Multi-colour 3MF (0.4.19).
+
+- **A model's 3MF keeps its colours and separate parts**: with the app's OpenSCAD, Download as 3MF now asks OpenSCAD for its own 3MF (with lazy union), so each top-level object stays its own object and each `color()` is kept. The status line says what's in it ("The 3MF has 3 parts in 3 colours") and the 3D view shows those colours. Collections export their models' 3MF the same way. With the WebAssembly engine the 3MF is written by the app as before, one object without colours.
+- CI: a model with three coloured objects downloads as a 3MF with three objects and its colours, named in the status line.
+
+## 0.4.18 — 2026-10-14 · Review 5: newer Printables downloads as versions, duplicates, Keep apart, a one-line Download
+
+Review 5's items.
 
 - **Another download of a Printables model is a new version of its project** (F-23), not a second project: when a ZIP's PDF names a page a project already has, the files go in as a version of it, dated by the page's "updated" date, and its page offers **Use the new version** as an update from GitHub does. The first download's version is dated by the page too.
 - **Read again reads the page's PDF again** (F-24), so a Printables ZIP added before 0.4.16 gets its details; your edits still win.

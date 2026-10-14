@@ -34,6 +34,8 @@ pub type Rgb = [u8; 3];
 pub struct Mesh {
     pub tris: Tris,
     pub colours: Option<Vec<Option<Rgb>>>,
+    /// How many objects it places (a 3MF's build items; 1 for STL and OBJ).
+    pub objects: usize,
 }
 
 /// Read a 3D file's triangles from its bytes, by the file's name.
@@ -49,7 +51,17 @@ pub fn read_mesh(name: &str, bytes: &[u8]) -> Result<Mesh> {
         "3mf" => return read_3mf(bytes),
         e => bail!("can't show .{e} files in 3D"),
     };
-    Ok(Mesh { tris, colours: None })
+    Ok(Mesh { tris, colours: None, objects: 1 })
+}
+
+/// What a 3D file holds, for naming a download (0.4.19): its objects, and its distinct colours (0 when it
+/// has none of its own).
+pub fn summary(name: &str, bytes: &[u8]) -> Result<serde_json::Value> {
+    let m = read_mesh(name, bytes)?;
+    let mut colours: Vec<Rgb> = m.colours.iter().flatten().flatten().copied().collect();
+    colours.sort();
+    colours.dedup();
+    Ok(serde_json::json!({ "objects": m.objects, "colours": colours.len(), "triangles": m.tris.len() / 9 }))
 }
 
 /// "#rrggbb" or "#rrggbbaa" (the alpha is dropped).
@@ -639,6 +651,7 @@ fn read_3mf(b: &[u8]) -> Result<Mesh> {
     m.load(&root)?;
     let mut out = Out::default();
     let build = m.files[&root].build.clone();
+    let objects = if build.is_empty() { m.files[&root].objects.len() } else { build.len() };
     if build.is_empty() {
         let ids: Vec<String> = m.files[&root].objects.keys().cloned().collect();
         for id in ids {
@@ -657,6 +670,7 @@ fn read_3mf(b: &[u8]) -> Result<Mesh> {
     Ok(Mesh {
         tris: out.tris,
         colours: coloured.then_some(out.colours),
+        objects,
     })
 }
 

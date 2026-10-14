@@ -1279,7 +1279,7 @@ async def main():
             await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear'", timeout=60000)
             await pg.wait_for_function("() => !document.querySelector('#download').classList.contains('is-disabled')", timeout=300000)
             await pg.select_option("#download-format", "3mf")
-            await pg.wait_for_function("() => (document.querySelector('#download').getAttribute('download') || '').endsWith('.3mf')", timeout=30000)
+            await pg.wait_for_function("() => (document.querySelector('#download').getAttribute('download') || '').endsWith('.3mf') && !document.querySelector('#download').classList.contains('is-disabled')", timeout=120000)
             before_3mf = set(saved_stl.glob("*.3mf"))
             await pg.click("#download")
             for _ in range(50):
@@ -1289,6 +1289,40 @@ async def main():
             new_3mf = sorted(set(saved_stl.glob("*.3mf")) - before_3mf)
             names_3mf = zipfile.ZipFile(new_3mf[0]).namelist() if new_3mf else []
             check("a model's render downloads as 3MF when chosen", "3D/3dmodel.model" in names_3mf, (new_3mf, names_3mf))
+            # (0.4.19) a model with colours and separate objects: OpenSCAD's own 3MF keeps each object apart and
+            # its colours, said in the status line and shown in the 3D view
+            (library / "local" / "colours").mkdir(parents=True, exist_ok=True)
+            (library / "local" / "colours" / "label.scad").write_text(
+                "// Label width\nwidth = 20; // [10:40]\ncolor(\"red\") cube([width, 10, 2]);\n"
+                "color(\"white\") translate([2, 2, 2]) cube([5, 5, 1]);\ntranslate([width + 10, 0, 0]) cylinder(h = 5, r = 4);\n")
+            await pg.evaluate("import('/ui/library.js').then(async (m) => { await m.rescanLocal(false); await m.rescanLocal(false); })")
+            mc_status, mc_objects, mc_colours = "", 0, []
+            try:
+                await pg.wait_for_function("() => !!window.__workshop.index.get('gen:local-colours/label')", timeout=120000)
+                await pg.goto(B + "#/m/local-colours/label")
+                await pg.wait_for_function("()=>document.body.dataset.model==='local-colours/label'", timeout=60000)
+                await pg.click("#generate")
+                await pg.wait_for_function("() => !document.querySelector('#download').classList.contains('is-disabled')", timeout=300000)
+                await pg.select_option("#download-format", "3mf")
+                await pg.wait_for_function("() => (document.querySelector('#download').getAttribute('download') || '').endsWith('.3mf') && !document.querySelector('#download').classList.contains('is-disabled')", timeout=120000)
+                mc_status = await pg.inner_text("#status")
+                before_3mf = set(saved_stl.glob("*.3mf"))
+                await pg.click("#download")
+                for _ in range(50):
+                    if set(saved_stl.glob("*.3mf")) - before_3mf:
+                        break
+                    await pg.wait_for_timeout(200)
+                got = sorted(set(saved_stl.glob("*.3mf")) - before_3mf)
+                model_xml = zipfile.ZipFile(got[0]).read("3D/3dmodel.model").decode() if got else ""
+                mc_objects = len(re.findall(r"<item ", model_xml))
+                mc_colours = sorted(set(c[:7].upper() for c in re.findall(r'displaycolor="([^"]+)"', model_xml)))
+                await pg.screenshot(path=str(out / "m5-05-3mf-colours.png"))
+                await pg.select_option("#download-format", "stl")
+            except Exception as e:
+                print("multi-colour 3MF:", e)
+            check("a model with colours and separate objects downloads as OpenSCAD's own 3MF: each object apart, its colours kept and named in the status line",
+                  mc_objects == 3 and "#FF0000" in mc_colours and "#FFFFFF" in mc_colours and "3 parts" in mc_status.lower(),
+                  (mc_objects, mc_colours, mc_status))
             near = library / "local" / "near"
             near.mkdir(parents=True, exist_ok=True)
             model_files.write_3mf(near / "clip.3mf")

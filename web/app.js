@@ -962,7 +962,7 @@ function updateStatusForEdits() {
   const valuesSame = state.rendered && same(JSON.parse(state.rendered), state.values);
   const codeSame = (state.renderedEdits || "") === editsKey(editsOf(state.model.key));
   if (valuesSame && codeSame) {
-    setStatus("ok", "Preview matches your settings.");
+    setStatus("ok", `Preview matches your settings.${state.formatNote ? ` ${state.formatNote}` : ""}`);
     if (!a.classList.contains("is-disabled")) a.textContent = downloadText(state.downloadFormat);
   } else if (state.rendered) {
     setStatus("stale", valuesSame ? "Code changed. Generate to update the preview and download." : "Settings changed. Generate to update the preview and download.");
@@ -1024,15 +1024,24 @@ async function applyDownloadFormat() {
   const job = ++formatJob;
   const last = state.lastStl;
   let blob = last?.blob || null, name = last?.name || "model.stl";
+  let own = null, info = null;
   if (blob && fmt === "3mf") {
     try {
-      const bytes = await platform.apiBytes("to_3mf", { data: await dataUrl(blob), name: state.model?.name || "Model" });
-      blob = new Blob([bytes], { type: "model/3mf" });
+      // OpenSCAD's own 3MF, made at the same settings: each object apart and its colours kept (0.4.19);
+      // else (the WebAssembly engine, or the code edited since) the app writes one from the render
+      a.classList.add("is-disabled");
+      a.textContent = "Making the 3MF…";
+      own = await native3mf().catch(() => null);
+      if (job !== formatJob) return;
+      blob = own || new Blob([await platform.apiBytes("to_3mf", { data: await dataUrl(blob), name: state.model?.name || "Model" })], { type: "model/3mf" });
       name = name.replace(/\.stl$/i, ".3mf");
+      if (own) info = await platform.api("mesh_info", { data: await dataUrl(own), name }).catch(() => null);
     } catch (e) {
       toast(`Couldn't make the 3MF: ${e?.message || e}`);
     }
   }
+  if (job !== formatJob) return;
+  await show3mf(own, info, name);
   if (job !== formatJob) return;
   if (state.downloadUrl) URL.revokeObjectURL(state.downloadUrl);
   state.downloadUrl = blob ? URL.createObjectURL(blob) : null;
@@ -1043,6 +1052,32 @@ async function applyDownloadFormat() {
   a.textContent = downloadText(fmt);
   updateStatusForEdits();
 }
+/** OpenSCAD's own 3MF of the last render (desktop), or null when it can't be made the same way. */
+async function native3mf() {
+  const m = state.model;
+  if (!m || platform.kind !== "desktop" || !state.engine?.info?.engine || !state.lastResultValues) return null;
+  const sent = forRender(m);
+  if (editsKey(sent.edits) !== (state.renderedEdits || "")) return null;
+  return (await state.engine.render({ ...sent, format: "3mf", browser: false }, renderValues(m, state.lastResultValues)).promise).blob;
+}
+
+/** What the 3MF holds, said in the status line ("The 3MF has 3 parts in 2 colours"), and its colours in the 3D view
+ * while 3MF is chosen; back to the render's own look otherwise (0.4.19). */
+async function show3mf(own, info, name) {
+  const parts = info ? [info.objects > 1 ? `${info.objects} parts` : "", info.colours > 1 ? `${info.colours} colours` : ""].filter(Boolean) : [];
+  state.formatNote = parts.length ? `The 3MF has ${parts.join(" in ")}${info.colours > 1 ? ", shown in the 3D view" : ""}.` : "";
+  const coloured = !!(own && info?.colours > 1);
+  if (coloured === !!state.viewColoured) return;
+  state.viewColoured = coloured;
+  try {
+    const bytes = coloured ? await platform.apiBytes("mesh_coloured", { data: await dataUrl(own), name }) : null;
+    const url = URL.createObjectURL(coloured ? new Blob([bytes], { type: "model/stl" }) : state.lastResult.blob);
+    state.viewer.setFileColours(coloured);
+    await state.viewer.load(url);
+    URL.revokeObjectURL(url);
+  } catch { /* the plain render stays in view */ }
+}
+
 /** "Download", with the format named only when there's no picker beside it to name it (UI-33). */
 function downloadText(fmt = "stl") {
   return $("#download-format").hidden ? `Download ${FORMAT_LABEL[fmt] || fmt.toUpperCase()}` : "Download";
@@ -1124,13 +1159,21 @@ async function writePart(opts) {
 
 /** A model made at some settings (a collection's export, 0.4.17): `values` (changes from its defaults) or a
  * saved setting's id, whose code edits come too. Resolves to the STL blob. */
-async function renderModel(key, { values = null, settings = null } = {}) {
+async function renderModel(key, { values = null, settings = null, format = null } = {}) {
   const detail = await loadDetail(key);
   const rec = settings ? await platform.api("settings_get", { id: settings }).catch(() => null) : null;
   const edits = rec?.edits && Object.keys(rec.edits).length ? editTexts(rec.edits) : null;
   const full = withChanges(detail, values || rec?.values || {}).values;
-  const job = state.engine.render(edits ? { ...detail, edits } : detail, edits ? changedValues(detail, full) : full);
-  return (await job.promise).blob;
+  const sent = { ...detail, ...(edits ? { edits } : {}) };
+  // a 3MF (0.4.19): OpenSCAD's own where the app's OpenSCAD is there (objects apart, colours kept), else
+  // written by the app from the STL
+  if (format === "3mf" && state.engine?.info?.engine) {
+    const own = await state.engine.render({ ...sent, format: "3mf", browser: false }, edits ? changedValues(detail, full) : full).promise.catch(() => null);
+    if (own) return own.blob;
+  }
+  const job = state.engine.render(sent, edits ? changedValues(detail, full) : full);
+  const blob = (await job.promise).blob;
+  return format === "3mf" ? new Blob([await platform.apiBytes("to_3mf", { data: await dataUrl(blob), name: detail.name || "Model" })], { type: "model/3mf" }) : blob;
 }
 
 $("#model-collect").addEventListener("click", () => {
@@ -1236,6 +1279,8 @@ async function showResult(result, values, restoring = false, ek = state.rendered
   document.body.dataset.engine = result.engine || ""; // which engine made it (desktop on Windows races two)
   try {
     const url = URL.createObjectURL(result.blob);
+    state.viewColoured = false; // (the render itself: a 3MF's colours are shown again once it's made)
+    state.viewer.setFileColours(false);
     const dims = await state.viewer.load(url);
     URL.revokeObjectURL(url);
     state.rendered = JSON.stringify(values);

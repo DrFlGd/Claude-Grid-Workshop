@@ -511,6 +511,12 @@ impl App {
                 let tris = crate::mesh::read("render.stl", &data).map_err(e2s)?;
                 crate::mesh::to_3mf(&tris, args["name"].as_str().unwrap_or("Model")).map(Reply::Bytes).map_err(e2s)
             }
+            "mesh_coloured" => {
+                // { data, name }: a 3D file (a data URL) as STL with its colours, for the 3D view (0.4.19)
+                let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
+                let m = crate::mesh::read_mesh(args["name"].as_str().unwrap_or("model.3mf"), &data).map_err(e2s)?;
+                Ok(Reply::Bytes(crate::mesh::to_stl_coloured(&m.tris, m.colours.as_deref())))
+            }
             "blob" => {
                 let sha = arg(&args, "sha").map_err(e2s)?;
                 let p = self.site.blob(sha).map_err(e2s)?;
@@ -906,6 +912,11 @@ impl App {
                     "folder": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().map(|p| p.display().to_string()),
                     "folder_rel": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().and_then(|p| folder_rel(&lib, id, &src, &p)),
                 }))
+            }
+            // { data, name }: what a 3D file holds: objects and colours (0.4.19, naming a 3MF download)
+            "mesh_info" => {
+                let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
+                j(crate::mesh::summary(args["name"].as_str().unwrap_or("model.3mf"), &data).map_err(e2s)?)
             }
             // its part files that are in another project too (Review 5, UI-34: on its page, not only when it's added)
             "source_duplicates" => j(json!(self.duplicates(arg(&args, "id").map_err(e2s)?))),
