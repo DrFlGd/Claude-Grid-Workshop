@@ -1125,10 +1125,15 @@ async def main():
             await pg.goto(B + (brick or "#/"))
             await pg.wait_for_selector("#part-status a", timeout=20000)
             await pg.click("#part-status a")
-            await pg.wait_for_function(DONE, timeout=120000)
+            try:
+                await pg.wait_for_function("()=>document.body.dataset.model==='local-blocks/examples-brick-1x3'", timeout=60000)
+                await pg.wait_for_function(DONE, timeout=120000)
+            except Exception:
+                pass
+            ex_status = await pg.evaluate("() => [location.hash, document.body.dataset.model, document.querySelector('#status')?.textContent]")
             check("a folder of examples is asked about once; made into parts, each is made and listed as a part, the choice kept, its model page still opens",
                   "22 examples" in asked and counts == [1, 22] and ex_meta == {"folder": "examples", "as": "parts"}
-                  and "matches" in await pg.inner_text("#status"), (asked[:80], counts, ex_meta, brick))
+                  and ex_status[1] == "local-blocks/examples-brick-1x3" and "matches" in (ex_status[2] or ""), (asked[:80], counts, ex_meta, brick, ex_status))
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"
