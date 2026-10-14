@@ -581,11 +581,20 @@ pub fn survey(root: &Path) -> Found {
         fs.sort_by_key(|f| order(&f.rel));
         let preview = fs.iter().find(|f| ext(&f.rel) == "stl").map(|f| f.rel.clone());
         let category = if dir.is_empty() { "Parts".to_string() } else { humanize(dir.rsplit('/').next().unwrap_or(&dir)) };
-        found.parts.push(json!({
-            "id": id, "name": humanize(stem), "category": category, "kind": "printable", "tags": [],
+        // a part made from a model (milestone 4) has how it was made beside it: <name>.recipe.json
+        let recipe_rel = if dir.is_empty() { format!("{stem}.recipe.json") } else { format!("{dir}/{stem}.recipe.json") };
+        let recipe: Option<Value> = std::fs::read(root.join(&recipe_rel)).ok().and_then(|b| serde_json::from_slice(&b).ok()).filter(|r: &Value| r["model"].is_string());
+        let mut part = json!({
+            "id": id, "name": if recipe.is_some() { json!(stem) } else { json!(humanize(stem)) }, "category": category, "kind": "printable", "tags": [],
             "files": fs.iter().map(|f| json!({ "path": f.rel, "format": ext(&f.rel), "bytes": f.bytes })).collect::<Vec<_>>(),
             "preview": preview,
-        }));
+        });
+        if let Some(r) = recipe {
+            part["generator"] = r["model"].clone();
+            part["made_from"] = r;
+            part["recipe"] = json!(recipe_rel);
+        }
+        found.parts.push(part);
     }
     found
 }
@@ -773,6 +782,27 @@ mod tests {
         let (files, missing) = r.collect("box.scad");
         assert!(missing.is_empty());
         assert_eq!(files.keys().cloned().collect::<Vec<_>>(), vec!["/box.scad", "/lib/util.scad"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn made_parts_carry_their_recipe() {
+        // local/Made parts/ (milestone 4): a part saved from a model has <name>.recipe.json beside it
+        let d = std::env::temp_dir().join(format!("workshop-made-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("Basic Bin")).unwrap();
+        std::fs::write(d.join("Basic Bin/Basic Bin 3×2.stl"), b"solid").unwrap();
+        std::fs::write(d.join("Basic Bin/Basic Bin 3×2.recipe.json"), r#"{"model":"gridfinity-rebuilt/bin","values":{"gridx":3}}"#).unwrap();
+        std::fs::write(d.join("Basic Bin/other_part.stl"), b"solid").unwrap();
+        let f = survey(&d);
+        assert_eq!(f.parts.len(), 2);
+        let made = f.parts.iter().find(|p| p["generator"] == "gridfinity-rebuilt/bin").unwrap();
+        assert_eq!(made["name"], json!("Basic Bin 3×2")); // the name it was given, as it is
+        assert_eq!(made["made_from"]["values"]["gridx"], json!(3));
+        assert_eq!(made["recipe"], json!("Basic Bin/Basic Bin 3×2.recipe.json"));
+        let plain = f.parts.iter().find(|p| p["generator"].is_null()).unwrap();
+        assert_eq!(plain["name"], json!("Other part"));
+        assert!(plain.get("made_from").is_none());
         let _ = std::fs::remove_dir_all(&d);
     }
 

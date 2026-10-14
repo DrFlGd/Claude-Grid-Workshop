@@ -305,13 +305,30 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         }
         // ready-made parts: one pack per project
         let parts = derived["parts"].as_array().cloned().unwrap_or_default();
+        // where its files are, as a library path: the stored copy, or your own project's folder (local/ or linked)
+        let files_rel = match src["kind"].as_str() {
+            Some("local" | "linked") => lib.version_dir(&src, &version).ok().and_then(|d| crate::api::folder_rel(lib, &id, &src, &d)),
+            _ => None,
+        }
+        .unwrap_or_else(|| format!("sources/{id}/files/{version}"));
         if !parts.is_empty() {
             let mut items = vec![];
             let mut part_cats: Vec<String> = vec![];
             for it in parts {
                 let pid = it["id"].as_str().unwrap_or("").to_string();
                 let folder = it["files"][0]["path"].as_str().map(|p| crate::ingest::dirname(&format!("/{p}")).trim_start_matches('/').to_string()).unwrap_or_default();
-                let det_item = obj(&json!({ "name": it["name"] }));
+                // a made part (milestone 4) is filed under the category of the model it was made from
+                let mut det_item = obj(&json!({ "name": it["name"] }));
+                if let Some(c) = it["made_from"]["category"].as_str().filter(|c| !c.is_empty()) {
+                    det_item.insert("category".into(), json!(c));
+                }
+                // and carries that project's license (what's made from a project is under its license)
+                if let Some(p) = it["made_from"]["project"].as_str().filter(|p| *p != id) {
+                    let edited = lib.metadata(p).get("project").and_then(|m| m.get("license")).filter(|l| l.is_object()).cloned();
+                    if let Some(l) = edited.or_else(|| lib.source(p).ok().map(|s| s["detected"]["license"].clone()).filter(|l| l.is_object())) {
+                        det_item.insert("license".into(), l);
+                    }
+                }
                 let (vals, from) = meta::resolve(&Layers {
                     item: edits.get("parts").and_then(|i| i.get(&pid)).and_then(Value::as_object),
                     folders: meta::folder_chain(&edits, &folder),
@@ -354,13 +371,12 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
                 it["from"] = Value::Object(from);
                 it["folder"] = json!(folder);
                 for f in it["files"].as_array_mut().into_iter().flatten() {
-                    let rel = format!("sources/{id}/files/{version}/{}", f["path"].as_str().unwrap_or(""));
-                    f["url"] = json!(format!("library/{rel}"));
+                    f["url"] = json!(format!("library/{files_rel}/{}", f["path"].as_str().unwrap_or("")));
                 }
                 if let Some(stl) = it["preview_stl"].as_str() {
                     it["preview_url"] = json!(format!("library/sources/{id}/{stl}"));
                 } else if let Some(p) = it["preview"].as_str().filter(|p| p.to_lowercase().ends_with(".stl")) {
-                    it["preview_url"] = json!(format!("library/sources/{id}/files/{version}/{p}"));
+                    it["preview_url"] = json!(format!("library/{files_rel}/{p}"));
                 }
                 if has_thumb(&format!("part-{pid}.webp")) {
                     it["thumb"] = json!(file_url(&format!("sources/{id}/thumbs/part-{pid}.webp")));

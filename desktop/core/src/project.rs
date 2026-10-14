@@ -93,6 +93,9 @@ fn fill_in(lib: &Library, id: &str, src: &Value) {
     let _ = lib.save_derived(id, version, &derived);
 }
 
+/// The local project parts made from models are kept in (milestone 4): local/Made parts/<model>/.
+pub const MADE_PARTS: &str = "Made parts";
+
 /// What [`scan_changes`] found.
 #[derive(Debug, Default)]
 pub struct Changes {

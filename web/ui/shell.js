@@ -11,11 +11,11 @@ import { TopSearch, TopButtons, Tabs, StatusBar } from "./chrome.js";
 import { useStore } from "../lib/store.js";
 import { AddProject, MergeConflicts, makeThumbnails, dailyUpdateCheck, rescanLocal, scanOnFocus } from "./library.js";
 import { MetaEditor, undoNow } from "./metaedit.js";
-import { FlagDialog } from "./actions.js";
+import { FlagDialog, SavePartDialog } from "./actions.js";
 import { PinDialog, FormEditor } from "./forms.js";
 import { SideView } from "./sideview.js";
 
-/** Modal dialogs (desktop): adding a project, editing details, flagging as broken, merge differences, pinning, the form editor. */
+/** Modal dialogs (desktop): adding a project, editing details, flagging as broken, saving as a part, merge differences, pinning, the form editor. */
 function Dialogs() {
   const d = useStore(ui, (s) => s.dialog);
   // every dialog behaves the same (Review 2, UI-14): the cursor starts in its first field, Escape
@@ -32,7 +32,7 @@ function Dialogs() {
   }, [d]);
   if (!d) return null;
   const body = d.type === "add-project" ? html`<${AddProject} />` : d.type === "edit" ? html`<${MetaEditor} spec=${d} key=${JSON.stringify(d)} />`
-    : d.type === "flag" ? html`<${FlagDialog} spec=${d} />` : d.type === "merge" ? html`<${MergeConflicts} result=${d.result} />`
+    : d.type === "flag" ? html`<${FlagDialog} spec=${d} />` : d.type === "save-part" ? html`<${SavePartDialog} spec=${d} />` : d.type === "merge" ? html`<${MergeConflicts} result=${d.result} />`
     : d.type === "pin" ? html`<${PinDialog} spec=${d} key=${d.key} />` : d.type === "form" ? html`<${FormEditor} spec=${d} key=${d.key} />` : null;
   return html`<div class="dialog-backdrop">${body}</div>`;
 }

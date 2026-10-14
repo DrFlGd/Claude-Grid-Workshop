@@ -1135,6 +1135,44 @@ impl App {
                 self.invalidate();
                 j(Value::Null)
             }
+            "part_save" => {
+                // { model, model_name, project, project_version, name, category?, values, edits?, data, replace?, folder? }:
+                // a part made from a model, kept in the library (milestone 4): local/Made parts/<model>/<name>.stl
+                // and <name>.recipe.json beside it, saying how it was made so it can be made again
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let clean = |s: &str| -> String {
+                    let t: String = s.chars().map(|c| if "/\\:*?\"<>|".contains(c) || c.is_control() { ' ' } else { c }).collect();
+                    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+                    t.trim_matches('.').chars().take(100).collect()
+                };
+                let name = clean(arg(&args, "name").map_err(e2s)?);
+                // made again (replace): into the folder it's in now, whatever the model is called today
+                let folder = clean(args["folder"].as_str().or(args["model_name"].as_str()).unwrap_or("Parts"));
+                if name.is_empty() || folder.is_empty() {
+                    return Err("Give the part a name.".into());
+                }
+                let dir = lib.root().join("local").join(project::MADE_PARTS).join(&folder);
+                std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+                let mut stem = name.clone();
+                if args["replace"] != true {
+                    let mut n = 2;
+                    while dir.join(format!("{stem}.stl")).exists() {
+                        stem = format!("{name} {n}");
+                        n += 1;
+                    }
+                }
+                let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
+                crate::config::write_atomic(&dir.join(format!("{stem}.stl")), &data).map_err(e2s)?;
+                let recipe = json!({
+                    "made_by": format!("SCAD Workshop {}", env!("CARGO_PKG_VERSION")),
+                    "model": args["model"], "model_name": args["model_name"], "project": args["project"], "project_version": args["project_version"],
+                    "category": args["category"], "values": args["values"], "edits": args["edits"],
+                    "engine": self.engine_version_site, "date": library::now(),
+                });
+                crate::config::write_json(&dir.join(format!("{stem}.recipe.json")), &recipe).map_err(e2s)?;
+                j(json!({ "name": stem, "folder": folder }))
+            }
             "thumb_put" => {
                 let lib = self.library()?;
                 lib.writable().map_err(e2s)?;
@@ -1330,9 +1368,7 @@ impl App {
             bail!("no parts pack {id}");
         }
         if let Some(rel) = path.strip_prefix("library/") {
-            let lib = self.library().map_err(|e| anyhow!(e))?;
-            let rel = percent_decode(rel);
-            return std::fs::read(lib.resolve(&rel)?).with_context(|| format!("couldn't read {rel}"));
+            return self.library_file(rel).with_context(|| format!("couldn't read {}", percent_decode(rel)));
         }
         self.site.read(path)
     }
@@ -1420,7 +1456,7 @@ const LINKED: &str = "~linked";
 
 /// A project's folder as a library path (for its pictures and files in the side viewer): inside
 /// the library, or a linked project's folder through `~linked/<id>`.
-fn folder_rel(lib: &Library, id: &str, src: &Value, dir: &Path) -> Option<String> {
+pub(crate) fn folder_rel(lib: &Library, id: &str, src: &Value, dir: &Path) -> Option<String> {
     lib.relative(dir).or_else(|| (src["kind"] == "linked").then(|| format!("{LINKED}/{id}")))
 }
 

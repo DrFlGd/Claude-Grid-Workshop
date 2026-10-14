@@ -129,6 +129,26 @@ export function when(iso) {
   return isNaN(d) ? iso : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+/**
+ * A made part's recipe (milestone 4), for its page and the inspector: "Made from Basic Bin (Gridfinity
+ * Rebuilt), 2 settings changed.", whether that model is still here, and a note when its project has
+ * been updated since the part was made.
+ */
+export function madeFrom(r) {
+  if (!r?.model) return null;
+  const m = ctx.index?.get(`${r.model.startsWith("@") ? "comp" : "gen"}:${r.model}`);
+  const n = Object.keys(r.values || {}).length;
+  const what = m ? `${m.name} (${m.project})` : r.model_name || r.model;
+  const text = `Made from ${what}, ${n ? `${plural(n, "setting")} changed` : "with its default settings"}${r.edits ? " and your code edits" : ""}.`;
+  const src = m?.sourceId ? sourceById(m.sourceId) : null;
+  let outdated = null;
+  if (src && r.project_version && src.version && src.version !== r.project_version) {
+    const then = (src.versions || []).find((v) => v.id === r.project_version);
+    outdated = `Made with ${then?.date ? `the version of ${when(then.date)}` : "an earlier version"}; ${src.name || m.project} has been updated since. Make again to use it.`;
+  }
+  return { text, available: !!m, outdated, href: `#/m/${r.model}` };
+}
+
 function UpdateBanner({ src }) {
   const u = src.update || {};
   const [busy, setBusy] = useState(false);

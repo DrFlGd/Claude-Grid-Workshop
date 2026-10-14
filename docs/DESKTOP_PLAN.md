@@ -593,7 +593,7 @@ Each milestone is a release (0.4.x while Phase 4 runs) and is followed by a revi
 | 1 | **Rename clean-up** (0.4.4). Links and text that still say Claude-Grid-Workshop point at SCAD-Workshop; 0.4.3's notes move out of Unreleased. Grown the same evening by the owner's decisions below: no starter projects in the installer, the website retired, no Needs attention; plus Review 1's UI-6 and F-6. | No old addresses left except where history is described; the installer has no `starter/` but has `libs/`; the app's releases link opens |
 | 2 | **Skins from Model Library** (0.4.5, "Skins design" below), then Review 1's interface items UI-2, UI-3, UI-7, UI-8, UI-10 and UI-11. Drafting Sheet, Parts Bin, Layer Line and Classic (today's look), chosen in Settings. | Every page looks right in each skin, light, dark and night, in the app test's screenshots |
 | 3 | **Consistent projects** (0.4.6 to 0.4.9, "Consistent projects design" below): one project description for every source, defaults that render, a check for every model on import, and the `workshop.json` layout. | The consistency checks below pass for the 19 starter projects and the test projects; an update from GitHub still compares against upstream's own files |
-| 4 | **Make parts from a generator** (item 8): Save as part and Make several…, with recipes. | As in item 8 |
+| 4 | **Make parts from a generator** (item 8, "Make parts from a generator design" below; 0.4.11 and 0.4.12, with Review 3's F-15): Save as part and Make several…, with recipes. | As in item 8; made parts can be made again after an update |
 | 5 | **The rest of Phase 4:** importing STL/3MF/OBJ/STEP and Printables ZIPs (with Model Library's readers where they fit), one item per file name with a format picker, multi-colour and multi-part 3MF, collections, ZIP export. | Phase 4's "done when" in the Phases table |
 
 Items 1, 2 and 9 of the requests of 2026-10-12 (pictures, your own content, several libraries) come after these, unless a review moves them up.
@@ -928,3 +928,36 @@ Built as planned, except:
 - **F-14:** files neither listed nor left out become models straight away (as reading any project does), rather than being offered with "Add as a model"; the update summary lists them as new models. What the 6 descriptions leave out is in `LEFT_OUT` in `sources.rs`, checked against `vendor/` by a core test.
 - **UI-25:** the presets row's ⋯ keeps its mark, with "Saved settings: rename, delete, export, import" as its name and tooltip (a text label didn't fit beside Copy settings in a narrow form). Part pages have no ⋯: nothing to put in it yet.
 - **F-17:** the 6 starter projects that can come from GitHub record their repository and commit too, until they're converted.
+
+## Make parts from a generator design (milestone 4, 0.4.11 onwards)
+
+Roadmap item 8, plus Review 3's F-15. Generating ends in a download today; the owner wants what's made kept as ready-made parts in the Parts Library, one at a time or many, each able to be made again.
+
+**Where made parts live: a local project.** `local/Made parts/` is an ordinary local project (milestone 3 already reads local folders, makes a part of every model file, keeps versions and checks), so made parts move, sync and back up with the library, and need no new kind of project. Inside it, one folder per model (`local/Made parts/<model name>/`) holds each part's files (`<part name>.stl`, and `.3mf` once Phase 4's 3MF lands) and beside each one `<part name>.recipe.json`:
+
+```json
+{ "made_by": "SCAD Workshop 0.4.11", "model": "gridfinity-rebuilt/bin", "project": "gridfinity-rebuilt",
+  "project_version": "71525de98144", "model_name": "Basic Bin",
+  "values": { "gridx": 3, "gridy": 2 }, "edits": null, "engine": "2026.10.02", "date": "2026-10-15T09:12:00Z" }
+```
+
+Only the changed values are stored (as saved settings do), with the code edits when there are any. Reading a local project picks up `*.recipe.json` beside a part: the part's item carries `made_from` (model, name, values, version), and its category defaults to the model's.
+
+- **Save as part** beside Download STL on a model page: asks for a name (default: the model's name and its changed settings, "Basic Bin 3×2") and a category (default: the model's), renders if the preview isn't current, writes the files, and opens nothing: a message says "Saved Basic Bin 3×2 to the Parts Library · Show". The part's picture is made like any part's.
+- **Make several…** is the Batch dialog with a second way out: **Save to the Parts Library** next to **Download ZIP**, naming each part from the settings that vary ("Basic Bin 2×1", "Basic Bin 3×1", …). It also offers your saved settings as rows (tick the ones to make). Phase 5's CSV and sweeps fill the same table.
+- **A made part's page** says "Made from Basic Bin (Gridfinity Rebuilt), 2 settings changed", with **Open with these settings** (the model page, like a saved setting) and **Make again** (renders with the same values and replaces the files, keeping the name). When the model's project has a newer version than the recipe's, the page says so: "Made with the version of Oct 2; Gridfinity Rebuilt has been updated since. Make again to use it."
+- **Tests:** Save as part writes the files and recipe and the part appears under Parts Library in its category; Make several saves three; Make again after a project update replaces the file and the recipe's version.
+
+**F-15: a folder of example files.** When reading a project finds one folder with more than 20 files that draw something, each of which only includes or uses the same main file and calls one of its modules (LEGO.scad's `examples/`), the project page asks once: **List them as models** (as today), **Make them parts** (each is rendered once at its own values into the project's parts, through the same queue, so they're browsable without 180 forms), or **Leave them out**. The answer is kept in the project's `metadata.json` (`examples: { "folder": "examples", "as": "parts" }`) so it holds across updates, and `catalog/suggested.json` can carry it for LEGO.scad. Gears' `examples/` (18 files with settings of their own) isn't asked about: the rule needs files that are only calls.
+
+**Order:** 0.4.11 Save as part and made parts' pages (recipe, Open with these settings, Make again); 0.4.12 Make several (Batch to the Parts Library, saved settings as rows) and F-15. Review 4 follows.
+
+### 0.4.11 notes
+
+Save as part and made parts' pages, built as planned, except:
+
+- **Make again** opens the model's page with the recipe's settings and code, makes it there (so its progress and any error show where they always do) and then replaces the part's files and recipe, rather than making it on the part's page. **Open with these settings** is the same without the saving. Both are links (`#/m/<model>?part=<pack>/<part>`, plus `&again`), so the inspector can offer the first too.
+- The dialog's category picker lists the categories there are; a new one is made in Edit details, as for any part. A component's part has no category of its own (its topic group isn't a library category), so it goes under the Made parts project's.
+- **A made part carries its project's license** (the edited one when you've changed it), since what's made from a project is under its license.
+- **Your own projects' part files** (in `local/` or linked) were looked for in a stored copy that only added projects have, so their previews, thumbnails and downloads failed. Their files are now read where the project is (`library/local/<name>/…`, `library/~linked/<id>/…`), and the backend's `read` serves `library/` paths the same way as the `library://` protocol.
+- The recipe keeps the code edits as saved settings do (`{ path: { text, base } }`), so an edited part opens with the same code.

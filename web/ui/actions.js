@@ -10,6 +10,7 @@ import { Icon } from "./icons.js";
 import { api, sourceById } from "./library.js";
 import { itemTarget, undoNow } from "./metaedit.js";
 import { plural } from "../lib/util.js";
+import { CategoryPicker } from "./catpick.js";
 
 const what = (items) => (items.length === 1 ? `“${items[0].name}”` : plural(items.length, "item"));
 
@@ -101,6 +102,33 @@ export function FlagDialog({ spec }) {
     <p class="muted">Flagged models get a “broken” badge and are counted in Library settings › Projects until you remove the flag.</p>
     <div class="dialog-actions"><button type="button" class="ghost" onClick=${close}>Cancel</button>
       <button type="submit" class="primary" id="flag-save">Flag as broken</button></div>
+  </form>`;
+}
+
+/**
+ * Save as part (milestone 4): the name and category of a part made from the open model. It's kept in
+ * the Parts Library (local/Made parts/<model>/) with a recipe saying how it was made.
+ */
+export function SavePartDialog({ spec }) {
+  const [name, setName] = useState(spec.name || "");
+  const [category, setCategory] = useState(spec.category || "");
+  const close = () => ui.set({ dialog: null });
+  const save = (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    close();
+    ctx.savePart({ name: name.trim(), category: category || null });
+  };
+  return html`<form class="dialog save-part-dialog" onSubmit=${save} aria-label="Save as part">
+    <div class="dialog-head"><h2>Save as part</h2><button type="button" class="ghost" aria-label="Close" onClick=${close}>${Icon.close(16)}</button></div>
+    <label class="field-block"><span>Name</span>
+      <input id="save-part-name" value=${name} onInput=${(e) => setName(e.target.value)} maxlength="100" autofocus /></label>
+    <div class="field-block"><span>Category</span>
+      <${CategoryPicker} id="save-part-category" value=${category} onChange=${(v) => setCategory(typeof v === "string" ? v : "")} allowNew=${false}
+        emptyLabel=${spec.category ? null : "Made parts' own"} /></div>
+    <p class="muted">Kept in the Parts Library under Made parts › ${spec.modelName}, with the settings it was made with${spec.edits ? " and your code edits" : ""}, so it can be made again.${spec.current ? "" : " The preview isn't up to date, so it's made first."}</p>
+    <div class="dialog-actions"><button type="button" class="ghost" onClick=${close}>Cancel</button>
+      <button type="submit" class="primary" id="save-part-save" disabled=${!name.trim()}>Save</button></div>
   </form>`;
 }
 

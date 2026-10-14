@@ -6,7 +6,7 @@ import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 import { LICENSE_TEXT } from "./index-local.js";
 import { bytes, FORMAT_LABEL, plural } from "../lib/util.js";
-import { isDesktop, readOnly, api, when } from "./library.js";
+import { isDesktop, readOnly, api, when, madeFrom } from "./library.js";
 import { ItemActions } from "./actions.js";
 import { SideButtons } from "./sideview.js";
 
@@ -117,6 +117,7 @@ export function Inspector() {
   if (it.kind === "component") return html`<${ComponentInspector} it=${it} fav=${s.favs.includes(it.id)} />`;
   const fav = s.favs.includes(it.id);
   const siblings = it.kind === "generator" ? ctx.index.items.filter((x) => x.kind === "generator" && x.projectId === it.projectId && x.id !== it.id) : [];
+  const made = it.kind === "part" ? madeFrom(it.madeFrom) : null; // a part made from a model here (milestone 4)
   const lic = it.license?.spdx && it.license.spdx !== "NOASSERTION" ? it.license.spdx : "Not stated";
   return html`<aside class="inspector" aria-label="Inspector" data-item=${it.id}>
     <button type="button" class="insp-thumb" onClick=${() => ui.set({ quicklook: it.id })} title="Quick look (Space)">
@@ -151,7 +152,9 @@ export function Inspector() {
     </dl>
     ${it.kind === "generator" ? html`<${SavedSettings} item=${it} />` : null}
     ${it.kind === "part" && it.files?.length ? html`<${Downloads} item=${it} />` : null}
-    ${it.generator ? html`<p class="insp-note"><a href=${`#/m/${it.generator}`}>Open the parametric model</a> to make it at any size.</p>` : null}
+    ${made ? html`<p class="insp-note" id="insp-made-from">${made.text} ${made.available ? html`<a href=${`${made.href}?part=${it.key}`}>Open with these settings</a>` : "That model isn't in the library now."}</p>
+      ${made.outdated ? html`<p class="insp-note">${made.outdated}</p>` : null}`
+    : it.generator ? html`<p class="insp-note"><a href=${`#/m/${it.generator}`}>Open the parametric model</a> to make it at any size.</p>` : null}
     ${siblings.length ? html`<section class="insp-section"><h3>More from ${it.project}</h3>
       <div class="insp-chips">${siblings.slice(0, 16).map((x) => html`<button type="button" class="chip" onClick=${() => ui.set({ selection: [x.id], anchor: x.id })}>${x.name}</button>`)}</div>
     </section>` : null}

@@ -265,6 +265,7 @@ body.show-help .field .help { display: block; }
 .actionbar { border-top: 1px solid var(--steel-2); padding: 8px 16px 12px; background: var(--white); display: grid; gap: 8px; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .actions > * { padding: 10px 12px; font-size: 14.5px; }
+.actions .save-part { grid-column: 1 / -1; padding: 6px 12px; font-size: 13.5px; }
 .status { font-size: 13px; color: var(--graphite); min-height: 1.45em; display: flex; gap: 8px; align-items: center; }
 .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--steel-2); flex: none; }
 .status.ok::before { background: var(--ok); }
@@ -1350,3 +1351,6 @@ svg g[data-sk] { display: none; }
 .home-suggested li > span { display: flex; flex-direction: column; min-width: 0; }
 .home-suggested li > span .small { font-size: 12px; }
 .add-suggested .chips { margin-top: 4px; }
+.made-from { display: grid; gap: 6px; }
+.made-from .made-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 0; }
+.made-from .made-actions .button { padding: 6px 12px; font-size: 13.5px; }

@@ -102,7 +102,7 @@ export class LocalIndex {
           category: cat, categoryLabel: label(cat), subcategory: it.category, tags: it.tags || [],
           summary: it.description || "", license, licenseStatus: license.public_use || "ok",
           authors: names(it.authors || lib.authors), thumb: it.thumb || null, dims: it.dimensions || null,
-          files: it.files || [], preview: it.preview_url || null, generator: it.generator || null, terms: "",
+          files: it.files || [], preview: it.preview_url || null, generator: it.generator || null, madeFrom: it.made_from || null, terms: "",
           href: `#/parts/${lib.id}/${it.id}`, updated: it.updated || lib.updated || null, updatedFrom: null,
           folder: it.folder || "", fields: it.meta?.fields || {}, hidden: it.hidden || null, broken: it.broken || null,
         });

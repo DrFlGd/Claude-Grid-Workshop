@@ -1025,6 +1025,49 @@ async def main():
                   chips == ["LEGO.scad"] and "182 models" in facts and "License MIT" in facts
                   and "lego" in lego_models and lego_checks.get("lego", {}).get("ok"), (chips, facts, len(lego_models), failing))
 
+            # 13g. (0.4.11, milestone 4) Save as part keeps what's made in the Parts Library (local/Made parts/<model>/)
+            # with a recipe; its page opens the model with those settings or makes it again, and says when
+            # the model's project has changed since
+            await pg.goto(B + "#/m/local-bevel/bevel-gear")
+            await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear'")
+            await pg.wait_for_function(DONE, timeout=300000)
+            await pg.click("#save-part")
+            await pg.fill("#save-part-name", "Test gear")
+            await pg.click("#save-part-save")
+            toast_js = "(t)=>{const e=document.querySelector('#toast');return e&&!e.hidden&&e.textContent.includes(t)}"
+            await pg.wait_for_function(toast_js, arg="Parts Library", timeout=120000)
+            made = list((library / "local" / "Made parts").glob("*/Test gear.stl"))
+            recipe_path = made[0].with_name("Test gear.recipe.json") if made else None
+            recipe = json.loads(recipe_path.read_text()) if recipe_path and recipe_path.is_file() else {}
+            await pg.click("#toast .ghost")
+            await pg.wait_for_selector("#made-from", timeout=20000)
+            made_text = await pg.inner_text("#made-from")
+            cats = await pg.evaluate("""() => { const i = window.__workshop.index.items;
+                const part = i.find((x) => x.kind === 'part' && x.madeFrom?.model === 'local-bevel/bevel-gear');
+                return [part?.category, i.find((x) => x.id === 'gen:local-bevel/bevel-gear')?.category] }""")
+            check("Save as part writes the part and its recipe; the part is in the Parts Library in its model's category, saying what it was made from",
+                  len(made) == 1 and recipe.get("model") == "local-bevel/bevel-gear" and "Made from" in made_text
+                  and cats[0] and cats[0] == cats[1], (made, recipe.get("model"), made_text, cats))
+            part_hash = await pg.evaluate("location.hash")
+            # the project changes after the part was made: its page says so, and Make again brings it up to date
+            recipe["project_version"] = "an-older-version"
+            recipe_path.write_text(json.dumps(recipe))
+            before = made[0].stat().st_mtime_ns
+            await pg.evaluate("import('/ui/library.js').then(async (m) => { await m.rescanLocal(false); await m.rescanLocal(false); })")  # (the second: after any scan already running)
+            await pg.wait_for_function("(h)=>location.hash===h && /updated since/.test(document.querySelector('#made-from')?.textContent || '')", arg=part_hash, timeout=30000)
+            await pg.click("#made-again")
+            await pg.wait_for_function(toast_js, arg="Made Test gear again", timeout=300000)
+            again = json.loads(recipe_path.read_text())
+            check("Make again replaces the part's file and brings its recipe up to the project's version",
+                  again.get("project_version") not in (None, "an-older-version") and made[0].stat().st_mtime_ns != before
+                  and len(list(made[0].parent.glob("*.stl"))) == 1, (again.get("project_version"), list(made[0].parent.iterdir())))
+            await pg.goto(B + part_hash)
+            await pg.wait_for_selector("#made-open", timeout=20000)
+            await pg.click("#made-open")
+            await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear' && location.hash==='#/m/local-bevel/bevel-gear'")
+            await pg.wait_for_function(DONE, timeout=300000)
+            check("Open with these settings opens the model and makes it", "matches" in await pg.inner_text("#status"))
+
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"
             backup.parent.mkdir(parents=True, exist_ok=True)

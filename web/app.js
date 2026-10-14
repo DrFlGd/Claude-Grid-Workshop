@@ -13,7 +13,7 @@ import { setContext } from "./ui/context.js";
 import { html, render } from "./lib/html.js";
 import { LibrarySettingsPage } from "./ui/libsettings.js";
 import { unflagItems } from "./ui/actions.js";
-import { saveComponentThumb, when, sourceById } from "./ui/library.js";
+import { saveComponentThumb, when, sourceById, rescanLocal, madeFrom } from "./ui/library.js";
 import { ui, recordRecent, setTabs, layoutFor, isDark, setTheme, THEMES, setSkin, SKINS } from "./ui/state.js";
 import { scopeFromPath } from "./ui/context.js";
 import { scopeInfo } from "./ui/sidebar.js";
@@ -55,7 +55,7 @@ function route() {
   // model keys: "<project>/<model>", or "@<library>/<module>" for a component
   const m = path.match(/^m\/(@?[a-z0-9-]+)\/([A-Za-z0-9_-]+)\/?$/);
   const p = path.match(/^parts\/([a-z0-9-]+)(?:\/([a-z0-9-]+))?\/?$/);
-  if (m) openModel(`${m[1]}/${m[2]}`, params.get("s"), params.get("saved"));
+  if (m) openModel(`${m[1]}/${m[2]}`, params.get("s"), params.get("saved"), params.get("part") ? { part: params.get("part"), again: params.has("again") } : null);
   else if (p) openLibrary(p[1], p[2]);
   else if (path === "about" || path.startsWith("licenses")) showLicenses(path.split("/")[1]);
   else if (path === "settings") showSettings();
@@ -329,13 +329,19 @@ const currentValues = (key) => (state.model?.key === key ? structuredClone(state
 /** A component that needs values before it can be made: the settings still empty. */
 const missingValues = (model, values) => (model.needs || []).filter((n) => values[n] == null || values[n] === "");
 
-async function openModel(key, shareCode = null, savedId = null) {
+async function openModel(key, shareCode = null, savedId = null, made = null) {
   if (!state.catalog) return;
   showView("model");
-  if (shareCode || savedId) history.replaceState(null, "", `#/m/${key}`); // the link has done its job; edits shouldn't look shared
+  // a made part's "Open with these settings" or "Make again": its recipe, applied once the model is open
+  const recipe = made && madeRecipe(made, key);
+  if (shareCode || savedId || made) history.replaceState(null, "", `#/m/${key}`); // the link has done its job; edits shouldn't look shared
   if (state.model?.key === key) {
     addTab(key);
-    if (shareCode) {
+    if (recipe) {
+      state.viewerOwner = "model";
+      $("#stage-empty").hidden = true;
+      applyRecipe(recipe);
+    } else if (shareCode) {
       const shared = await readShare(shareCode);
       if (shared && !shared.error) { setAllValues(shared.values); generate(); }
       if (shared) noteShared(shared);
@@ -380,6 +386,7 @@ async function openModel(key, shareCode = null, savedId = null) {
     buildForm();
     await loadSaved();
     if (savedId) chooseSettings(`saved:${savedId}`);
+    else if (recipe) applyRecipe(recipe);
     else if (kept.lastResult) {
       await showResult(kept.lastResult, kept.lastResultValues, true, kept.renderedEdits);
       setStatus(kept.status[0], kept.status[1]);
@@ -403,6 +410,7 @@ async function openModel(key, shareCode = null, savedId = null) {
   buildForm();
   if (shared) noteShared(shared);
   if (savedId) { await loadSaved(); chooseSettings(`saved:${savedId}`); }
+  else if (recipe) { loadSaved(); applyRecipe(recipe); }
   else {
     loadSaved();
     const missing = missingValues(detail, state.values);
@@ -793,6 +801,19 @@ function uniqueName(name, exceptId = null) {
   for (let i = 2; ; i++) if (!taken.has(`${name} (${i})`.toLowerCase())) return `${name} (${i})`;
 }
 
+/**
+ * The open model's code edits as kept with saved settings and made parts' recipes: each with the hash
+ * of the project's file it started from (and of the app's copy, when the app made one: a file whose
+ * settings were lifted from its calls). null when there are none.
+ */
+function editsRecord(model) {
+  const ed = Object.entries(editsOf(model.key)).map(([p, text]) => {
+    const own = model.file_bases?.[p], used = model.files?.[p] || null;
+    return [p, { text, base: own || used, ...(own && own !== used ? { copy: used } : {}) }];
+  });
+  return ed.length ? Object.fromEntries(ed) : null;
+}
+
 async function saveSettings(asNew) {
   const dlg = $("#save-dialog");
   const mode = dlg.dataset.mode;
@@ -802,13 +823,7 @@ async function saveSettings(asNew) {
   const key = state.model.key;
   try {
     let rec;
-    // code edits go with the values, each with the hash of the project's file it started from (and
-    // of the app's copy, when the app made one: a file whose settings were lifted from its calls)
-    const ed = Object.entries(editsOf(key)).map(([p, text]) => {
-      const own = state.model.file_bases?.[p], used = state.model.files?.[p] || null;
-      return [p, { text, base: own || used, ...(own && own !== used ? { copy: used } : {}) }];
-    });
-    const edits = ed.length ? Object.fromEntries(ed) : null;
+    const edits = editsRecord(state.model);
     // the project version they were made with
     const version = sourceById(state.model.source_id)?.version || null;
     if (mode === "rename" && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id) });
@@ -945,13 +960,19 @@ function updateStatusForEdits() {
   }
 }
 
-function friendlyName(model, values) {
-  let base = model.kind === "component" ? `${model.component?.library || "component"}-${model.id}` : `${model.family}-${model.id}`;
+/** The sizes among a model's settings (grid units, width, depth...), for naming what it makes. */
+function sizesOf(values) {
   const dims = [];
   for (const k of ["gridx", "gridy", "gridz", "Width", "Depth", "Height", "Width_Units", "Length_Units",
     "Board_Width", "Board_Height", "shelf_width", "shelf_depth", "GridSize", "plate_size"]) {
     if (k in values) [].concat(values[k]).forEach((x) => { if (typeof x === "number") dims.push(String(x)); });
   }
+  return dims;
+}
+
+function friendlyName(model, values) {
+  let base = model.kind === "component" ? `${model.component?.library || "component"}-${model.id}` : `${model.family}-${model.id}`;
+  const dims = sizesOf(values);
   const part = model.part_parameter;
   if (part && ["string", "number"].includes(typeof values[part])) base += `-${values[part]}`;
   return (base + (dims.length ? "-" + dims.slice(0, 4).join("x") : "")).replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 120) + ".stl";
@@ -968,10 +989,94 @@ function setDownload(blob, name) {
   a.textContent = "Download STL";
 }
 
+// ---------------------------------------------------------------- save as part (milestone 4)
+// What's made can be kept in the Parts Library (local/Made parts/<model>/<name>.stl) with a recipe
+// beside it, so its page can open the model with the same settings or make it again.
+// docs/DESKTOP_PLAN.md, "Make parts from a generator design".
+
+/** The preview shows the settings and code as they are now (nothing being made). */
+const previewCurrent = () => !state.job && !!state.rendered && same(JSON.parse(state.rendered), state.values)
+  && (state.renderedEdits || "") === editsKey(editsOf(state.model.key));
+
+/** "Basic Bin 3×2": the model's name and the part and sizes it's set to. */
+function partName(model, values) {
+  const part = model.part_parameter && ["string", "number"].includes(typeof values[model.part_parameter]) ? ` ${values[model.part_parameter]}` : "";
+  const dims = sizesOf(values).slice(0, 3);
+  return `${model.name}${part}${dims.length ? ` ${dims.join("×")}` : ""}`;
+}
+
+$("#save-part").addEventListener("click", () => {
+  const m = state.model;
+  if (!m) return;
+  ui.set({ dialog: { type: "save-part", name: partName(m, state.values), category: m.kind === "component" ? "" : m.category || "",
+    modelName: m.name, edits: hasEdits(m.key), current: previewCurrent() } });
+});
+
+/** Save the open model's part (Save as part dialog): made first when the preview isn't up to date. */
+function savePart(opts) {
+  if (!state.model) return;
+  if (previewCurrent()) { writePart(opts); return; }
+  state.afterRender = { key: state.model.key, values: structuredClone(state.values), run: () => writePart(opts) };
+  generate();
+}
+
+const dataUrl = (blob) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result);
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(blob);
+});
+
+/** Write the last render and its recipe to the library, read Made parts again, and say where it went. */
+async function writePart({ name, category = null, replace = false, folder = null }) {
+  const m = state.model, blob = state.lastResult?.blob;
+  if (!m || !blob) return;
+  try {
+    setStatus("busy", "Saving the part…");
+    const r = await platform.api("part_save", {
+      model: m.key, model_name: m.name, project: m.source_id || null, project_version: sourceById(m.source_id)?.version || null,
+      name, category, values: changedValues(m, state.lastResultValues), edits: editsRecord(m), data: await dataUrl(blob), replace, folder });
+    await rescanLocal(true);
+    const rel = `${r.folder}/${r.name}.stl`;
+    const lib = state.libraries.find((l) => l.items.some((i) => i.made_from && i.files[0]?.path === rel));
+    const it = lib?.items.find((i) => i.made_from && i.files[0]?.path === rel);
+    if (state.model === m) updateStatusForEdits();
+    toast(replace ? `Made ${r.name} again.` : `Saved ${r.name} to the Parts Library.`,
+      it ? { label: "Show", run: () => { location.hash = `#/parts/${lib.id}/${it.id}`; } } : null);
+  } catch (e) {
+    setStatus("error", `Couldn't save the part: ${e.message || e}`);
+  }
+}
+
+/** A made part's recipe, from its parts link (`#/m/<model>?part=<pack>/<part>`), when it was made from this model. */
+function madeRecipe({ part, again }, key) {
+  const [libId, pid] = part.split("/");
+  const it = state.libraries.find((l) => l.id === libId)?.items.find((i) => i.id === pid);
+  if (!it?.made_from || it.made_from.model !== key) return null;
+  const rel = it.files[0]?.path || "";
+  const at = rel.lastIndexOf("/");
+  return { ...it.made_from, again, stem: rel.slice(at + 1).replace(/\.stl$/i, ""), folder: at > 0 ? rel.slice(0, at) : null };
+}
+
+/** Set the form to a recipe's settings and code, and make it (Make again: then replace the part's files). */
+function applyRecipe(r) {
+  const key = state.model.key;
+  const { values, skipped } = withChanges(state.model, r.values || {});
+  setAllValues(values);
+  setEdits(key, r.edits ? editTexts(r.edits) : null);
+  saved.active = null;
+  renderSettingsPick();
+  if (skipped.length) note(skippedText(skipped.length).trim(), "warn");
+  state.afterRender = r.again
+    ? { key, values: structuredClone(state.values), run: () => writePart({ name: r.stem, category: r.category, replace: true, folder: r.folder }) }
+    : null;
+  generate();
+}
+
 function generate() {
   if (!state.model || !state.engine) return;
   const missing = missingValues(state.model, state.values);
-  if (missing.length) { setStatus("error", `Set ${missing.join(", ")} first: this component needs ${missing.length === 1 ? "it" : "them"}.`); return; }
+  if (missing.length) { state.afterRender = null; setStatus("error", `Set ${missing.join(", ")} first: this component needs ${missing.length === 1 ? "it" : "them"}.`); return; }
   cancelJob();
   const values = structuredClone(state.values);
   const model = state.model;
@@ -999,6 +1104,7 @@ function generate() {
     if (state.job !== job) return;
     finishJob();
     if (err.cancelled) { setStatus("stale", "Render cancelled."); return; }
+    if (state.afterRender) { state.afterRender = null; toast("The part wasn't saved: it couldn't be made."); }
     setStatus("error", err.message);
     offerBrokenFlag(model, err.message);
     if (err.logs?.length) { $("#log-text").textContent = err.logs.join("\n"); $("#log").hidden = false; }
@@ -1043,6 +1149,12 @@ async function showResult(result, values, restoring = false, ek = state.rendered
     if (!restoring) {
       setStatus("ok", result.cached ? "Preview matches your settings." : `Preview matches your settings. Made in ${fmt(result.ms / 1000)} s on this device.`);
       if (state.model?.kind === "component") saveComponentThumb(state.model.key, result.blob); // the first render becomes its thumbnail
+      // Save as part or Make again waiting for this render (and not one with other settings since)
+      const after = state.afterRender;
+      if (after && after.key === state.model?.key) {
+        state.afterRender = null;
+        if (same(values, after.values) && ek === editsKey(editsOf(after.key))) after.run();
+      }
     }
     if (!same(values, state.values) || ek !== editsKey(editsOf(state.model?.key))) updateStatusForEdits();
   } catch (e) {
@@ -1324,7 +1436,17 @@ async function showPart(lib, item) {
   status.replaceChildren(el("p", { class: "part-name", text: item.name }));
   // (a part with no summary of its own shows none: not its collection's again)
   if (item.description && item.description.trim() !== (lib.summary || "").trim()) status.append(el("p", { class: "help", text: item.description }));
-  if (item.generator) status.append(el("p", { class: "help" }, el("a", { href: `#/m/${item.generator}`, text: "Open the parametric model" }), " to print it at any size."));
+  const made = madeFrom(item.made_from);
+  if (made) {
+    const link = `${made.href}?part=${lib.id}/${item.id}`;
+    status.append(el("div", { class: "made-from", id: "made-from" },
+      el("p", { class: "help", text: made.available ? made.text : `${made.text} That model isn't in the library now.` }),
+      made.outdated ? el("p", { class: "help made-outdated", text: made.outdated }) : null,
+      made.available ? el("p", { class: "made-actions" },
+        el("a", { class: "button secondary", id: "made-open", href: link, text: "Open with these settings" }),
+        platform.kind === "desktop" && !state.catalog.library?.read_only
+          ? el("a", { class: "button secondary", id: "made-again", href: `${link}&again`, title: "Make it with the same settings and replace its files, keeping the name", text: "Make again" }) : null) : null));
+  } else if (item.generator) status.append(el("p", { class: "help" }, el("a", { href: `#/m/${item.generator}`, text: "Open the parametric model" }), " to print it at any size."));
   const dl = $("#part-downloads");
   dl.replaceChildren(...item.files.map((f, i) => el("a", {
     class: `button ${i === 0 && !["step", "shapr"].includes(f.format) ? "primary" : "secondary"}`, href: f.url,
@@ -1649,11 +1771,12 @@ async function reloadCatalog() {
     if (platform.kind !== "browser") document.body.dataset.platform = platform.kind;
     state.engine = platform.makeEngine(state.catalog);
     $("#engine").textContent = state.engine.label;
+    $("#save-part").hidden = platform.kind !== "desktop" || !!catalog.library?.read_only;
     state.libraries = libraries;
     for (const l of state.libraries) state.libDetail[l.id] = l;
     state.index = new LocalIndex(state.catalog, state.libraries);
     mountShell({ platform, catalog: state.catalog, libraries: state.libraries, index: state.index, engine: state.engine,
-      loadModel, closeModelTab, openTabs, deliver, reloadCatalog, toast, route, refreshModel, currentValues,
+      loadModel, closeModelTab, openTabs, deliver, reloadCatalog, toast, route, refreshModel, currentValues, savePart,
       // the Code tab's edits (an open model's page)
       codeEdits: editsOf, setCodeEdit, codeStatus, generate: () => { if (ui.get().view === "model") generate(); },
       saveCode: () => { if (ui.get().view === "model") openSaveDialog("save"); } });
