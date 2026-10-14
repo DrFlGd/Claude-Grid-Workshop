@@ -87,6 +87,7 @@ Milestone 4, first part (0.4.11): Save as part.
 - **Save as part…** under Generate and Download STL keeps what you made in the Parts Library: a name ("Basic Bin 2×2×6" to start with) and a category (the model's), made first if the preview isn't up to date. It goes in `local/Made parts/<model>/` as `<name>.stl` with `<name>.recipe.json` beside it: the model, its project and version, the settings you changed and any code edits. A message says where it went, with **Show**.
 - **A made part's page says what it was made from** ("Made from Basic Bin (Gridfinity Rebuilt), 1 setting changed.") with **Open with these settings** and **Make again** (the same settings, replacing its files and keeping its name), and says when the model's project has been updated since. The inspector says the same with Open with these settings. Made parts carry their project's license.
 - **Parts in your own projects** (`local/` and linked folders) show their previews, thumbnails and downloads; they were looked for in a copy only added projects have.
+- **The ⋯ menu stays open when the library is read again** while you're on the same model (a pin, a thumbnail); it closed under you, which also failed the acceptance test's Edit form step.
 
 ## 0.4.10 — 2026-10-14 · Review 3: the 3D view beside the side viewer, Copy settings, messages in the status bar, one credit pattern, older projects catch up
 

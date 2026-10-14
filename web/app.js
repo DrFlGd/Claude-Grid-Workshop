@@ -276,7 +276,10 @@ function renderModelExtra(detail) {
   sideModelButtons(box, detail);
   const own = $("#model-more-own");
   own.replaceChildren();
-  $("#model-more").open = false;
+  // ⋯ closes for another model, but stays open when this one's header is drawn again (a catalog reload)
+  const more = $("#model-more");
+  if (more.dataset.key !== detail.key) more.open = false;
+  more.dataset.key = detail.key;
   if (platform.kind !== "desktop") return;
   const ro = !!state.catalog?.library?.read_only;
   const btn = (id, text, title, onclick, disabled = false) => el("button", { type: "button", id, text, title, onclick, disabled });
