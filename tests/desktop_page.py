@@ -849,6 +849,9 @@ async def main():
                     break
                 await pg.wait_for_timeout(250)
             saved = json.loads(own.read_text()) if own.is_file() else {}
+            # (saving changed the project's files: its models' thumbnails are made again in the background;
+            # let that finish so it doesn't load a model the edit below removes)
+            await pg.wait_for_selector(".status-idle", timeout=180000)
             beside = (library / "sources/local-defaults/workshop.json").is_file()
             saved["category"] = "labels"
             saved["models"] = [dict(m, name="Grid tray") for m in saved.get("models", []) if m.get("id") == "tray"]
