@@ -1865,7 +1865,11 @@ async function reloadCatalog() {
   ui.set((s) => ({ catalogVersion: s.catalogVersion + 1 }));
   if (ui.get().view === "library" && location.hash.startsWith("#/parts/")) route();
   // the open model's header (name, credits, a broken flag) follows edits
-  if (ui.get().view === "model" && state.model) loadModel(state.model.key).then(({ detail }) => renderModelHeader(detail), () => {});
+  // (unless another model has been opened meanwhile: its header isn't this one's to draw)
+  if (ui.get().view === "model" && state.model) {
+    const key = state.model.key;
+    loadModel(key).then(({ detail }) => { if (state.model?.key === key && ui.get().view === "model") renderModelHeader(detail); }, () => {});
+  }
 }
 
 (async function boot() {

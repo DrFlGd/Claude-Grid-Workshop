@@ -89,6 +89,7 @@ Milestone 4, last part (0.4.12): Review 3's F-15, a folder of examples.
 - **Made into parts**, each example is made once at its own values in the background ("Making parts from examples · 3 of 180") into `sources/<id>/examples/<version>/`, listed in the Parts Library under the project with its picture, and its page still opens the model for other sizes. One that doesn't render is listed among the project's problems and isn't tried again until its defaults are checked.
 - The library's README names the `examples/` folder.
 - CI: the examples check waits for the example's own model page before reading its status (it read the previous page's message).
+- **A model's header is no longer drawn over by the one you just left** when the library is read again as you open another (pinning a component did it): the ⋯ menu then had the other model's actions, and closed under you.
 
 ## 0.4.11 — 2026-10-14 · Save as part and Make several: made parts kept in the Parts Library with their recipes
 
