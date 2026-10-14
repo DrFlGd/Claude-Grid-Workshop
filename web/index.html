@@ -38,16 +38,25 @@
         <p id="model-project" class="model-project"></p>
         <p id="model-summary" class="muted"></p>
         <p id="model-credit" class="credit"></p>
-        <div id="model-extra" class="model-extra" hidden></div>
+        <!-- one row on every model and component page: Code, README, then the rest under ⋯ (Review 2, UI-16) -->
+        <div class="model-extra">
+          <span id="model-extra" class="model-extra-side"></span>
+          <details class="menu" id="model-more"><summary class="ghost small" title="More" aria-label="More">⋯</summary>
+            <div class="menu-panel">
+              <div id="model-more-own" class="menu-group"></div>
+              <button type="button" id="model-about" hidden>About this model</button>
+              <button type="button" id="batch-open" title="Make many variations at once and download them as a ZIP">Batch…</button>
+              <button type="button" id="help-toggle" aria-pressed="false" title="Show the explanation under each setting">Help under each setting</button>
+              <button type="button" id="reset-all">Reset all settings</button>
+            </div>
+          </details>
+        </div>
       </div>
       <div class="rail-tools">
         <label class="search small">
           <span class="visually-hidden">Find a setting</span>
           <input id="param-search" type="search" placeholder="Find a setting" autocomplete="off">
         </label>
-        <button type="button" class="ghost" id="batch-open" title="Make many variations at once and download them as a ZIP">Batch</button>
-        <button type="button" class="ghost" id="help-toggle" aria-pressed="false" title="Show the explanation under each setting">Help</button>
-        <button type="button" class="ghost" id="reset-all">Reset all</button>
       </div>
       <details id="model-notes" class="model-notes" hidden><summary>About this model</summary><div id="model-notes-body"></div></details>
       <div id="model-alerts" class="model-alerts" aria-live="polite"></div>

@@ -2019,6 +2019,15 @@ impl ComponentLibrary {
     pub fn family(&self) -> String {
         format!("@{}", crate::library::slug(&self.info.name))
     }
+
+    /// Which copy of the library this is, and its version: "app@6cacf1b7d69a" for the one shipped
+    /// with the app, "<source id>@<commit>" for a library project (pins and component thumbnails
+    /// record it, so a change of copy is noticed).
+    pub fn copy(&self) -> String {
+        let who = if self.provider == "bundled" { "app" } else { self.source_id.as_deref().unwrap_or("project") };
+        let ver = self.info.commit.as_deref().unwrap_or("");
+        format!("{who}@{}", &ver[..ver.len().min(12)])
+    }
 }
 
 /// The libraries shipped with the app (`libs/`): their pins and indexes (made at
@@ -2410,7 +2419,7 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
         "authors": lib.info.authors.iter().map(|a| json!({ "name": a })).collect::<Vec<_>>(),
         "source": { "repository": lib.info.repo.as_ref().map(|r| format!("https://github.com/{r}")), "commit": lib.info.commit, "commit_date": lib.info.date, "file": c.file },
         "links": { "docs": c.doc_url, "source": lib.info.repo.as_ref().map(|r| format!("https://github.com/{r}")) },
-        "component": { "library": lib.info.name, "module": c.module, "file": c.file, "line": c.line, "provider": lib.provider, "source_id": lib.source_id, "dim": c.dim, "doc_url": c.doc_url, "topics": c.topics },
+        "component": { "library": lib.info.name, "module": c.module, "file": c.file, "line": c.line, "provider": lib.provider, "source_id": lib.source_id, "copy": lib.copy(), "dim": c.dim, "doc_url": c.doc_url, "topics": c.topics },
         "call": call,
         "entry": "/component.scad",
         "files": files,

@@ -703,6 +703,8 @@ impl App {
                 let group = model["category"].as_str().unwrap_or("other");
                 let pin = json!({
                     "id": pid, "name": name, "component": comp,
+                    // the copy and version of the library it was pinned from (a change is marked)
+                    "from": { "library": model["component"]["library"], "copy": model["component"]["copy"] },
                     "category": args["category"].as_str().filter(|c| !c.is_empty()).unwrap_or(components::model_category(group)),
                     "summary": args["summary"].as_str().map(String::from).unwrap_or_else(|| model["summary"].as_str().unwrap_or("").to_string()),
                     "defaults": args["defaults"].as_object().cloned().unwrap_or_default(),
@@ -714,6 +716,22 @@ impl App {
                 self.invalidate();
                 j(json!({ "key": format!("{src}/{pid}"), "source": src, "id": pid }))
             }
+            "pin_accept" => {
+                // { key: "pinned/<id>" }: keep a pin with the copy of its library in use now
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let key = arg(&args, "key").map_err(e2s)?;
+                let (src, pid) = key.split_once('/').ok_or("not a pin")?;
+                library::valid_id(pid).map_err(e2s)?;
+                let p = lib.source_dir(src).map_err(e2s)?.join("pins").join(format!("{pid}.json"));
+                let mut pin: Value = serde_json::from_slice(&std::fs::read(&p).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+                let c = self.catalog()?;
+                let comp = c.models.get(pin["component"].as_str().unwrap_or("")).ok_or("its component isn't in any library now")?;
+                pin["from"] = json!({ "library": comp["component"]["library"], "copy": comp["component"]["copy"] });
+                crate::config::write_atomic(&p, &serde_json::to_vec_pretty(&pin).map_err(|e| e.to_string())?).map_err(e2s)?;
+                self.invalidate();
+                j(Value::Null)
+            }
             "github_token" => {
                 let mut cfg = self.config();
                 cfg.github_token = args["token"].as_str().map(str::trim).filter(|t| !t.is_empty()).map(String::from);
@@ -723,14 +741,14 @@ impl App {
             "source_add" => {
                 let kind = arg(&args, "kind").map_err(e2s)?;
                 let req = match kind {
-                    "github" => AddRequest::GitHub { url: arg(&args, "url").map_err(e2s)?.to_string() },
+                    "github" => AddRequest::GitHub { url: arg(&args, "url").map_err(e2s)?.to_string(), releases: args["follow"] == "releases" },
                     "zip" => AddRequest::Zip { path: PathBuf::from(arg(&args, "path").map_err(e2s)?) },
                     "folder" => AddRequest::Folder { path: PathBuf::from(arg(&args, "path").map_err(e2s)?), link: args["link"].as_bool() == Some(true) },
                     other => return Err(format!("unknown kind {other}")),
                 };
                 let role = if args["role"] == "library" { "library" } else { "project" }.to_string();
                 let label = match &req {
-                    AddRequest::GitHub { url } => format!("Adding {}", url.trim_start_matches("https://").trim_start_matches("github.com/")),
+                    AddRequest::GitHub { url, .. } => format!("Adding {}", url.trim_start_matches("https://").trim_start_matches("github.com/")),
                     AddRequest::Zip { path } | AddRequest::Folder { path, .. } => {
                         format!("Adding {}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
                     }
@@ -912,6 +930,60 @@ impl App {
                 };
                 self.invalidate();
                 j(json!({ "installed": r.0 }))
+            }
+            "starter_convert" => {
+                // { ids?: [..] } -> job { converted: [{ id, name }], failed: [{ id, name, message }] }: starter
+                // projects that are on GitHub become GitHub projects (F-1); one that doesn't read, or
+                // loses a model, is put back as it was
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let only: Option<Vec<String>> = args["ids"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                let ids: Vec<String> = lib.source_ids().into_iter().filter(|id| {
+                    only.as_ref().is_none_or(|o| o.contains(id)) && sources::starter_on_github(id).is_some() && lib.source(id).is_ok_and(|s| s["kind"] == "bundled")
+                }).collect();
+                Ok(Reply::Json(self.spawn("Getting projects from GitHub", move |app, job| async move {
+                    let lib = app.library().map_err(|e| anyhow!(e))?;
+                    let (mut converted, mut failed) = (vec![], vec![]);
+                    for id in ids {
+                        let old = lib.source(&id)?;
+                        let name = old["detected"]["name"].as_str().unwrap_or(&id).to_string();
+                        app.job_stage(&job, format!("Downloading {name}…"));
+                        let before: Vec<String> = lib.derived(&id, old["version"].as_str().unwrap_or(""))
+                            .map(|d| d["models"].as_array().into_iter().flatten().filter_map(|m| m["id"].as_str().map(String::from)).collect())
+                            .unwrap_or_default();
+                        let (lib2, id2, token) = (lib.clone(), id.clone(), app.config().github_token());
+                        let r = match tokio::task::spawn_blocking(move || sources::convert_starter(&lib2, &id2, token)).await? {
+                            Err(e) => Err(e),
+                            Ok(_) => match app.read_project(&id, None, Some(&job)).await {
+                                Err(e) => Err(e),
+                                Ok(_) => {
+                                    let now = lib.source(&id)?;
+                                    let have: Vec<String> = lib.derived(&id, now["version"].as_str().unwrap_or(""))
+                                        .map(|d| d["models"].as_array().into_iter().flatten().filter_map(|m| m["id"].as_str().map(String::from)).collect())
+                                        .unwrap_or_default();
+                                    let lost: Vec<&String> = before.iter().filter(|m| !have.contains(m)).collect();
+                                    if lost.is_empty() { Ok(()) } else { Err(anyhow!("upstream's files don't give the models {}", lost.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "))) }
+                                }
+                            },
+                        };
+                        match r {
+                            Ok(()) => {
+                                if let Some(c) = sources::starter_on_github(&id) {
+                                    sources::rebase_recipe_edits(&lib, &id, &c.vendor_path)?;
+                                }
+                                converted.push(json!({ "id": id, "name": name }));
+                            }
+                            Err(e) => {
+                                if lib.source(&id).is_ok_and(|s| s["kind"] != "bundled") {
+                                    sources::unconvert_starter(&lib, &old)?;
+                                }
+                                failed.push(json!({ "id": id, "name": name, "message": format!("{e:#}") }));
+                            }
+                        }
+                        app.invalidate();
+                    }
+                    Ok(json!({ "converted": converted, "failed": failed }))
+                })))
             }
             "source_role" => {
                 let lib = self.library()?;
@@ -1166,14 +1238,17 @@ impl App {
                 let m = c.models.get(key).filter(|m| m["kind"] == "component").ok_or_else(|| format!("no component {key}"))?;
                 let module = m["id"].as_str().unwrap_or("");
                 let libname = m["component"]["library"].as_str().unwrap_or("");
-                if !module.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+                let copy = m["component"]["copy"].as_str().unwrap_or("");
+                let ok = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"_-@.".contains(&b));
+                if !module.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') || !ok(copy) {
                     return Err("invalid module name".into());
                 }
                 let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
-                let p = lib.root().join("thumbs/components").join(catalog::component_thumb_dir(libname)).join(format!("{module}.webp"));
-                crate::config::write_atomic(&p, &data).map_err(e2s)?;
+                // (made by this copy and version of the library: see catalog::component_thumb_dir)
+                let rel = format!("thumbs/components/{}/{copy}/{module}.webp", library::slug(libname));
+                crate::config::write_atomic(&lib.root().join(&rel), &data).map_err(e2s)?;
                 self.invalidate();
-                j(Value::Null)
+                j(json!(rel))
             }
             "library_merge" => {
                 let from = PathBuf::from(arg(&args, "path").map_err(e2s)?);

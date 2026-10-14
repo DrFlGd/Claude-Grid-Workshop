@@ -390,6 +390,8 @@ body.show-help .field .help { display: block; }
 .site-footer a { font-weight: 700; color: var(--ink); }
 .lic-summary { padding: 10px 14px; border: 1px solid var(--warn-border); background: var(--warn-bg); border-radius: var(--radius-s); font-size: 14px; }
 .lic-summary a { color: var(--ink); font-weight: 600; }
+.ls-offer { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--steel); border-radius: var(--radius-s); margin: 10px 0; }
+.ls-offer p { margin: 0; flex: 1 1 320px; }
 .lic-wrap { overflow-x: auto; }
 .lic-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .lic-table th, .lic-table td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--steel-2); }
@@ -737,9 +739,11 @@ body.show-help .field .help { display: block; }
 /* (one column no wider than the box: long text wraps or scrolls inside it instead of pushing it wider) */
 .field-block { display: grid; gap: 6px; grid-template-columns: minmax(0, 1fr); }
 .field-block > span, .meta-field > span { font-weight: 700; font-size: 13.5px; }
-.field-block input:not([type="checkbox"]), .meta-field input:not([type="checkbox"]), .meta-field textarea, .meta-field select, .inline-form input, .custom-row input, .custom-row textarea {
+.field-block input:not([type="checkbox"], [type="radio"]), .meta-field input:not([type="checkbox"]), .meta-field textarea, .meta-field select, .inline-form input, .custom-row input, .custom-row textarea {
   width: 100%; padding: 8px 10px; border: 1px solid var(--steel-2); border-radius: var(--radius-s); background: var(--white); color: var(--ink); font: inherit; font-size: 14px; }
 .field-block small { font-size: 12.5px; line-height: 1.4; }
+.add-follow { border: 0; padding: 0; margin: 0; min-width: 0; }
+.add-follow legend { font-weight: 700; font-size: 13.5px; padding: 0; margin-bottom: 6px; }
 .pick-row { display: flex; gap: 8px; align-items: center; }
 .pick-row { align-items: flex-start; }
 .pick-path { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: normal; padding: 8px 10px; background: var(--panel); border: 1px solid var(--steel-2); border-radius: var(--radius-s); font-size: 12.5px; line-height: 1.45; }
@@ -969,6 +973,8 @@ textarea.grow { resize: none; overflow: hidden; line-height: 1.4; min-height: 0;
 .model-extra button { display: inline-flex; align-items: center; gap: 6px; }
 .model-extra .menu-panel button { display: flex; width: 100%; justify-content: flex-start; border: 0; padding: 7px 10px; font-size: 13.5px; }
 .model-extra .menu-panel { left: 0; right: auto; }
+.model-extra-side { display: contents; }
+.model-extra .menu-panel button[aria-pressed="true"]::after { content: "✓"; margin-left: auto; padding-left: 12px; font-weight: 700; }
 .insp-side { flex-wrap: wrap; gap: 6px; }
 .insp-side:empty { display: none; }
 .insp-side button { display: inline-flex; align-items: center; gap: 5px; }
@@ -1326,3 +1332,11 @@ svg g[data-sk] { display: none; }
 :root[data-skin="layerline"] .statusbar { background: var(--panel); }
 /* "Parametric Models [87]" in Overpass needs a little more room than Archivo */
 @media (min-width: 901px) { :root[data-skin="drafting"] .sidebar { width: 226px; } }
+
+/* Home in a new library: projects to start with (catalog/suggested.json) */
+.home-suggested { margin-top: 14px; max-width: 720px; }
+.home-suggested h3 { margin: 0 0 4px; font-size: 15px; }
+.home-suggested ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.home-suggested li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--steel); border-radius: var(--radius-s); }
+.home-suggested li > span { display: flex; flex-direction: column; min-width: 0; }
+.add-suggested .chips { margin-top: 4px; }

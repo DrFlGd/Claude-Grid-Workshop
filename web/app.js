@@ -205,26 +205,19 @@ function renderModelHeader(detail) {
     ? el("a", { href: `#/browse/source/${encodeURIComponent(detail.source_id)}`, text: from, title: "The project it's from" })
     : from || "");
   $("#model-summary").textContent = detail.summary;
-  const credit = $("#model-credit");
-  credit.replaceChildren();
-  if (detail.authors?.length) {
-    credit.append("By ");
-    detail.authors.forEach((a, i) => {
-      if (i) credit.append(i === detail.authors.length - 1 ? " and " : ", ");
-      credit.append(a.url ? el("a", { href: a.url, target: "_blank", rel: "noopener", text: a.name }) : a.name);
-    });
-    credit.append(". ");
-  }
-  if (detail.kind === "component") {
-    // a library module: its library, license and docs
-    const c = detail.component || {};
-    credit.append(el("code", { text: `${c.module}()` }), ` from ${c.library}${c.provider === "project" ? " (your copy)" : ""}. License ${detail.license?.spdx || "not stated"}. `);
-    if (detail.links?.docs) credit.append(el("a", { href: detail.links.docs, target: "_blank", rel: "noopener", text: "Docs" }), ". ");
-  } else {
-    if (detail.source?.repository) credit.append(el("a", { href: detail.source.repository, target: "_blank", rel: "noopener", text: "Source" }), ". ");
-    credit.append(el("a", { href: `#/licenses/${detail.family}`, text: "License details" }), ".");
-  }
-  if (detail.pinned_from) credit.append(" Pinned from ", el("a", { href: `#/m/${detail.pinned_from}`, text: "its component" }), ".");
+  // one credit line on every page: By … · Source · License · Docs
+  const link = (href, text, out = true) => el("a", { href, text, ...(out ? { target: "_blank", rel: "noopener" } : {}) });
+  const credit = [];
+  if (detail.authors?.length) credit.push(["By ", ...detail.authors.flatMap((a, i) => [
+    i ? (i === detail.authors.length - 1 ? " and " : ", ") : "", a.url ? link(a.url, a.name) : a.name])]);
+  const c = detail.component;
+  if (c) credit.push([el("code", { text: `${c.module}()` }), c.provider === "project" ? " from your copy" : ""]);
+  if (detail.source?.repository) credit.push([link(detail.source.repository, "Source")]);
+  const spdx = detail.license?.spdx;
+  credit.push([c ? `License ${spdx || "not stated"}` : link(`#/licenses/${detail.family}`, spdx && spdx !== "NOASSERTION" ? `License ${spdx}` : "License details", false)]);
+  if (detail.links?.docs) credit.push([link(detail.links.docs, "Docs")]);
+  if (detail.pinned_from) credit.push(["Pinned from ", link(`#/m/${detail.pinned_from}`, "its component", false)]);
+  $("#model-credit").replaceChildren(...credit.flatMap((part, i) => [i ? " · " : "", ...part]).filter((x) => x !== ""));
   renderModelExtra(detail);
   // author notes fold away; their conditional warnings stay visible above the form
   const notesNodes = detail.description_html ? safeHTML(detail.description_html) : [];
@@ -239,6 +232,11 @@ function renderModelHeader(detail) {
       const it = state.index.get(`gen:${detail.key}`);
       if (it) await unflagItems([it]);
     } })));
+  // a pinned component whose library is another copy or version now (F-9)
+  else if (detail.pin_changed) alerts.unshift(el("div", { class: "alert-broken", role: "note", id: "pin-changed" }, `${detail.pin_changed.message} `,
+    el("button", { type: "button", class: "link-btn", text: "Keep it with this copy", onclick: async () => {
+      try { await platform.api("pin_accept", { key: detail.key }); await reloadCatalog(); refreshModel(detail.key); } catch (e) { toast(String(e.message || e)); }
+    } })));
   // rendered at its defaults when the project was added (desktop), and failed
   else if (detail.check?.ok === false) alerts.unshift(el("div", { class: "alert-broken", role: "note", id: "default-check" },
     `Didn't render at its default settings when it was checked${detail.check.message ? `: ${detail.check.message.replace(/[^.!?]$/, "$&.")}` : "."} Changing the settings may help; Check defaults in the project's ⋯ menu tries again.`));
@@ -251,39 +249,46 @@ function renderModelHeader(detail) {
     $("#model-summary").textContent = first.length > 180 ? `${first.slice(0, 177).trimEnd()}…` : first;
   }
   $("#model-notes-body").replaceChildren(...holder.childNodes);
-  $("#model-notes").hidden = !hasNotes;
+  // the author's notes open from ⋯ › About this model
+  $("#model-notes").hidden = true;
   $("#model-notes").open = false;
+  $("#model-about").hidden = !hasNotes;
 }
 
-/** Tools above the form: the side viewer (Code, README); in the app also copy the OpenSCAD code (components), pin, edit the form. */
+/** The row above the form: the side viewer (Code, README), then ⋯ with this item's own actions (in the
+ * app: edit the form; a component's code and pin) above About, Batch, Help and Reset all. */
 function renderModelExtra(detail) {
   const box = $("#model-extra");
   if (!box) return;
   box.replaceChildren();
   sideModelButtons(box, detail);
+  const own = $("#model-more-own");
+  own.replaceChildren();
+  $("#model-more").open = false;
   if (platform.kind !== "desktop") return;
   const ro = !!state.catalog?.library?.read_only;
-  const btn = (id, text, title, onclick, disabled = false) => el("button", { type: "button", class: "ghost small", id, text, title, onclick, disabled });
-  // one row on every model and component page: Code, README, Edit form; the rarer actions under ⋯
+  const btn = (id, text, title, onclick, disabled = false) => el("button", { type: "button", id, text, title, onclick, disabled });
   const it = state.index?.get(`gen:${detail.key}`);
   if (it && it.sourceId) {
-    box.append(btn("edit-form", "Edit form", "Rename settings, add help, choices and conditions, hide settings (saved with this item in the library)", () =>
+    own.append(btn("edit-form", "Edit form…", "Rename settings, add help, choices and conditions, hide settings (saved with this item in the library)", () =>
       ui.set({ dialog: { type: "form", key: detail.key } }), ro));
   }
-  const more = [];
   if (detail.kind === "component") {
-    more.push(btn("copy-code", "Copy code", "Copy the OpenSCAD code for these settings (includes the library, calls the module)", copyComponentCode));
-    more.push(btn("pin-component", "Pin as a model…", "Keep this component under Parametric Models, with these settings as its defaults", () =>
-      ui.set({ dialog: { type: "pin", key: detail.key, values: structuredClone(state.values) } }), ro));
+    own.append(btn("copy-code", "Copy code", "Copy the OpenSCAD code for these settings (includes the library, calls the module)", copyComponentCode),
+      btn("pin-component", "Pin as a model…", "Keep this component under Parametric Models, with these settings as its defaults", () =>
+        ui.set({ dialog: { type: "pin", key: detail.key, values: structuredClone(state.values) } }), ro));
   }
-  if (more.length) {
-    const menu = el("details", { class: "menu", id: "model-more" }, el("summary", { class: "ghost small", title: "More", "aria-label": "More", text: "⋯" }),
-      el("div", { class: "menu-panel" }, more));
-    more.forEach((b) => b.addEventListener("click", () => { menu.open = false; }));
-    box.append(menu);
-  }
-  box.hidden = !box.childNodes.length;
+  if (own.childNodes.length) own.append(el("hr"));
 }
+// ⋯ closes once something in it is chosen; About this model opens the author's notes above the form
+$("#model-more").addEventListener("click", (e) => { if (e.target.closest(".menu-panel button")) $("#model-more").open = false; });
+$("#model-about").addEventListener("click", () => {
+  const notes = $("#model-notes");
+  notes.hidden = false;
+  notes.open = true;
+  notes.scrollIntoView({ block: "nearest" });
+});
+$("#model-notes").addEventListener("toggle", (e) => { if (!e.target.open) e.target.hidden = true; });
 
 async function copyComponentCode() {
   try {
@@ -1216,9 +1221,13 @@ async function openLibrary(libId, itemId) {
     $("#lib-summary").textContent = lib.summary || "";
     const credit = $("#lib-credit");
     credit.replaceChildren();
-    if (lib.authors?.length) credit.append(`By ${lib.authors.map((a) => a.name).join(", ")}. `);
-    if (lib.source_url) credit.append(el("a", { href: lib.source_url, target: "_blank", rel: "noopener", text: "Original page" }), ". ");
-    credit.append(el("a", { href: `#/licenses/${lib.id}`, text: "License details" }), ".");
+    // the same credit line as a model's: By … · Source · License
+    const parts = [];
+    if (lib.authors?.length) parts.push(`By ${lib.authors.map((a) => a.name).join(", ")}`);
+    if (lib.source_url) parts.push(el("a", { href: lib.source_url, target: "_blank", rel: "noopener", text: "Source" }));
+    const spdx = lib.license?.spdx;
+    parts.push(el("a", { href: `#/licenses/${lib.id}`, text: spdx && spdx !== "NOASSERTION" ? `License ${spdx}` : "License details" }));
+    credit.append(...parts.flatMap((x, i) => (i ? [" · ", x] : [x])));
     $("#part-search").value = "";
     buildPartList(lib);
   }
@@ -1260,7 +1269,8 @@ async function showPart(lib, item) {
   }
   const status = $("#part-status");
   status.replaceChildren(el("p", { class: "part-name", text: item.name }));
-  if (item.description) status.append(el("p", { class: "help", text: item.description }));
+  // (a part with no summary of its own shows none: not its collection's again)
+  if (item.description && item.description.trim() !== (lib.summary || "").trim()) status.append(el("p", { class: "help", text: item.description }));
   if (item.generator) status.append(el("p", { class: "help" }, el("a", { href: `#/m/${item.generator}`, text: "Open the parametric model" }), " to print it at any size."));
   const dl = $("#part-downloads");
   dl.replaceChildren(...item.files.map((f, i) => el("a", {

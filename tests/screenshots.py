@@ -82,6 +82,7 @@ async def main():
 
         # batch: three bin labels of different lengths, downloaded as one ZIP
         await open_and_render(pg, a.base, "label-generator-gridfinity/bin-label", a.timeout)
+        await pg.click("#model-more summary")
         await pg.click("#batch-open")
         row = pg.locator(".batch-row").first
         await row.locator("select").select_option(label="Length (mm) (Part customization)")

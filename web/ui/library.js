@@ -35,12 +35,40 @@ const KIND_TEXT = { github: "GitHub", zip: "ZIP file", folder: "Folder (copied)"
 export const kindText = (s) => KIND_TEXT[s?.kind] || s?.kind || "";
 
 // ---------------------------------------------------------------- adding a project
+
+/** Add a project (source_add's arguments), read it, say what it brought, open its page and make its thumbnails. */
+export async function addProject(args, label) {
+  try {
+    const res = await runJob(api("source_add", args), `Adding ${label}`);
+    await ctx.reloadCatalog();
+    const n = res.read?.models ?? 0, parts = res.read?.parts ?? 0;
+    const problems = (res.read?.problems || []).length;
+    const src = sourceById(res.source), name = src?.name || label;
+    ctx.toast(args.role === "library" || src?.role === "library" ? `Added ${name}: a library, its modules are in Components.`
+      : `Added ${name}: ${plural(n, "model")}${parts ? `, ${plural(parts, "part")}` : ""}${problems ? `; ${plural(problems, "problem")} to look at` : ""}.`);
+    location.hash = scopeHash(`source:${res.source}`);
+    makeThumbnails();
+    return res;
+  } catch (err) {
+    const msg = String(err.message || err);
+    // the same project is in the library already: offer to open that one
+    const same = msg.match(/already in the library.*\(([^()]+)\)\.$/)?.[1];
+    ctx.toast(`Couldn't add it: ${msg}`, same && sourceById(same) ? { label: "Open it", run: () => { location.hash = scopeHash(`source:${same}`); } } : undefined);
+    return null;
+  }
+}
+
 export function AddProject() {
   const [tab, setTab] = useState("github");
   const [url, setUrl] = useState("");
   const [path, setPath] = useState("");
   const [link, setLink] = useState(false);
   const [asLibrary, setAsLibrary] = useState(false);
+  // a link to a tag, release or commit: follow newer releases, or every change on the branch (F-11)
+  const ref = tab === "github" ? (url.match(/github\.com\/[^/]+\/[^/]+\/(?:(?:tree|blob|commit)|releases\/tag)\/([^/?#]+)/) || [])[1] : null;
+  const versionLike = !!ref && /^v?\d+(\.\d+)+/i.test(ref);
+  const [followPick, setFollow] = useState(null);
+  const follow = followPick || (versionLike || /\/releases\/tag\//.test(url) ? "releases" : "branch");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const close = () => ui.set({ dialog: null });
@@ -54,31 +82,16 @@ export function AddProject() {
     setError("");
     // the field itself, not state: a link pasted and submitted at once may not have re-rendered yet
     const url = e.currentTarget.querySelector("#add-url")?.value ?? "";
-    const args = tab === "github" ? { kind: "github", url } : tab === "zip" ? { kind: "zip", path } : { kind: "folder", path, link };
+    const args = tab === "github" ? { kind: "github", url, ...(ref ? { follow } : {}) } : tab === "zip" ? { kind: "zip", path } : { kind: "folder", path, link };
     if (asLibrary) args.role = "library";
     if (tab === "github" ? !url.trim() : !path) { setError(tab === "github" ? "Paste a GitHub link first." : "Choose a file or folder first."); return; }
     setBusy(true);
-    try {
-      const label = tab === "github" ? url.replace(/^https?:\/\/(www\.)?github\.com\//, "") : path.split(/[\\/]/).filter(Boolean).pop();
-      close();
-      const res = await runJob(api("source_add", args), `Adding ${label}`);
-      await ctx.reloadCatalog();
-      const n = res.read?.models ?? 0, parts = res.read?.parts ?? 0;
-      const problems = (res.read?.problems || []).length;
-      const src = sourceById(res.source), name = src?.name || label;
-      ctx.toast(asLibrary || src?.role === "library" ? `Added ${name}: a library, its modules are in Components.`
-        : `Added ${name}: ${plural(n, "model")}${parts ? `, ${plural(parts, "part")}` : ""}${problems ? `; ${plural(problems, "problem")} to look at` : ""}.`);
-      location.hash = scopeHash(`source:${res.source}`);
-      makeThumbnails();
-    } catch (err) {
-      const msg = String(err.message || err);
-      // the same project is in the library already: offer to open that one
-      const same = msg.match(/already in the library.*\(([^()]+)\)\.$/)?.[1];
-      ctx.toast(`Couldn't add it: ${msg}`, same && sourceById(same) ? { label: "Open it", run: () => { location.hash = scopeHash(`source:${same}`); } } : undefined);
-    } finally {
-      setBusy(false);
-    }
+    const label = tab === "github" ? url.replace(/^https?:\/\/(www\.)?github\.com\//, "") : path.split(/[\\/]/).filter(Boolean).pop();
+    close();
+    await addProject(args, label);
+    setBusy(false);
   };
+  const suggested = tab === "github" ? (ctx.catalog?.suggested || []).filter((p) => !p.added) : [];
   const tabBtn = (id, label) => html`<button type="button" role="tab" aria-selected=${tab === id ? "true" : "false"} class=${`seg-btn${tab === id ? " on" : ""}`}
     onClick=${() => { setTab(id); setPath(""); setError(""); }} data-add-tab=${id}>${label}</button>`;
   return html`<form class="dialog add-project" onSubmit=${submit} aria-label="Add a project">
@@ -86,7 +99,15 @@ export function AddProject() {
     <div class="seg tabs-seg" role="tablist">${tabBtn("github", "GitHub link")}${tabBtn("zip", "ZIP file")}${tabBtn("folder", "Folder")}</div>
     ${tab === "github" ? html`<label class="field-block"><span>Repository link</span>
         <input type="url" id="add-url" value=${url} onInput=${(e) => setUrl(e.target.value)} placeholder="https://github.com/owner/repository" autofocus />
-        <small class="muted">A branch, tag or commit (/tree/…, /commit/…) and a subfolder work too. The app downloads that version as plain files (no git needed) and checks for newer commits later.</small></label>`
+        <small class="muted">A branch, tag, release or commit (/tree/…, /releases/tag/…, /commit/…) and a subfolder work too. The app downloads that version as plain files (no git needed) and checks for updates later.</small></label>
+      ${suggested.length ? html`<div class="field-block add-suggested" id="add-suggested"><span>Suggested</span>
+        <div class="chips">${suggested.map((p) => html`<button type="button" class="chip" title=${p.summary} data-suggested=${p.name}
+          onClick=${() => { setUrl(p.url); setFollow(null); }}>${p.name}</button>`)}</div></div>` : null}
+      ${ref ? html`<fieldset class="field-block add-follow" id="add-follow"><legend>Updates</legend>
+        <label class="check"><input type="radio" name="follow" value="releases" checked=${follow === "releases"} onChange=${() => setFollow("releases")} />
+          Newer releases: stay on ${ref.length > 20 ? "this version" : ref} until a newer release comes out</label>
+        <label class="check"><input type="radio" name="follow" value="branch" checked=${follow === "branch"} onChange=${() => setFollow("branch")} />
+          Every change to the project, as its branch moves on</label></fieldset>` : null}`
       : html`<div class="field-block"><span>${tab === "zip" ? "ZIP file" : "Folder"}</span>
         <div class="pick-row"><code class="pick-path" id="add-path" title=${path || null}>${path || "Nothing chosen"}</code><button type="button" class="ghost" onClick=${pick} id="add-pick">Choose…</button></div>
         ${tab === "folder" ? html`<label class="check"><input type="checkbox" checked=${link} onChange=${(e) => setLink(e.target.checked)} id="add-link" />
@@ -177,6 +198,8 @@ export function SourcePanel({ id }) {
           url ? html`<a href=${url} target="_blank" rel="noopener">${url.replace(/^https?:\/\//, "")}</a>`
             : origin.path || origin.file ? html`<span title=${origin.path || origin.file}>${(origin.path || origin.file).split(/[\\/]/).filter(Boolean).slice(-2).join("/")}</span>` : null,
           src.meta?.license?.spdx ? (src.meta.license.spdx === "NOASSERTION" ? "License not stated" : src.meta.license.spdx) : null,
+          // what its updates follow (F-11)
+          src.kind === "github" && origin.track ? html`<span data-follows=${origin.track}>${origin.track === "releases" ? "follows new releases" : `follows ${String(origin.track).replace(/^branch:/, "")}`}</span>` : null,
         ].filter(Boolean).flatMap((x, i) => (i ? [" · ", x] : [x]))}</p>
       </div>
       <div class="source-actions">
@@ -242,7 +265,7 @@ export function SourcePanel({ id }) {
 }
 
 // ---------------------------------------------------------------- project problems (Library settings › Projects)
-export const ATTN_TEXT = { update: "Update ready", missing: "Missing files", settings: "Settings couldn't be read", unread: "Not read", reread: "Read with an older version",
+export const ATTN_TEXT = { update: "Update ready", pin_library: "Its library changed", missing: "Missing files", settings: "Settings couldn't be read", unread: "Not read", reread: "Read with an older version",
   "missing-folder": "Folder missing", license: "License", libraries: "A library it uses changed", scan: "Note", broken: "Flagged as broken",
   render: "Doesn't render at its defaults", limits: "Defaults outside their limits" };
 
@@ -292,7 +315,6 @@ function drawThumbLocked(url) {
   return p;
 }
 
-const libSlug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "");
 
 /** Keep a component's render as its thumbnail (thumbs/components/ in the library), shown at once. */
 export async function saveComponentThumb(key, blob) {
@@ -301,8 +323,8 @@ export async function saveComponentThumb(key, blob) {
   const url = URL.createObjectURL(blob);
   try {
     const data = await drawThumbLocked(url);
-    await api("component_thumb", { key, data });
-    it.thumb = ctx.platform.library.url(`thumbs/components/${libSlug(it.project)}/${it.module}.webp`);
+    const rel = await api("component_thumb", { key, data });
+    it.thumb = ctx.platform.library.url(rel);
     ui.set((s) => ({ catalogVersion: s.catalogVersion + 1 }));
   } catch (e) {
     console.warn("component thumbnail", key, e);
@@ -397,8 +419,8 @@ async function componentThumbnails() {
           const url = URL.createObjectURL(blob);
           let data;
           try { data = await drawThumbLocked(url); } finally { URL.revokeObjectURL(url); }
-          await api("component_thumb", { key: it.key, data });
-          it.thumb = ctx.platform.library.url(`thumbs/components/${libSlug(it.project)}/${it.module}.webp`);
+          const rel = await api("component_thumb", { key: it.key, data });
+          it.thumb = ctx.platform.library.url(rel);
           made++;
         } catch (e) { console.warn("component preview", it.key, e); }
       }
@@ -471,7 +493,7 @@ export async function rescanLocal(quiet = true) {
 }
 
 /** "A", "A and B", "A, B and 3 more" */
-function listText(names) {
+export function listText(names) {
   if (names.length <= 2) return names.join(" and ");
   if (names.length <= 4) return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
   return `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;

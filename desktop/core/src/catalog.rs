@@ -8,7 +8,7 @@ use crate::meta::{self, Layers};
 use crate::project::{self, category_label};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Everything the page reads, built once per change.
 #[derive(Default)]
@@ -45,6 +45,11 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
     let mut comp_list: Vec<Value> = vec![];
     let mut group_counts: BTreeMap<String, usize> = BTreeMap::new();
     let comp_thumbs = lib.root().join("thumbs/components");
+    if lib.read_only().is_none() {
+        for l in libs.effective {
+            adopt_component_thumbs(&comp_thumbs, l);
+        }
+    }
     let url_of = |rel: &str| format!("{url}{}", rel.split('/').map(urlencode).collect::<Vec<_>>().join("/"));
     for l in libs.effective {
         for (rel, sha) in l.index["files"].as_object().into_iter().flatten() {
@@ -66,8 +71,9 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             summary.insert("library".into(), json!(l.info.name));
             summary.insert("provider".into(), json!(l.provider));
             summary.insert("needs".into(), d["needs"].clone());
-            // a thumbnail saved after the component was first made (thumbs/components/<library>/<module>.webp)
-            let thumb = format!("{}/{}.webp", component_thumb_dir(&l.info.name), c.module);
+            // a thumbnail saved after the component was first made, by this copy of its library
+            // (thumbs/components/<library>/<copy>/<module>.webp)
+            let thumb = format!("{}/{}.webp", component_thumb_dir(l), c.module);
             let mut d = d;
             if comp_thumbs.join(&thumb).is_file() {
                 let u = url_of(&format!("thumbs/components/{thumb}"));
@@ -128,6 +134,9 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             "version": version, "version_date": src["version_date"], "added": src["added"],
             "update": src["update"], "read": derived.is_some(),
         });
+        if src["kind"] == "bundled" && crate::sources::starter_on_github(&id).is_some() {
+            entry["on_github"] = json!(true); // can become a GitHub project (F-1)
+        }
         if src["kind"] != "bundled" && src["kind"] != "pinned" && !dir.as_ref().is_some_and(|d| d.is_dir()) {
             let message = match src["kind"].as_str().unwrap_or("") {
                 "linked" => format!("The linked folder {} is missing; relink it or remove the project.", src["origin"]["path"].as_str().unwrap_or("")),
@@ -153,8 +162,13 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         // the project's own resolved metadata
         let fam = &derived["family"];
         let mut det = det_project.clone();
+        // a project's own description (workshop.json, or the app's description.json) says what it's called
+        // and so on over what was guessed when it was added; your edits still win
+        let described = derived["described_by"].as_str().is_some_and(|d| d != "reading");
         for k in ["name", "summary", "license", "authors", "tags", "category"] {
-            if det.get(k).is_none_or(|v| v.is_null() || v.as_str() == Some("")) {
+            if described && fam.get(k).is_some_and(|v| !v.is_null() && v.as_str() != Some("")) && (k != "license" || fam[k]["spdx"].as_str().is_some_and(|s| s != "NOASSERTION")) {
+                det.insert(k.into(), fam[k].clone());
+            } else if det.get(k).is_none_or(|v| v.is_null() || v.as_str() == Some("")) {
                 if let Some(v) = fam.get(k).filter(|v| !v.is_null()) {
                     det.insert(k.into(), v.clone());
                 }
@@ -489,6 +503,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         "libraries": libraries,
         "profile_uses": profile_uses,
         "sources": sources,
+        "suggested": suggested(lib),
         "attention": attention,
         "library": lib.info(),
         "library_meta": { "metadata": lib_meta.get("metadata").cloned().unwrap_or(json!({})), "categories": custom_cats },
@@ -496,9 +511,37 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
     out
 }
 
-/// Where a library's component thumbnails go in the library folder (under thumbs/components/).
-pub fn component_thumb_dir(library: &str) -> String {
-    crate::library::slug(library)
+/// "app@6cacf1b7d69a" in words, with {} where the library's name goes: "{}, the app's copy (6cacf1b)",
+/// "{}, your copy (a1b2c3d)".
+fn copy_text(copy: &str) -> String {
+    let (who, ver) = copy.split_once('@').unwrap_or((copy, ""));
+    let ver = &ver[..ver.len().min(7)];
+    let who = if who == "app" { "{}, the app's copy" } else { "{}, your copy" };
+    if ver.is_empty() { who.to_string() } else { format!("{who} ({ver})") }
+}
+
+/// Where a library's component thumbnails go in the library folder (under thumbs/components/): one
+/// folder per library, one inside it per copy and version, so another copy's pictures aren't shown.
+pub fn component_thumb_dir(l: &crate::components::ComponentLibrary) -> String {
+    format!("{}/{}", crate::library::slug(&l.info.name), l.copy())
+}
+
+/// Thumbnails kept before 0.4.9 (thumbs/components/<library>/<module>.webp, with nothing saying
+/// which copy made them) are taken as the copy in use's.
+fn adopt_component_thumbs(root: &Path, l: &crate::components::ComponentLibrary) {
+    let old = root.join(crate::library::slug(&l.info.name));
+    let Ok(rd) = std::fs::read_dir(&old) else { return };
+    let loose: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "webp")).collect();
+    if loose.is_empty() {
+        return;
+    }
+    let new = root.join(component_thumb_dir(l));
+    if std::fs::create_dir_all(&new).is_err() {
+        return;
+    }
+    for p in loose {
+        let _ = std::fs::rename(&p, new.join(p.file_name().unwrap()));
+    }
 }
 
 /// A project whose models include a library from somewhere else than where it would come from now
@@ -545,6 +588,35 @@ fn pinned_derived(lib: &Library, id: &str, models: &HashMap<String, Value>) -> V
             continue;
         };
         let mut d = base.clone();
+        // pinned from another copy or version of its library than the one in use now (F-9): marked,
+        // with the settings it keeps by name that the library no longer has
+        let now = base["component"]["copy"].clone();
+        if pin["from"]["copy"].is_string() && pin["from"]["copy"] != now {
+            let names: Vec<&str> = base["parameters"].as_array().into_iter().flatten().filter_map(|p| p["name"].as_str()).collect();
+            let gone: Vec<String> = ["defaults", "fixed"]
+                .iter()
+                .flat_map(|k| pin[*k].as_object().into_iter().flatten().map(|(n, _)| n.clone()))
+                .chain(pin["hidden"].as_array().into_iter().flatten().filter_map(|n| n.as_str().map(String::from)))
+                .filter(|n| !names.contains(&n.as_str()))
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let library = base["component"]["library"].as_str().unwrap_or("its library");
+            let desc = |c: &Value| copy_text(c.as_str().unwrap_or(""));
+            let mut message = format!("Pinned from {}; it now uses {}.", desc(&pin["from"]["copy"]).replace("{}", library), desc(&now).replace("{}, ", ""));
+            if !gone.is_empty() {
+                message.push_str(&format!(" Settings it kept that aren't there now: {}.", gone.join(", ")));
+            }
+            problems.push(json!({ "kind": "pin_library", "model": format!("{id}/{pid}"), "message": format!("{}: {message}", pin["name"].as_str().unwrap_or(&pid)) }));
+            d["pin_changed"] = json!({ "message": message, "gone": gone });
+        } else if !pin["from"].is_object() && lib.read_only().is_none() {
+            // a pin made before 0.4.9: from now on it records the copy in use
+            if let Some(p) = lib.source_dir(id).ok().map(|d| d.join("pins").join(format!("{pid}.json"))) {
+                let mut pin = pin.clone();
+                pin["from"] = json!({ "library": base["component"]["library"], "copy": now });
+                let _ = crate::config::write_atomic(&p, &serde_json::to_vec_pretty(&pin).unwrap_or_default());
+            }
+        }
         let params: Vec<Value> = d["parameters"].as_array().cloned().unwrap_or_default();
         let groups: Vec<String> = serde_json::from_value(d["groups"].clone()).unwrap_or_default();
         let (params, groups, _) = crate::ingest::apply_form(&params, &groups, &json!({}), &pin, &json!({}));
@@ -677,6 +749,30 @@ pub fn blob_list(c: &Catalog) -> Vec<(String, PathBuf)> {
 /// Sources sorted for display.
 pub fn sorted_sources(c: &Catalog) -> BTreeMap<String, Value> {
     c.catalog["sources"].as_array().into_iter().flatten().filter_map(|s| Some((s["id"].as_str()?.to_string(), s.clone()))).collect()
+}
+
+
+/// Projects suggested on Home and under Add project (catalog/suggested.json), each with the id of
+/// the project already added from the same repository, if there is one.
+fn suggested(lib: &Library) -> Value {
+    let list: Value = serde_json::from_str(include_str!("../../../catalog/suggested.json")).unwrap_or(json!({}));
+    let have: Vec<Value> = lib.source_ids().into_iter().filter_map(|id| lib.source(&id).ok()).collect();
+    let out: Vec<Value> = list["projects"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|p| {
+            let u = crate::sources::parse_github_url(p["url"].as_str()?).ok()?;
+            let added = have.iter().find(|s| {
+                s["origin"]["owner"].as_str().is_some_and(|o| o.eq_ignore_ascii_case(&u.owner)) && s["origin"]["repo"].as_str().is_some_and(|r| r.eq_ignore_ascii_case(&u.repo))
+                    || s["kind"] == "bundled" && crate::sources::starter_on_github(s["id"].as_str().unwrap_or("")).is_some_and(|c| crate::sources::parse_github_url(&c.repository).is_ok_and(|c| c.owner.eq_ignore_ascii_case(&u.owner) && c.repo.eq_ignore_ascii_case(&u.repo)))
+            });
+            let mut p = p.clone();
+            p["added"] = added.map(|s| s["id"].clone()).unwrap_or(Value::Null);
+            Some(p)
+        })
+        .collect();
+    json!(out)
 }
 
 #[cfg(test)]

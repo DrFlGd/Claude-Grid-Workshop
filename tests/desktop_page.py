@@ -203,6 +203,8 @@ async def main():
             for short, url, lib in REPOS:
                 await pg.click("#add-project")
                 await pg.fill("#add-url", url)
+                if "/commit/" in url:   # (0.4.9) a link to a commit asks what updates follow; the branch by default
+                    follow_pick = await pg.eval_on_selector_all("#add-follow input", "els => els.map((e) => [e.value, e.checked])")
                 if lib:
                     await pg.check("#add-library")
                 await pg.click("#add-go")
@@ -216,6 +218,10 @@ async def main():
                 check(f"added {url.split('github.com/')[1]}", ok, f"{src}: {len(items)} items")
                 await pg.goto(B + "#/")
             await pg.screenshot(path=str(out / "p2-01-added.png"))
+            v76_origin = json.loads((library / f"sources/{ids['vector76-gridfinity']}/source.json").read_text())["origin"]
+            check("a link to a commit asks whether to follow new releases or the branch; the project records what it follows and the commit it was added from",
+                  follow_pick == [["releases", False], ["branch", True]] and v76_origin.get("track", "").startswith("branch:")
+                  and v76_origin.get("added_from") == OLD and "requested" not in v76_origin, (follow_pick, v76_origin))
             check("the messages say models, and that a library's modules are in Components (not generators)",
                   not any("generator" in t for t in add_toasts) and any("a library, its modules are in Components" in t for t in add_toasts)
                   and any(" model" in t for t in add_toasts), add_toasts)
@@ -316,7 +322,8 @@ async def main():
             pinned_teeth = await pg.input_value("#p-teeth")
             check("pinned as a model under Parametric Models, with its settings", pin == ["generator", "mechanical", "Pinned components"] and pinned_teeth == "24"
                   and (library / "sources/pinned/pins/bevel-gear-24t.json").is_file(), (pin, pinned_teeth))
-            # the form editor: stored in the shape of a family manifest's model entry
+            # the form editor: stored in the shape of a family manifest's model entry (under ⋯ since 0.4.9)
+            await pg.click("#model-more summary")
             await pg.click("#edit-form")
             await pg.wait_for_selector(".form-editor")
             await pg.click("[data-fe=teeth] .fe-name")
@@ -339,11 +346,17 @@ async def main():
             await pg.wait_for_selector('#ls-libraries [data-library="BOSL2"][data-provider="bundled"][data-active]', timeout=300000)
             switched = await pg.evaluate("""() => [window.__workshop.catalog.components.find((c) => c.key === '@bosl2/bevel_gear')?.provider,
                 window.__workshop.catalog.attention.filter((a) => a.kind === 'libraries').length]""")
+            # (0.4.9) the pin made with your BOSL2 records that copy, and is marked while the app's is used
+            pin_from = json.loads((library / "sources/pinned/pins/bevel-gear-24t.json").read_text()).get("from", {})
+            pin_marked = await pg.evaluate("() => (window.__workshop.catalog.sources.find((s) => s.id === 'pinned')?.problems || []).some((p) => p.kind === 'pin_library')")
             await pg.click('#ls-libraries [data-library="BOSL2"][data-provider="project"] [data-act=prefer]')
             await pg.wait_for_selector('#ls-libraries [data-library="BOSL2"][data-provider="project"][data-active]', timeout=300000)
             back = await pg.evaluate("() => window.__workshop.catalog.components.find((c) => c.key === '@bosl2/bevel_gear')?.provider")
             prefer = json.loads((library / "library.json").read_text()).get("prefer_bundled")
-            check("switch between your BOSL2 and the app's (projects read again)", switched == ["bundled", 0] and back == "project" and not prefer, (switched, back, prefer))
+            pin_back = await pg.evaluate("() => (window.__workshop.catalog.sources.find((s) => s.id === 'pinned')?.problems || []).some((p) => p.kind === 'pin_library')")
+            check("switch between your BOSL2 and the app's (projects read again); a pin records the copy it was made with and is marked while another is used",
+                  switched == ["bundled", 0] and back == "project" and not prefer
+                  and pin_from.get("copy", "").startswith("github-belfryscad-bosl2@") and pin_marked and not pin_back, (switched, back, prefer, pin_from, pin_marked, pin_back))
 
             # 5c. a setting whose doc lists its values is a drop-down (BOSL2 spheroid's style), and renders with the choice
             await pg.goto(B + "#/m/@bosl2/spheroid")
@@ -923,6 +936,71 @@ async def main():
             check("Settings is laid out like Library settings; a yes/no setting's box is in the value column; the library's README explains pins, your own projects and old versions",
                   toc[:4] == ["Appearance", "Printer profile", "Library", "Engine"] and abs(cols[0] - cols[1]) <= 2
                   and "sources/pinned/pins/" in readme and "Remove versions not in use" in readme, (toc, cols))
+
+            # 13e. (0.4.9, F-1) the starter projects that are on GitHub as the app had them become GitHub projects
+            # at the same commit, in upstream's own layout: same model ids, saved settings' code edits moved to
+            # the new paths, thumbnails kept, update checks possible; the others stay as they are
+            on_github = ["cullenect-label", "gridfinity-basket", "gridfinity-extended", "gridfinity-rebuilt", "label-generator-gridfinity", "underware"]
+            def model_ids(i):
+                sj = json.loads((library / f"sources/{i}/source.json").read_text())
+                d = library / f"sources/{i}/derived/{sj['version']}.json"
+                return sorted(m["id"] for m in json.loads(d.read_text())["models"]) if d.is_file() else []
+            ids_before = {i: model_ids(i) for i in on_github}
+            thumbs_before = {i: len(list((library / f"sources/{i}/thumbs").glob("*.webp"))) for i in on_github}
+            (library / "recipes/f1-edit.json").write_text(json.dumps({"id": "f1-edit", "model": "gridfinity-basket/basket", "name": "Edited basket", "values": {},
+                "edits": {"/vendor/gridfinity-basket/gridfinityBasket.scad": {"text": "// edited\n", "base": "0" * 64}}}))
+            await pg.goto(B + "#/library-settings")
+            await pg.wait_for_selector("#starter-convert")
+            offer = await pg.inner_text("#starter-convert")
+            await pg.click("#starter-convert button")
+            try:
+                await pg.wait_for_function("() => !document.querySelector('#starter-convert')", timeout=900000)
+            except Exception:
+                pass
+            toast = await pg.locator("#toast").text_content() or ""
+            conv = {}
+            for i in on_github:
+                sj = json.loads((library / f"sources/{i}/source.json").read_text())
+                d = library / f"sources/{i}/derived/{sj['version']}.json"
+                conv[i] = [sj["kind"], sj.get("origin", {}).get("track", "")[:7], json.loads(d.read_text()).get("described_by") if d.is_file() else None,
+                           model_ids(i) == ids_before[i], len(list((library / f"sources/{i}/thumbs").glob("*.webp"))) == thumbs_before[i]]
+            edit_keys = list(json.loads((library / "recipes/f1-edit.json").read_text())["edits"])
+            others = {json.loads((library / f"sources/{i}/source.json").read_text())["kind"] for i in ("hsw", "gridflock", "anylid")}
+            await pg.goto(B + "#/m/gridfinity-basket/basket")
+            try:
+                await pg.wait_for_function("() => /\\d/.test(document.querySelector('.hud-dims')?.textContent || '')", timeout=180000)
+            except Exception:
+                pass
+            dims = await pg.inner_text(".hud-dims")
+            await pg.screenshot(path=str(out / "p6-03-from-github.png"))
+            check("starter projects on GitHub become GitHub projects at the same commit (same models, edits moved to upstream's paths, thumbnails kept); the others stay as they are",
+                  "Gridfinity Rebuilt" in offer and all(v == ["github", "branch:", "description.json", True, True] for v in conv.values())
+                  and edit_keys == ["/gridfinityBasket.scad"] and others == {"bundled"} and "mm" in dims, (conv, edit_keys, others, dims, toast))
+
+            # 13f. (0.4.9) suggested projects (catalog/suggested.json) under Add project, less the ones already
+            # in the library; adding one is the ordinary Add from GitHub, and its models are checked at their defaults
+            await pg.goto(B + "#/")
+            await pg.click("#add-project")
+            await pg.wait_for_selector("#add-suggested")
+            chips = await pg.eval_on_selector_all("#add-suggested [data-suggested]", "els => els.map((e) => e.dataset.suggested)")
+            await pg.click('#add-suggested [data-suggested="LEGO.scad"]')
+            await pg.click("#add-go")
+            await pg.wait_for_function("() => location.hash.includes('/source/')", timeout=180000)
+            lego = (await pg.evaluate("location.hash")).split("/source/")[1]
+            lego_models, lego_checks = [], {}
+            for _ in range(600):
+                sj = json.loads((library / f"sources/{lego}/source.json").read_text())
+                d = library / f"sources/{lego}/derived/{sj['version']}.json"
+                lego_models = [m["id"] for m in json.loads(d.read_text())["models"]] if d.is_file() else []
+                c = library / f"sources/{lego}/checks.json"
+                lego_checks = json.loads(c.read_text()).get("models", {}) if c.is_file() else {}
+                if lego_models and all(m in lego_checks for m in lego_models):
+                    break
+                await pg.wait_for_timeout(500)
+            failing = {m: v.get("message", "")[:120] for m, v in lego_checks.items() if not v.get("ok")}
+            print("LEGO.scad at its defaults:", len(lego_models), "models,", len(failing), "failing", failing)
+            check("suggested projects under Add project leave out the ones already added; adding one reads it and checks every model at its defaults",
+                  chips == ["LEGO.scad"] and lego_models and all(m in lego_checks for m in lego_models), (chips, lego_models, failing))
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"

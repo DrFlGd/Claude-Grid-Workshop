@@ -241,7 +241,11 @@ pub async fn ingest(
     let det = &src["detected"];
     let role = src["role"].as_str().unwrap_or("project");
     // the project's own description (workshop.json at its top), when it has one
-    let own = read_workshop_json(&root);
+    // or, for a starter project turned into a GitHub project, the app's description of it (F-1)
+    let (own, own_name) = match read_workshop_json(&root) {
+        Some(w) => (Some(w), "workshop.json"),
+        None => (read_workshop_json_at(&lib.source_dir(&id)?.join("description.json")), "The app's description"),
+    };
     let mut own_problems = vec![];
     let listed: Option<Vec<String>> = own.as_ref().and_then(|w| w["models"].as_array()).map(|ms| {
         ms.iter()
@@ -250,12 +254,19 @@ pub async fn ingest(
             .filter(|e| {
                 let there = library::rel_inside(e).is_ok_and(|r| root.join(r).is_file());
                 if !there {
-                    own_problems.push(json!({ "kind": "scan", "message": format!("workshop.json lists {e}, which isn't in the project") }));
+                    own_problems.push(json!({ "kind": "scan", "message": format!("{own_name} lists {e}, which isn't in the project") }));
                 }
                 there
             })
             .collect()
     });
+    // the app's description of a version whose files it doesn't fit at all (upstream moved on): read as usual
+    let (own, listed) = if own_name != "workshop.json" && listed.as_ref().is_some_and(|l| l.is_empty()) {
+        own_problems.clear();
+        (None, None)
+    } else {
+        (own, listed)
+    };
     let entries: Vec<String> = if role == "library" { vec![] } else { listed.clone().unwrap_or_else(|| found.entries.clone()) };
     let words = format!(
         "{} {} {} {}",
@@ -312,10 +323,16 @@ pub async fn ingest(
     let mut bases: BTreeMap<String, (String, String)> = BTreeMap::new();
     let mut used: BTreeMap<String, Value> = BTreeMap::new(); // libraries the models include, by name
     let mut project_texts: Option<Vec<String>> = None;
+    let mut described_used: Vec<usize> = vec![];
     for entry in &entries {
+        // the first description of this file not used yet (two models can share a file, with different settings)
         let described = own.as_ref().and_then(|w| w["models"].as_array()).and_then(|ms| {
-            ms.iter().find(|m| m["entrypoint"].as_str().map(|e| e.trim_start_matches('/')) == Some(entry.as_str()))
+            ms.iter().enumerate().find(|(i, m)| m["entrypoint"].as_str().map(|e| e.trim_start_matches('/')) == Some(entry.as_str()) && !described_used.contains(i))
         });
+        if let Some((i, _)) = described {
+            described_used.push(i);
+        }
+        let described = described.map(|(_, m)| m);
         let mut mid = described.and_then(|m| m["id"].as_str()).filter(|i| library::valid_id(i).is_ok()).map(String::from).unwrap_or_else(|| model_id(entry));
         let base = mid.clone();
         let mut n = 2;
@@ -510,7 +527,7 @@ pub async fn ingest(
         // compare), and contents (compared only when the first differs)
         "files_stat": scan::quick_fingerprint(&root),
         "files_fp": scan::fingerprint(&root),
-        "described_by": if own.is_some() { "workshop.json" } else { "reading" },
+        "described_by": if own.is_none() { "reading" } else if own_name == "workshop.json" { "workshop.json" } else { "description.json" },
     });
     lib.save_derived(&id, version, &derived)?;
     // every version records its file count and contents (F-2); the description beside the files (F-5)
@@ -532,7 +549,11 @@ pub async fn ingest(
 /// A project's own description, `workshop.json` at the top of its files (a family manifest's shape:
 /// docs/DESKTOP_PLAN.md, "Consistent projects design"), when it has a readable one.
 pub fn read_workshop_json(root: &Path) -> Option<Value> {
-    let v: Value = serde_json::from_slice(&std::fs::read(root.join("workshop.json")).ok()?).ok()?;
+    read_workshop_json_at(&root.join("workshop.json"))
+}
+
+fn read_workshop_json_at(path: &Path) -> Option<Value> {
+    let v: Value = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
     v.is_object().then_some(v)
 }
 

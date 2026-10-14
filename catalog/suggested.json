@@ -1,0 +1,10 @@
+{
+  "$comment": "Projects suggested on Home in a new library and under Add project (docs/DESKTOP_PLAN.md, 'Starter projects as GitHub projects'). Adding one is the ordinary Add from GitHub, so each gets update checks and is checked at its defaults. Projects whose license isn't settled for sharing (openGrid, Underware) wait.",
+  "projects": [
+    { "name": "Gridfinity Rebuilt", "url": "https://github.com/kennetek/gridfinity-rebuilt-openscad", "summary": "Gridfinity bins, baseplates and vase-mode bins." },
+    { "name": "Gridfinity Extended", "url": "https://github.com/ostat/gridfinity_extended_openscad", "summary": "Gridfinity bins, drawers, lids, trays and holders with many options." },
+    { "name": "gridfinity_openscad", "url": "https://github.com/vector76/gridfinity_openscad", "summary": "Simple Gridfinity bins and baseplates." },
+    { "name": "Gears", "url": "https://github.com/chrisspen/gears", "summary": "Spur, helical, bevel, worm and rack gears." },
+    { "name": "LEGO.scad", "url": "https://github.com/cfinke/LEGO.scad", "summary": "LEGO-compatible bricks of any size and shape." }
+  ]
+}

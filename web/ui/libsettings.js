@@ -9,7 +9,7 @@ import { ui, pushUndo } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 import { CategoryPicker } from "./catpick.js";
-import { api, runJob, kindText, rescanLocal, when, makeThumbnails, ATTN_TEXT } from "./library.js";
+import { api, runJob, kindText, rescanLocal, when, makeThumbnails, listText, ATTN_TEXT } from "./library.js";
 import { LICENSE_TEXT } from "./index-local.js";
 import { hideItems, hideProject, deleteProject, restoreItems } from "./actions.js";
 import { undoNow } from "./metaedit.js";
@@ -110,6 +110,32 @@ function Problems({ id }) {
     title=${msgs.filter(Boolean).join("\n")}>${ATTN_TEXT[kind] || kind}${msgs.length > 1 ? ` (${msgs.length})` : ""}</span>`);
 }
 
+/** Starter projects (from apps before 0.4.4) that are on GitHub: one offer to get them from there (F-1). */
+function FromGitHub({ ro, sources }) {
+  const [busy, setBusy] = useState(false);
+  const these = sources.filter((s) => s.on_github);
+  if (!these.length) return null;
+  const go = async () => {
+    setBusy(true);
+    try {
+      const r = await runJob(api("starter_convert", {}), "Getting projects from GitHub");
+      await ctx.reloadCatalog();
+      const parts = [];
+      if (r.converted.length) parts.push(`${listText(r.converted.map((c) => c.name))} now ${r.converted.length === 1 ? "comes" : "come"} from GitHub.`);
+      for (const f of r.failed) parts.push(`${f.name} stays as it was: ${f.message}`);
+      ctx.toast(parts.join(" ") || "Nothing to do.");
+      makeThumbnails();
+    } catch (e) { fail(e); }
+    setBusy(false);
+  };
+  return html`<div class="ls-offer" id="starter-convert">
+    <p>${these.length > 1 ? `${these.slice(0, -1).map((s) => s.name).join(", ")} and ${these.at(-1).name}` : these[0].name} came with an earlier version of the app and ${these.length === 1 ? "is" : "are"} on GitHub.
+      Getting ${these.length === 1 ? "it" : "them"} from there downloads the same version in its authors' own layout, so the app can check for updates.
+      Saved settings, code edits and thumbnails are kept.</p>
+    <button type="button" class="ghost" disabled=${ro || busy} onClick=${go}>${busy ? "Downloading…" : `Get ${these.length === 1 ? "it" : "them"} from GitHub`}</button>
+  </div>`;
+}
+
 function Projects({ ro }) {
   const sources = (ctx.catalog?.sources || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
   return html`<${Section} id="projects" title="Projects"
@@ -120,6 +146,7 @@ function Projects({ ro }) {
         title="Read projects again whose files changed outside the app (local/ folders, linked folders and the copies of added projects), and list ones whose files are gone">Scan for changes</button>
       ${ctx.platform.info?.starter ? html`<button type="button" class="ghost" disabled=${ro} onClick=${async () => { const r = await api("source_restore_starter"); await ctx.reloadCatalog(); ctx.toast(r.installed.length ? `Brought back ${plural(r.installed.length, "project")}.` : "All the starter projects are there."); }}>Bring back starter projects</button>` : null}
     </div>
+    <${FromGitHub} ro=${ro} sources=${sources} />
     <p class="muted">Your own projects go in the library's <code>local/</code> folder (one folder each). The app looks for changed files when it starts and when its window comes back into focus; Scan for changes looks now.</p>
     <table class="table-view ls-table" id="ls-project-table"><thead><tr><th>Project</th><th>From</th><th>License</th><th class="num">Items</th><th></th></tr></thead><tbody>
       ${sources.map((s) => html`<tr key=${s.id} data-source=${s.id} data-hidden=${s.hidden ? "" : null}>
