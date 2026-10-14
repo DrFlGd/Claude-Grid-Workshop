@@ -193,10 +193,12 @@ async function loadModel(key) {
 
 function renderModelHeader(detail) {
   document.title = `${detail.name}, ${detail.family_name} | SCAD Workshop`;
-  const fam = detail.family_name, nm = detail.name;
-  // "Gridfinity Rebuilt basic bin", but keep single letters and acronyms: "Underware X channel"
-  const soft = nm.split(" ").map((w) => (/^[A-Z][a-z]/.test(w) ? w.toLowerCase() : w)).join(" ");
-  $("#model-title").textContent = fam.toLowerCase().includes(nm.toLowerCase()) ? fam : `${fam} ${soft}`;
+  // the model's own name, as on its card and tab, with its project (or library) on the line under it
+  $("#model-title").textContent = detail.name;
+  const from = detail.kind === "component" ? detail.component?.library || detail.family_name : detail.family_name;
+  $("#model-project").replaceChildren(detail.source_id
+    ? el("a", { href: `#/browse/source/${encodeURIComponent(detail.source_id)}`, text: from, title: "The project it's from" })
+    : from || "");
   $("#model-summary").textContent = detail.summary;
   const credit = $("#model-credit");
   credit.replaceChildren();
@@ -232,6 +234,9 @@ function renderModelHeader(detail) {
       const it = state.index.get(`gen:${detail.key}`);
       if (it) await unflagItems([it]);
     } })));
+  // rendered at its defaults when the project was added (desktop), and failed
+  else if (detail.check?.ok === false) alerts.unshift(el("div", { class: "alert-broken", role: "note", id: "default-check" },
+    `Didn't render at its default settings when it was checked${detail.check.message ? `: ${detail.check.message.replace(/[^.!?]$/, "$&.")}` : "."} Changing the settings may help; Check defaults in the project's ⋯ menu tries again.`));
   $("#model-alerts").replaceChildren(...alerts);
   const hasNotes = !!holder.textContent.trim();
   // every page has a one-line summary under its name: a component (or a model without one) takes its notes' first sentence
@@ -424,9 +429,21 @@ function buildForm() {
   applyConditions();
 }
 
+/** A setting's step, or "any" when its own default isn't on it (reported when the project is
+ * read), so the form never calls a default invalid. */
+function fitStep(p) {
+  if (typeof p.default !== "number" || !(p.step > 0)) return p.step;
+  const n = (p.default - (p.min ?? 0)) / p.step;
+  return Math.abs(n - Math.round(n)) < 1e-6 ? p.step : "any";
+}
+
 function buildField(p) {
   const id = `p-${p.name}`;
-  const label = p.label || humanize(p.name);
+  // (components read before 0.4.6 have their code names as labels)
+  const label = p.label && p.label !== p.name ? p.label : humanize(p.name);
+  // a default outside its own range widens it (reported when the project is read)
+  const lo = typeof p.default === "number" && p.min != null ? Math.min(p.min, p.default) : p.min;
+  const hi = typeof p.default === "number" && p.max != null ? Math.max(p.max, p.default) : p.max;
   const helpNodes = [];
   if (p.description_html) helpNodes.push(el("div", { class: "help", id: `${id}-help` }, safeHTML(p.description_html)));
   else if (p.description) helpNodes.push(el("p", { class: "help", id: `${id}-help`, text: p.description }));
@@ -436,7 +453,9 @@ function buildField(p) {
     title: "Documentation", "aria-label": `Documentation for ${label}` }) : null;
   const tip = p.description || (p.description_html ? helpNodes[0].textContent : null);
   const head = (labelNode) => {
-    if (tip) labelNode.title = tip; // short labels; full explanation on hover or with Help on
+    // short labels; full explanation and the name in the code on hover (or with Help on)
+    const code = label !== p.name ? `In the code: ${p.name}` : null;
+    if (tip || code) labelNode.title = [tip, code].filter(Boolean).join("\n\n");
     const prof = p.profiled ? el("a", { class: "profile-tag", href: "#/settings", text: "profile",
       title: "Starts from your printer profile (Settings)" }) : null;
     return el("div", { class: "field-head" }, labelNode, prof, helpLink, reset);
@@ -456,10 +475,10 @@ function buildField(p) {
     if (p.options.some((o) => String(o.label).length > 24)) wrap.classList.add("wide");
     wrap.append(head(el("label", { for: id, text: label })), sel, ...helpNodes);
   } else if (p.widget === "slider" && !Array.isArray(p.default)) {
-    const step = p.step ?? (Number.isInteger(p.default) && Number.isInteger(p.min ?? 0) && Number.isInteger(p.max ?? 0) ? 1 : "any");
-    const range = el("input", { type: "range", min: p.min, max: p.max, step: step === "any" ? (p.max - p.min) / 100 : step,
+    const step = p.step != null ? fitStep(p) : (Number.isInteger(p.default) && Number.isInteger(p.min ?? 0) && Number.isInteger(p.max ?? 0) ? 1 : "any");
+    const range = el("input", { type: "range", min: lo, max: hi, step: step === "any" ? (hi - lo) / 100 : step,
       "aria-hidden": "true", tabindex: "-1", oninput: (e) => { setValue(p, +e.target.value); syncField(p, "range"); } });
-    const num = el("input", { type: "number", id, min: p.min, max: p.max, step, "aria-describedby": describedby,
+    const num = el("input", { type: "number", id, min: lo, max: hi, step, "aria-describedby": describedby,
       oninput: (e) => { if (e.target.value !== "" && e.target.checkValidity()) { setValue(p, +e.target.value); syncField(p, "number"); } } });
     wrap.append(head(el("label", { for: id, text: label })), el("div", { class: "slider" }, range, num), ...helpNodes);
   } else if (Array.isArray(p.default)) {
@@ -482,7 +501,7 @@ function buildField(p) {
     const t = p.type === "number" ? "number" : "text";
     const expr = p.type === "expression";
     wrap.append(head(el("label", { for: id, text: label })),
-      el("input", { type: t, id, step: p.step ?? "any", min: p.min, max: p.max, maxlength: t === "text" ? (expr ? 2000 : 200) : null, "aria-describedby": describedby,
+      el("input", { type: t, id, step: p.step != null ? fitStep(p) : "any", min: lo, max: hi, maxlength: t === "text" ? (expr ? 2000 : 200) : null, "aria-describedby": describedby,
         placeholder: p.placeholder || (p.optional ? "(default)" : null), class: expr ? "expr" : null, spellcheck: expr ? "false" : null,
         oninput: (e) => {
           const v = e.target.value;

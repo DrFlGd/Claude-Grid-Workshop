@@ -47,7 +47,7 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 - **Rust:** crates.io is blocked. `vendor.yml` pushes `desktop/core`'s dependencies to the `crates-vendor` branch whenever `desktop/core/Cargo.toml` changes. Clone that branch, then build offline: a workspace with `core` linked to `desktop/core`, `Cargo.lock` from the branch, and `cargo <cmd> --offline --config <vendor-config.toml with directory = the branch's vendor/>` (put the flags right after the subcommand, before any `--`). New dependencies: push the `Cargo.toml` change and wait for `vendor.yml`.
 - **The Tauri app can't be built locally** (no Tauri crates, npm's Tauri CLI and apt are blocked). Test the app's backend with `workshop-cli serve` + `tests/tauri_shim.js` instead (that's what `desktop_page.py` does); the real app only builds in CI.
-- **Native OpenSCAD:** the `engine-cache-native` branch holds the pinned AppImage. `python3 tools/fetch_native_engine.py --file <AppImage> --out build/desktop/engine --extract build/native`. It needs `libOpenGL.so.0`, which the sandbox lacks: compile a stub with a no-op function for every `gl*` symbol `nm -D --undefined-only` lists in `openscad`, `libGLU`, `libQt6Gui` and `libQt6OpenGL`, put it in `build/native/stub/`, and run with `LD_LIBRARY_PATH=build/native/stub`.
+- **Native OpenSCAD:** the `engine-cache-native` branch holds the pinned AppImage. `python3 tools/fetch_native_engine.py --file <AppImage> --out build/desktop/engine --extract build/native`. It needs `libOpenGL.so.0` and `libEGL.so.1`, which the sandbox lacks: compile a stub with a no-op function for every `gl*` symbol `nm -D --undefined-only` lists in `openscad`, `libGLU`, `libQt6Gui` and `libQt6OpenGL`, and another for every `egl*` symbol in `openscad` and the AppImage's own `.so` files, put them in `build/native/stub/` (don't stub `libGLX`: the system's is needed), and run with `LD_LIBRARY_PATH=build/native/stub`. `workshop-cli serve --engine build/native/squashfs-root` then renders natively, so the page tests can check renders.
 - **WebAssembly engine:** the `engine-cache` branch holds `engine.zip`: `python3 tools/fetch_engine.py --out build/engine --zip <engine.zip>`.
 - **Libraries:** `codeload.github.com` is blocked locally (CI downloads tarballs fine), but `git clone` works: clone the five libraries, check out the pinned commits, then `python3 tools/fetch_libraries.py --out build/desktop/libs --from-git <folder of clones>`.
 - **Full local build:** `tools/build_site.py --engine build/engine --out _site --native-engine build/native/squashfs-root/AppRun --cli <workshop-cli>` (about 2 minutes), then `tools/build_desktop.py --site _site --out build/desktop --cli <workshop-cli>`. Local sites have no thumbnails unless you also run `tools/thumbnails.py`, so the website test's thumbnail check fails locally; that's expected.
@@ -62,7 +62,7 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ### Known limitations now
 
-- Many components can't start on their own: about 370 of the 796 open with required settings empty (most are NopSCADlib parts that need a part type the library doesn't list as a choice). BOSL2 modules whose first doc example isn't a plain call start from a later example or wait for values (55 of 201).
+- Many components can't start on their own: 326 of the 796 open with required settings empty (most are NopSCADlib printed parts whose type is a property list built by a function, and MCAD modules without defaults). BOSL2 modules whose first doc example isn't a plain call start from a later example or wait for values (55 of 201).
 - Installers aren't code-signed (Windows SmartScreen asks once), and there's no auto-update: install the new release over the old one.
 - Native OpenSCAD on Windows is slow with projects split into many `use`d files; the app races it against the WebAssembly engine per model (see 0.1 / Phase 1 below).
 - Licenses and authors for Anylid, openGrid Shelf, Just Fit and Minimalist Kitchen are still to be supplied by the owner; Multiboard and the openGrid Connector have no sources yet; Underware's license is contradictory (kept for private use).
@@ -80,6 +80,17 @@ The development sandbox has a network allowlist and is reset between sessions (t
 ---
 
 ## Unreleased
+
+Milestone 3, first part (0.4.6, "Consistent projects design" in `docs/DESKTOP_PLAN.md`): defaults that work, and Review 1's UI-4 and UI-5.
+
+- **Every model is rendered once at its defaults** when its thumbnail is made, and the result is kept with the project (`sources/<id>/checks.json`, rebuildable). A model that doesn't render is marked in Library settings › Projects ("Doesn't render at its defaults", with OpenSCAD's message on hover) and says so above its settings, and isn't tried again until the project or the engine changes. **Check defaults** in a project's ⋯ menu renders every model again and says how many failed (D-1).
+- **Defaults fit their own limits** (D-3): a number with no Customizer comment steps by its default's last decimal, as in OpenSCAD's Customizer, so Gridfinity Anylid's 1.5 and 2.5 units no longer show as invalid; a default off its slider's step, outside its range or not among its choices is marked in Library settings ("Defaults outside their limits"), and the form accepts it rather than calling it invalid.
+- **NopSCADlib parts start on the first of the library's own list of types** (`fans = [fan17x8, …]`, also from `batteries.scad`-style files), so more of them render straight away: 326 of 796 components now open with settings to fill in, from 342 (D-2).
+- **Component settings are named like model settings** ("Mate teeth", not `mate_teeth`), with the name in the code on hover; model settings show it on hover too (UI-4).
+- **A model's page is titled with its own name**, as on its card and tab, with its project (a link to the project's page) or library on the line under it (UI-5).
+- Making thumbnails while they're being made (a project added meanwhile) now goes round again afterwards, so the new project's models aren't left until the next start.
+
+## 0.4.5 — 2026-10-14 · Skins, one head for listing pages, readable tabs
 
 Milestone 2 of the owner's direction of 2026-10-14: Model Library's skins, and Review 1's interface items UI-2, UI-3, UI-7, UI-8, UI-10 and UI-11.
 

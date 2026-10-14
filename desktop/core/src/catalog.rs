@@ -184,8 +184,20 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         entry["icon"] = project_thumb.clone().map(Value::String).unwrap_or(Value::Null);
         entry["models"] = json!(derived["models"].as_array().map(|m| m.len()).unwrap_or(0));
         entry["parts"] = json!(derived["parts"].as_array().map(|p| p.len()).unwrap_or(0));
-        entry["problems"] = derived["problems"].clone();
-        for p in derived["problems"].as_array().into_iter().flatten() {
+        // models rendered at their defaults (sources/<id>/checks.json), for this version only
+        let checks = lib.checks(&id);
+        let check_engine = checks["engine"].clone();
+        let checks = if checks["version"] == version.as_str() { checks["models"].as_object().cloned().unwrap_or_default() } else { Map::new() };
+        let mut problems = derived["problems"].as_array().cloned().unwrap_or_default();
+        for (mid, c) in &checks {
+            if c["ok"] == false {
+                let entry = derived["models"].as_array().into_iter().flatten().find(|m| m["id"] == mid.as_str()).and_then(|m| m["entry"].as_str()).unwrap_or(mid);
+                let msg = c["message"].as_str().unwrap_or("OpenSCAD made nothing");
+                problems.push(json!({ "kind": "render", "model": format!("{id}/{mid}"), "message": format!("{}: {msg}", entry.trim_start_matches('/')) }));
+            }
+        }
+        entry["problems"] = json!(problems);
+        for p in &problems {
             attention.push(json!({ "kind": p["kind"], "source": id, "model": p["model"], "message": p["message"] }));
         }
         if pvals.get("license").and_then(|l| l["public_use"].as_str()).is_some_and(|u| u != "ok") {
@@ -236,8 +248,11 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             if let Some(icon) = vals.get("icon").and_then(Value::as_str) {
                 detail["thumb"] = json!(icon_url(icon, &id, &file_url));
             }
+            if let Some(c) = checks.get(&mid) {
+                detail["check"] = json!({ "ok": c["ok"], "message": c["message"], "stale": check_engine != engine });
+            }
             let mut summary = Map::new();
-            for k in ["key", "family", "family_name", "id", "name", "category", "category_label", "summary", "tags", "license", "browser", "updated", "updated_from", "settings", "terms", "thumb", "source_id", "folder"] {
+            for k in ["key", "family", "family_name", "id", "name", "category", "category_label", "summary", "tags", "license", "browser", "updated", "updated_from", "settings", "terms", "thumb", "source_id", "folder", "check"] {
                 if let Some(v) = detail.get(k).filter(|v| !v.is_null()) {
                     summary.insert(k.into(), v.clone());
                 }

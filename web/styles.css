@@ -193,6 +193,10 @@ input:invalid, .field.has-error input { border-color: var(--danger); }
 .rail-head { padding: 14px 16px 10px; display: grid; gap: 4px; border-bottom: 1px solid var(--steel-2); }
 .rail-head h1 { font-size: 22px; font-stretch: var(--head-stretch); font-weight: 800; line-height: 1.1; }
 .rail-head .muted { font-size: 13px; line-height: 1.35; }
+.model-project { font-size: 12.5px; font-weight: 600; color: var(--graphite); margin-top: -2px; }
+.model-project:empty { display: none; }
+.model-project a { color: inherit; text-decoration: none; }
+.model-project a:hover { color: var(--ink); text-decoration: underline; }
 .credit { font-size: 13px; color: var(--graphite); }
 .credit a { color: var(--ink); }
 .rail-tools { display: flex; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--steel-2); }

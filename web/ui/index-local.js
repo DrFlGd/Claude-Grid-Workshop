@@ -77,6 +77,7 @@ export class LocalIndex {
         desktopOnly: m.browser === false, terms: m.terms || "", href: `#/m/${m.key}`,
         updated: m.updated || null, updatedFrom: m.updated_from || null,
         folder: m.folder || "", fields: m.fields || {}, hidden: m.hidden || null, broken: m.broken || null,
+        check: m.check || null,
       });
     }
     // components: library modules; their "project" is the library, their category a topic group

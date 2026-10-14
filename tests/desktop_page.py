@@ -265,6 +265,12 @@ async def main():
             await pg.wait_for_function("()=>document.body.dataset.model==='@bosl2/bevel_gear'")
             await pg.wait_for_function(DONE, timeout=120000)
             start = {k: await pg.input_value(f"#p-{k}") for k in ("teeth", "mate_teeth", "circ_pitch")}
+            # (0.4.6) the page is titled with the component's own name, its library under it; settings are
+            # named as on model forms, with the code name on hover (UI-4, UI-5)
+            head = [await pg.inner_text("#model-title"), await pg.inner_text("#model-project")]
+            mate = [await pg.inner_text("label[for='p-mate_teeth']"), await pg.get_attribute("label[for='p-mate_teeth']", "title") or ""]
+            check("component page: its own name with its library under it; settings named like a model's, the code name on hover",
+                  head == ["Bevel gear", "BOSL2"] and mate[0] == "Mate teeth" and "In the code: mate_teeth" in mate[1], (head, mate))
             await pg.fill("#p-teeth", "24")
             await pg.fill("#p-circ_pitch", "")
             await pg.fill("#p-mod", "2")
@@ -753,6 +759,55 @@ async def main():
             check("Library settings lists each project's license (one not cleared is marked), and the menu has no Needs attention",
                   len(lic) >= 3 and any("Check license" in t or "License unclear" in t for t in lic) and nav_attn == 0, (lic[:6], nav_attn))
             await pg.click('[data-source="local-scanned"] [data-act=delete-project]')
+
+            # 13b. (0.4.6) defaults that work: a number without a Customizer comment whose default is a
+            # fraction is accepted at its default (Gridfinity Anylid's width units, 1.5); a default off its
+            # slider's step is reported; every model is rendered once at its defaults (with its thumbnail)
+            # and one that fails is marked in Library settings and on its page, with OpenSCAD's message
+            await pg.goto(B + "#/m/anylid/lid")
+            await pg.wait_for_selector("#p-Width_Units")
+            invalid = await pg.evaluate("() => [...document.querySelectorAll('.field input')].filter((i) => !i.checkValidity()).map((i) => i.id)")
+            check("Gridfinity Anylid opens with no setting marked invalid at its defaults (1.5 and 2.5 units)", not invalid, invalid)
+            (library / "local/defaults").mkdir(parents=True, exist_ok=True)
+            (library / "local/defaults/tray.scad").write_text("// width in grid units\nunits = 1.5;\n// height\nheight = 2.5; // [0:1:10]\ncube([units * 42, 42, height]);\n")
+            (library / "local/defaults/broken.scad").write_text("size = 10;\nassert(size < 5, \"size must be under 5\");\ncube(size);\n")
+            await pg.goto(B + "#/library-settings")
+            await pg.wait_for_selector("#library-rescan")
+            await pg.click("#library-rescan")
+            checks_file = library / "sources/local-defaults/checks.json"
+            for _ in range(240):
+                if checks_file.is_file() and len(json.loads(checks_file.read_text()).get("models", {})) >= 2:
+                    break
+                await pg.wait_for_timeout(500)
+            checks = json.loads(checks_file.read_text()) if checks_file.is_file() else {}
+            got = {k: (v.get("ok"), v.get("message") or "") for k, v in checks.get("models", {}).items()}
+            try:
+                await pg.wait_for_selector('[data-source="local-defaults"] [data-problem="render"]', timeout=30000)
+            except Exception:
+                pass
+            marks = await pg.eval_on_selector_all('[data-source="local-defaults"] [data-problem]', "els => els.map((e) => [e.dataset.problem, e.title])")
+            check("each model is rendered at its defaults when it's added; results kept in checks.json; failures and settings off their limits marked in Library settings",
+                  got.get("tray", (None,))[0] is True and got.get("broken", (None, ""))[0] is False and "size must be under 5" in got["broken"][1]
+                  and any(k == "render" and "size must be under 5" in t for k, t in marks) and any(k == "limits" and "Height" in t for k, t in marks),
+                  (got, marks))
+            await pg.goto(B + "#/m/local-defaults/broken")
+            await pg.wait_for_selector("#model-title")
+            alert = await pg.locator("#default-check").inner_text() if await pg.locator("#default-check").count() else ""
+            title = [await pg.inner_text("#model-title"), await pg.inner_text("#model-project")]
+            await pg.screenshot(path=str(out / "p6-01-default-check.png"))
+            check("a model that didn't render at its defaults says so on its page, with OpenSCAD's message; the page has the model's own name, its project under it",
+                  "size must be under 5" in alert and title == ["Broken", "Defaults"], (alert, title))
+            await pg.goto(B + "#/browse/source/local-defaults")
+            await pg.click("#source-more summary")
+            await pg.click("[data-act=check-defaults]")
+            try:
+                await pg.wait_for_function("() => /didn't render/.test(document.querySelector('#toast')?.textContent || '')", timeout=60000)
+            except Exception:
+                pass
+            toast = await pg.inner_text("#toast")
+            check("Check defaults (project ⋯ menu) renders every model again and says how many failed", "1 model of 2" in toast, toast)
+            await pg.goto(B + "#/library-settings")
+            await pg.click('[data-source="local-defaults"] [data-act=delete-project]')
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"

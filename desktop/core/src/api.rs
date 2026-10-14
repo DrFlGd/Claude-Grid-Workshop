@@ -1025,6 +1025,30 @@ impl App {
                 self.invalidate();
                 j(Value::Null)
             }
+            "defaults_put" => {
+                // { source, model, ok, message?, seconds? }: what rendering a model at its defaults gave
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let id = arg(&args, "source").map_err(e2s)?;
+                let model = arg(&args, "model").map_err(e2s)?;
+                let src = lib.source(id).map_err(e2s)?;
+                let version = src["version"].as_str().unwrap_or("");
+                let ok = args["ok"].as_bool().unwrap_or(false);
+                let message: String = args["message"].as_str().unwrap_or("").chars().take(600).collect();
+                let result = json!({
+                    "ok": ok, "message": if ok || message.is_empty() { Value::Null } else { json!(message) },
+                    "seconds": args["seconds"].as_f64().map(|s| (s * 10.0).round() / 10.0), "date": library::now(),
+                });
+                lib.put_check(id, version, &self.engine_version_site, model, result).map_err(e2s)?;
+                self.invalidate();
+                j(Value::Null)
+            }
+            "defaults_clear" => {
+                let lib = self.library()?;
+                lib.clear_checks(arg(&args, "source").map_err(e2s)?).map_err(e2s)?;
+                self.invalidate();
+                j(Value::Null)
+            }
             "icon_import" => {
                 // { category, path }: an image of your own as a category's icon, copied into the library's icons/ folder
                 let lib = self.library()?;

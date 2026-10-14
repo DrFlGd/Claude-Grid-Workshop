@@ -1605,6 +1605,23 @@ fn humanize_module(name: &str) -> String {
     if s.is_empty() { name.to_string() } else { s }
 }
 
+/// A NopSCADlib types file's own list of its types, named like the file: `fans = [fan17x8, …];`.
+fn type_list(text: &str, name: &str) -> Option<Vec<String>> {
+    let masked = mask_comments(text);
+    for l in masked.lines() {
+        let Some((n, v)) = l.split_once('=') else { continue };
+        if n.trim() != name || l.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let v = v.trim().trim_end_matches(';').trim();
+        let inner = v.strip_prefix('[')?.strip_suffix(']')?;
+        let items: Vec<String> = inner.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        let ident = |s: &String| s.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') && s.chars().all(|c| c.is_alphanumeric() || c == '_');
+        return (!items.is_empty() && items.iter().all(ident)).then_some(items);
+    }
+    None
+}
+
 /// NopSCADlib-style type constants in a file: `NAME = ["..."` assignments at the top level.
 fn type_constants(text: &str) -> Vec<String> {
     let masked = mask_comments(text);
@@ -1615,6 +1632,7 @@ fn type_constants(text: &str) -> Vec<String> {
             continue;
         }
         if let Some((n, Some(v))) = t.split_once('=').and_then(|(n, v)| split_arg(&format!("{n}={v}"))) {
+            let v = v.replace(' ', "");
             if v.starts_with("[\"") && n.chars().next().is_some_and(|c| c.is_alphabetic()) {
                 out.push(n);
             }
@@ -1738,8 +1756,20 @@ pub fn index_library(info: &LibInfo, root: &Path, curated: Option<&Value>, no_gu
             continue;
         }
         // NopSCADlib and plain libraries
-        let plural = rel.strip_suffix(".scad").map(|s| format!("{s}s.scad")).filter(|p| texts.contains_key(p));
-        let consts = plural.as_ref().map(|p| type_constants(&texts[p])).unwrap_or_default();
+        // the file of types beside it: insert.scad -> inserts.scad, battery.scad -> batteries.scad
+        let plural = rel.strip_suffix(".scad").and_then(|s| {
+            [format!("{s}s.scad"), format!("{s}es.scad"), s.strip_suffix('y').map(|b| format!("{b}ies.scad")).unwrap_or_default()]
+                .into_iter()
+                .find(|p| texts.contains_key(p))
+        });
+        // its own list of them (`inserts = [F1BM2, F1BM3, …];`), or else every type it defines
+        let consts = plural
+            .as_ref()
+            .map(|p| {
+                let stem = Path::new(p).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                type_list(&texts[p], &stem).unwrap_or_else(|| type_constants(&texts[p]))
+            })
+            .unwrap_or_default();
         let is_nop = style == "bang";
         for def in &defs {
             // not examples, demos or tests
@@ -2146,7 +2176,6 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
         };
         let mut p = Map::new();
         p.insert("name".into(), json!(name));
-        p.insert("label".into(), json!(name));
         p.insert("group".into(), json!(group));
         let mut desc = doc.doc.clone();
         if desc.is_empty() {
@@ -2685,6 +2714,14 @@ module block(width=1, length=2, height=1, type="brick", reinforcement=false, stu
         assert_eq!(call_source(&call, &v).unwrap(), "include <BOSL2/std.scad>\ninclude <BOSL2/gears.scad>\n\nbevel_gear(teeth=36, anchor=BOTTOM, $fa=6);\n");
         v.insert("anchor".into(), json!("1); import(\"x\"); (2"));
         assert!(call_source(&call, &v).is_err());
+    }
+
+    #[test]
+    fn type_lists() {
+        let text = "// Fans\nfan17x8  = [17, 8, 16];\nfan25x10 = [25.4, 10, 24];\n\nfans = [fan17x8, fan25x10];\n\nuse <fan.scad>\n";
+        assert_eq!(type_list(text, "fans"), Some(vec!["fan17x8".to_string(), "fan25x10".into()]));
+        assert_eq!(type_list(text, "inserts"), None);
+        assert_eq!(type_constants("F1BM2   = [ \"F1BM2\",   4.0 ];\nX = 3;\n"), vec!["F1BM2"]);
     }
 
     #[test]

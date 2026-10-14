@@ -395,6 +395,10 @@ pub async fn ingest(
                 fam["models"].as_array_mut().unwrap().push(model.clone());
                 let (_, mut detail) = sitebuild::assemble_model(&fam, &model, &key, &format!("/{entry}"), &fmap, &editor, &raw, input_bytes)?;
                 detail["folder"] = json!(ingest::dirname(&format!("/{entry}")).trim_start_matches('/'));
+                let off = ingest::limit_problems(detail["parameters"].as_array().map(Vec::as_slice).unwrap_or(&[]));
+                if !off.is_empty() {
+                    problems.push(json!({ "kind": "limits", "model": key, "settings": off, "message": format!("{entry}: {}", off.join("; ")) }));
+                }
                 models.push(detail);
             }
             Err(e) => problems.push(json!({ "kind": "settings", "model": key, "message": format!("{entry}: {e}") })),

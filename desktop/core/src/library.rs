@@ -10,6 +10,7 @@
 //!   sources/<id>/files/<version>/ downloaded or extracted files, untouched
 //!   sources/<id>/derived/<v>.json what ingest found (models, parts, problems); rebuildable
 //!   sources/<id>/thumbs/          thumbnails; rebuildable
+//!   sources/<id>/checks.json      each model rendered at its defaults: ok or OpenSCAD's message; rebuildable
 //!   local/<project>/              the user's own projects, edited in place
 //!   collections/                  (Phase 4)
 //!   icons/, thumbs/components/    category pictures; component thumbnails (rebuildable)
@@ -67,6 +68,7 @@ Inside sources/<project>/:\n\
   generated/      copies made so typed-in values become settings (rebuildable)\n\
   docs/           the README as HTML, PDFs (rebuildable)\n\
   thumbs/, previews/   pictures (rebuildable)\n\
+  checks.json     whether each model renders at its defaults (rebuildable)\n\
 \n\
 Rebuildable folders can be deleted: the app makes them again.\n\
 The app's render cache and search index are kept on each computer, not here.\n";
@@ -463,6 +465,35 @@ impl Library {
             return Ok(());
         }
         write_json(&p, meta)
+    }
+
+    // ------------------------------------------------------------ default checks
+
+    /// What rendering each model at its defaults gave: sources/<id>/checks.json,
+    /// `{ version, engine, models: { <model>: { ok, message, seconds, date } } }`. Rebuildable.
+    pub fn checks(&self, id: &str) -> Value {
+        self.source_dir(id).map(|d| read_json_object(&d.join("checks.json"))).unwrap_or_else(|_| json!({}))
+    }
+
+    /// Record one model's check, starting afresh when the project's version or the engine changed.
+    pub fn put_check(&self, id: &str, version: &str, engine: &str, model: &str, result: Value) -> Result<Value> {
+        self.writable()?;
+        let mut c = self.checks(id);
+        if c["version"] != version || c["engine"] != engine || !c["models"].is_object() {
+            c = json!({ "version": version, "engine": engine, "models": {} });
+        }
+        c["models"][model] = result;
+        write_json(&self.source_dir(id)?.join("checks.json"), &c)?;
+        Ok(c)
+    }
+
+    pub fn clear_checks(&self, id: &str) -> Result<()> {
+        self.writable()?;
+        let p = self.source_dir(id)?.join("checks.json");
+        if p.exists() {
+            std::fs::remove_file(p)?;
+        }
+        Ok(())
     }
 
     // ------------------------------------------------------------ trash

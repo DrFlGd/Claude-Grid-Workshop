@@ -187,6 +187,8 @@ export function SourcePanel({ id }) {
           <button type="button" disabled=${ro} onClick=${() => hideProject(id, !src.hidden)} data-act="hide-project"
             title=${src.hidden ? "List it again" : "Keep it and everything in it out of browsing and search"}>${src.hidden ? "Unhide" : "Hide"}</button>
           <button type="button" onClick=${() => api("source_get", { id }).then((i) => i.folder && ctx.platform.library.openPath(i.folder))}>Open its folder</button>
+          ${src.models ? html`<button type="button" disabled=${ro} data-act="check-defaults" onClick=${() => makeThumbnails({ source: id })}
+            title="Render every model at its default settings again and note which don't render">Check defaults</button>` : null}
           ${src.kind !== "bundled" && src.kind !== "local" ? html`<button type="button" disabled=${ro} onClick=${() => act("role", async () => {
             await runJob(api("source_role", { id, role: src.role === "library" ? "project" : "library" }), `Reading ${src.name}`);
             await ctx.reloadCatalog();
@@ -200,7 +202,7 @@ export function SourcePanel({ id }) {
     </div>
     <${UpdateBanner} src=${src} />
     ${src.update?.state === "error" ? html`<p class="lic-summary">Couldn't check for updates: ${src.update.error}</p>` : null}
-    ${problems.length ? html`<details class="problems"><summary>${plural(problems.length, "problem")} reading this project</summary>
+    ${problems.length ? html`<details class="problems"><summary>${plural(problems.length, "problem")} with this project</summary>
       <ul>${problems.map((p) => html`<li>${p.message}</li>`)}</ul></details>` : null}
     <div class="seg tabs-seg source-tabs" role="tablist">${tabs.map(([t, l]) => html`<button type="button" role="tab" class=${`seg-btn${tab === t ? " on" : ""}`}
       aria-selected=${tab === t ? "true" : "false"} onClick=${() => setTab(t)} data-source-tab=${t}>${l}</button>`)}</div>
@@ -228,10 +230,12 @@ export function SourcePanel({ id }) {
 
 // ---------------------------------------------------------------- project problems (Library settings › Projects)
 export const ATTN_TEXT = { update: "Update ready", missing: "Missing files", settings: "Settings couldn't be read", unread: "Not read", reread: "Read with an older version",
-  "missing-folder": "Folder missing", license: "License", libraries: "A library it uses changed", scan: "Note", broken: "Flagged as broken" };
+  "missing-folder": "Folder missing", license: "License", libraries: "A library it uses changed", scan: "Note", broken: "Flagged as broken",
+  render: "Doesn't render at its defaults", limits: "Defaults outside their limits" };
 
 // ---------------------------------------------------------------- thumbnails for new models
 let thumbRunning = false;
+let thumbAgain = false;
 let thumbViewer = null;
 
 function thumbViewerFor() {
@@ -292,25 +296,50 @@ export async function saveComponentThumb(key, blob) {
   } finally { URL.revokeObjectURL(url); }
 }
 
-/** Make thumbnails for library models and parts that have none (renders defaults);
- * with { components: true }, for the components that have none instead. */
-export async function makeThumbnails({ components = false } = {}) {
-  if (!isDesktop() || thumbRunning || readOnly()) return;
+/** OpenSCAD's message for a render that failed, cut to its first error line. */
+function renderMessage(e) {
+  const s = String(e?.message || e || "").trim();
+  const line = s.split("\n").find((l) => /^ERROR|error/i.test(l.trim())) || s.split("\n")[0] || "OpenSCAD made nothing";
+  return line.trim().replace(/^ERROR:\s*/, "").slice(0, 600);
+}
+
+/** Make thumbnails for library models and parts that have none (renders defaults), keeping
+ * whether each model rendered at its defaults (sources/<id>/checks.json). A model that failed
+ * isn't tried again until its project or the engine changes, or { source } asks for every model
+ * of that project to be checked again (Check defaults). With { components: true }, makes the
+ * components' thumbnails instead. */
+export async function makeThumbnails({ components = false, source = null } = {}) {
+  if (!isDesktop() || readOnly()) return;
+  // asked while thumbnails are being made (a project added meanwhile): go round again after
+  if (thumbRunning) { if (!components && !source) thumbAgain = true; return; }
   if (components) return componentThumbnails();
-  const todo = ctx.index.items.filter((i) => !i.thumb && (i.kind === "generator" || i.preview) && sourceById(i.sourceId || i.projectId)?.kind !== "bundled");
+  const todo = source
+    ? ctx.index.items.filter((i) => i.kind === "generator" && i.sourceId === source)
+    : ctx.index.items.filter((i) => !i.thumb && (i.kind === "generator" || i.preview) && sourceById(i.sourceId || i.projectId)?.kind !== "bundled"
+      && !(i.check?.ok === false && !i.check.stale));
   if (!todo.length) return;
   thumbRunning = true;
-  const done = addJob(`Making thumbnails (0 of ${todo.length})`);
-  let made = 0;
+  const done = addJob(`${source ? "Checking defaults" : "Making thumbnails"} (0 of ${todo.length})`);
+  let made = 0, failed = 0;
   try {
     for (const [n, it] of todo.entries()) {
-      done.update(`Making thumbnails (${n + 1} of ${todo.length})`);
+      done.update(`${source ? "Checking defaults" : "Making thumbnails"} (${n + 1} of ${todo.length})`);
       if (!ctx.index.get(it.id)) continue; // deleted meanwhile
       try {
         let blob;
         if (it.kind === "generator") {
           const { detail, values } = await ctx.loadModel(it.key);
-          blob = (await ctx.engine.render(detail, values, () => {}).promise).blob;
+          const t0 = performance.now();
+          const check = (ok, message) => api("defaults_put", { source: it.sourceId, model: it.key.split("/")[1], ok, message, seconds: (performance.now() - t0) / 1000 }).catch(() => {});
+          try {
+            blob = (await ctx.engine.render(detail, values, () => {}).promise).blob;
+          } catch (e) {
+            failed++;
+            await check(false, renderMessage(e));
+            throw e;
+          }
+          await check(true);
+          if (it.thumb && source) { made++; continue; } // checking only
         } else {
           blob = await (await ctx.platform.fetch(it.preview)).blob();
         }
@@ -328,7 +357,10 @@ export async function makeThumbnails({ components = false } = {}) {
     done();
     thumbRunning = false;
   }
-  if (made) await ctx.reloadCatalog();
+  if (made || failed) await ctx.reloadCatalog();
+  if (thumbAgain) { thumbAgain = false; setTimeout(() => makeThumbnails(), 0); }
+  if (source) ctx.toast(failed ? `${plural(failed, "model")} of ${todo.length} didn't render at ${failed === 1 ? "its" : "their"} defaults; see Library settings.` : `All ${plural(todo.length, "model")} render at their defaults.`);
+  return { made, failed };
 }
 
 async function componentThumbnails() {
@@ -363,6 +395,7 @@ async function componentThumbnails() {
     thumbRunning = false;
   }
   ui.set((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+  if (thumbAgain) { thumbAgain = false; setTimeout(() => makeThumbnails(), 0); }
   return made;
 }
 

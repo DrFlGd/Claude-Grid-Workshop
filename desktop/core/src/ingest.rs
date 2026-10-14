@@ -288,11 +288,20 @@ pub fn convert_params(raw: &Value) -> (Vec<Value>, Vec<String>) {
                 })
                 .collect();
             if list.iter().all(|o| !json_eq(&o["value"], &initial)) {
-                list.insert(0, json!({ "value": initial, "label": py_str(&initial) }));
+                // kept as a choice so the form can show it; reported by `limit_problems`
+                list.insert(0, json!({ "value": initial, "label": py_str(&initial), "added": true }));
             }
             out.insert("options".into(), Value::Array(list));
         } else if ty == "number" && out.contains_key("max") && out.contains_key("min") {
             out.insert("widget".into(), json!("slider"));
+        } else if ty == "number" && !out.contains_key("min") && !out.contains_key("max") {
+            // a number without a Customizer comment: the export says step 1, but OpenSCAD's own
+            // Customizer steps by the default's last decimal (1.5 -> 0.1)
+            if let (Some(d), Some(s)) = (initial.as_f64(), out.get("step").and_then(Value::as_f64)) {
+                if s == 1.0 && d.fract() != 0.0 {
+                    out.insert("step".into(), json!(decimal_step(d)));
+                }
+            }
         }
         for k in ["default", "min", "max", "step"] {
             if let Some(v) = out.get(k).cloned() {
@@ -313,6 +322,65 @@ pub fn convert_params(raw: &Value) -> (Vec<Value>, Vec<String>) {
         }
     }
     (params, groups)
+}
+
+/// The step of a number's last decimal: 1.5 -> 0.1, 0.25 -> 0.01.
+pub fn decimal_step(v: f64) -> f64 {
+    let s = format!("{v}");
+    let places = s.split_once('.').map(|(_, f)| f.len().min(6)).unwrap_or(0) as i32;
+    let step = 10f64.powi(-places);
+    format!("{step:.*}", places as usize).parse().unwrap_or(step)
+}
+
+/// Whether `v` is a whole number of `step`s from `base` (allowing for floating point).
+pub fn on_step(v: f64, base: f64, step: f64) -> bool {
+    if step <= 0.0 {
+        return true;
+    }
+    let n = (v - base) / step;
+    (n - n.round()).abs() < 1e-6
+}
+
+fn show_num(v: f64) -> String {
+    let s = format!("{v}");
+    s.strip_suffix(".0").map(String::from).unwrap_or(s)
+}
+
+/// Settings whose default doesn't fit their own limits (below the least, above the most, off the
+/// step, not one of its choices), one message each: "Width units: 1.5 isn't a step of 1 from 0".
+pub fn limit_problems(params: &[Value]) -> Vec<String> {
+    let mut out = vec![];
+    for p in params {
+        let name = p["label"].as_str().map(String::from).unwrap_or_else(|| crate::scan::humanize(p["name"].as_str().unwrap_or("")));
+        if let Some(opts) = p["options"].as_array() {
+            if opts.iter().any(|o| o["added"] == true) {
+                out.push(format!("{name}: its default, {}, isn't one of its choices", py_str(&p["default"])));
+            }
+            continue;
+        }
+        if p["type"] != "number" && p["type"] != "number[]" {
+            continue;
+        }
+        let values: Vec<f64> = match &p["default"] {
+            Value::Number(n) => n.as_f64().into_iter().collect(),
+            Value::Array(a) => a.iter().filter_map(Value::as_f64).collect(),
+            _ => continue,
+        };
+        let (min, max, step) = (p["min"].as_f64(), p["max"].as_f64(), p["step"].as_f64());
+        for v in values {
+            if let Some(m) = min.filter(|m| v < *m) {
+                out.push(format!("{name}: {} is below its least, {}", show_num(v), show_num(m)));
+            } else if let Some(m) = max.filter(|m| v > *m) {
+                out.push(format!("{name}: {} is above its most, {}", show_num(v), show_num(m)));
+            } else if let Some(s) = step.filter(|s| !on_step(v, min.unwrap_or(0.0), *s)) {
+                out.push(format!("{name}: {} isn't a step of {} from {}", show_num(v), show_num(s), show_num(min.unwrap_or(0.0))));
+            } else {
+                continue;
+            }
+            break;
+        }
+    }
+    out
 }
 
 // ------------------------------------------------------------------ editor.toml
@@ -682,10 +750,35 @@ mod tests {
         assert_eq!(p[0]["default"], json!(3));
         assert_eq!(p[0]["widget"], json!("slider"));
         assert_eq!(p[0]["description"], json!("Width"));
-        assert_eq!(p[1]["options"][0], json!({"value": "a", "label": "a"}));
+        assert_eq!(p[1]["options"][0], json!({"value": "a", "label": "a", "added": true}));
         assert_eq!(p[2]["type"], json!("number[]"));
         assert_eq!(p[2]["default"], json!([1, 2.5]));
         assert_eq!(p.len(), 3);
+    }
+
+    #[test]
+    fn defaults_fit_their_limits() {
+        // Gridfinity Anylid: `Width_Units = 1.5;` with no comment comes out of the export as step 1
+        let raw = json!({"parameters": [
+            {"name": "Width_Units", "initial": 1.5, "step": 1},
+            {"name": "Thickness_mm", "initial": 0.25, "step": 1},
+            {"name": "count", "initial": 3, "step": 1},
+            {"name": "w", "initial": 12.0, "min": 0.0, "max": 10.0, "step": 1.0},
+            {"name": "h", "initial": 2.5, "min": 0.0, "max": 10.0, "step": 1.0},
+            {"name": "angle", "initial": 0.3, "min": 0.0, "max": 1.0, "step": 0.1},
+            {"name": "style", "initial": "c", "options": [{"name": "A", "value": "a"}]}
+        ]});
+        let (p, _) = convert_params(&raw);
+        assert_eq!(p[0]["step"], json!(0.1));
+        assert_eq!(p[1]["step"], json!(0.01));
+        assert_eq!(p[2]["step"], json!(1));
+        let probs = limit_problems(&p);
+        assert_eq!(probs, vec![
+            "W: 12 is above its most, 10",
+            "H: 2.5 isn't a step of 1 from 0",
+            "Style: its default, c, isn't one of its choices",
+        ]);
+        assert_eq!(decimal_step(2.125), 0.001);
     }
 
     #[test]
