@@ -977,11 +977,14 @@ impl App {
                                 Err(e) => Err(e),
                                 Ok(_) => {
                                     let now = lib.source(&id)?;
-                                    let have: Vec<String> = lib.derived(&id, now["version"].as_str().unwrap_or(""))
-                                        .map(|d| d["models"].as_array().into_iter().flatten().filter_map(|m| m["id"].as_str().map(String::from)).collect())
-                                        .unwrap_or_default();
+                                    let d = lib.derived(&id, now["version"].as_str().unwrap_or("")).unwrap_or_default();
+                                    let have: Vec<String> = d["models"].as_array().into_iter().flatten().filter_map(|m| m["id"].as_str().map(String::from)).collect();
                                     let lost: Vec<&String> = before.iter().filter(|m| !have.contains(m)).collect();
-                                    if lost.is_empty() { Ok(()) } else { Err(anyhow!("upstream's files don't give the models {}", lost.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "))) }
+                                    // with what reading said about each, when it said something
+                                    let why = |m: &str| d["problems"].as_array().into_iter().flatten()
+                                        .find(|p| p["model"].as_str() == Some(&format!("{id}/{m}")))
+                                        .and_then(|p| p["message"].as_str()).map(|t| format!("{m} ({t})")).unwrap_or_else(|| m.to_string());
+                                    if lost.is_empty() { Ok(()) } else { Err(anyhow!("upstream's files don't give the models {}", lost.iter().map(|m| why(m)).collect::<Vec<_>>().join(", "))) }
                                 }
                             },
                         };

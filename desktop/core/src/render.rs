@@ -230,7 +230,11 @@ impl Renderer {
                 .map_err(|e| RenderFailure::failed(format!("Couldn't prepare the model files: {e:#}"), vec![]))?
         };
         let entry = rel_path(&req.entry).map_err(|e| RenderFailure::failed(e.to_string(), vec![]))?;
-        let job_dir = self.cache_dir.join("jobs").join(format!("params-{}-{}", &key[..16], std::process::id()));
+        // (one folder per call: two reads of the same file at once mustn't share one, or the first to
+        // finish removes the other's)
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let job_dir = self.cache_dir.join("jobs").join(format!("params-{}-{}-{n}", &key[..16], std::process::id()));
         let _cleanup = RemoveOnDrop(job_dir.clone());
         std::fs::create_dir_all(&job_dir).map_err(|e| RenderFailure::failed(format!("Couldn't create a job folder: {e}"), vec![]))?;
         let target = job_dir.join("params.json");

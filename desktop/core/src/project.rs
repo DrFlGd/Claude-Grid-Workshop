@@ -521,14 +521,34 @@ pub async fn ingest(
     let total = planned.len();
     let mut raws: Vec<Option<Result<Value, String>>> = vec![None; total];
     let mut done = 0;
+    let failure = |e: crate::render::RenderFailure| {
+        let tail: Vec<&String> = e.logs.iter().filter(|l| l.starts_with("ERROR") || l.starts_with("WARNING")).take(5).collect();
+        format!("{}{}", e.message, if tail.is_empty() { String::new() } else { format!(" ({})", tail.into_iter().cloned().collect::<Vec<_>>().join("; ")) })
+    };
+    let mut retry = vec![];
     while let Some(res) = set.join_next().await {
         let (i, r) = res?;
         done += 1;
         on_progress(format!("Reading settings: {done} of {total}"));
-        raws[i] = Some(r.map_err(|e| {
-            let tail: Vec<&String> = e.logs.iter().filter(|l| l.starts_with("ERROR") || l.starts_with("WARNING")).take(5).collect();
-            format!("{}{}", e.message, if tail.is_empty() { String::new() } else { format!(" ({})", tail.into_iter().cloned().collect::<Vec<_>>().join("; ")) })
-        }));
+        match r {
+            Ok(v) => raws[i] = Some(Ok(v)),
+            Err(e) => {
+                retry.push(i);
+                raws[i] = Some(Err(failure(e)));
+            }
+        }
+    }
+    // a file whose settings couldn't be read is tried once more on its own: with several OpenSCAD
+    // processes at once (and renders from the page) one can fail that reads fine alone, and a model
+    // left out is lost from the project (its saved settings, its thumbnail)
+    for i in retry {
+        let (mid, _, fmap, _, _, entry) = &planned[i];
+        let mut files = common_files.clone();
+        files.extend(fmap.clone());
+        let req = RenderRequest { model: format!("{id}/{mid}"), entry: format!("/{entry}"), files, values: Default::default(), defines: vec![], call: None };
+        if let Ok(v) = renderer.export_params(&req).await {
+            raws[i] = Some(Ok(v));
+        }
     }
     let mut models = vec![];
     for ((mid, model, fmap, editor, input_bytes, entry), raw) in planned.into_iter().zip(raws) {
