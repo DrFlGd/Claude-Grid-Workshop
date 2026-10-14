@@ -75,6 +75,7 @@ OVERFLOW = """() => { const d = document.querySelector('.dialog'); if (!d) retur
     .map((e) => e.tagName + '.' + e.className).slice(0, 5); }"""
 DONE = "()=>{const s=document.querySelector('#status');return s&&(s.classList.contains('ok')||s.classList.contains('error'))}"
 results, errors = [], []
+calls = []  # failed calls to the backend, with what they asked for and the check before them
 
 
 def check(name, ok, detail=""):
@@ -128,6 +129,8 @@ async def main():
             pg.on("console", lambda m: errors.append(f"{m.text} ({m.location.get('url', '')})") if m.type == "error" and "net::ERR_" not in m.text
                   and not ("status of 500" in m.text and m.location.get("url", "").endswith("/invoke/render")) else None)
             pg.on("dialog", lambda d: asyncio.ensure_future(d.accept()))
+            pg.on("response", lambda r: calls.append(f"{r.status} {r.url.rsplit('/', 1)[-1]} {(r.request.post_data or '')[:300]} (after: {results[-1][0][:70] if results else 'the start'})")
+                  if r.status >= 400 and "/invoke/" in r.url and not (r.status == 500 and r.url.endswith("/invoke/render")) else None)
             await pg.goto(B)
             await pg.wait_for_selector(".home .tile", timeout=120000)
             await pg.wait_for_function("() => !!window.__workshop", timeout=10000)
@@ -1399,6 +1402,8 @@ async def main():
     (out / "library-summary.json").write_text(json.dumps(s1, indent=1))
     shutil.make_archive(str(out / "library"), "zip", library)
 
+    for c in calls:
+        print("FAILED CALL:", c)
     for e in errors:
         print("PAGE ERROR:", e)
     failed = [n for n, ok in results if not ok]
