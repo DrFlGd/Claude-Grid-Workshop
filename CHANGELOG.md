@@ -82,6 +82,13 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+Milestone 4, second part (0.4.12): Make several.
+
+- **Make several…** (was Batch… in a model's ⋯ menu) can **Save to the Parts Library** as well as download a ZIP: each part goes to Made parts with its recipe, named from what varies ("Basic Bin 2×1×6", "Bevel gear 22"), so each can be opened with its settings or made again.
+- **Your saved settings can be what's made**: Make several offers them as a second way to choose (tick the ones to make). Ones saved with code edits aren't offered, since every part is made with the form's code.
+
+## 0.4.11 — 2026-10-14 · Save as part: made parts kept in the Parts Library with their recipes
+
 Milestone 4, first part (0.4.11): Save as part.
 
 - **Save as part…** under Generate and Download STL keeps what you made in the Parts Library: a name ("Basic Bin 2×2×6" to start with) and a category (the model's), made first if the preview isn't up to date. It goes in `local/Made parts/<model>/` as `<name>.stl` with `<name>.recipe.json` beside it: the model, its project and version, the settings you changed and any code edits. A message says where it went, with **Show**.

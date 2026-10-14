@@ -963,11 +963,14 @@ function updateStatusForEdits() {
   }
 }
 
-/** The sizes among a model's settings (grid units, width, depth...), for naming what it makes. */
+/** Settings that are sizes (grid units, width, depth...), for naming what a model makes. */
+const SIZE_KEYS = ["gridx", "gridy", "gridz", "Width", "Depth", "Height", "Width_Units", "Length_Units",
+  "Board_Width", "Board_Height", "shelf_width", "shelf_depth", "GridSize", "plate_size"];
+
+/** The sizes among a model's settings, for naming what it makes. */
 function sizesOf(values) {
   const dims = [];
-  for (const k of ["gridx", "gridy", "gridz", "Width", "Depth", "Height", "Width_Units", "Length_Units",
-    "Board_Width", "Board_Height", "shelf_width", "shelf_depth", "GridSize", "plate_size"]) {
+  for (const k of SIZE_KEYS) {
     if (k in values) [].concat(values[k]).forEach((x) => { if (typeof x === "number") dims.push(String(x)); });
   }
   return dims;
@@ -1030,22 +1033,33 @@ const dataUrl = (blob) => new Promise((resolve, reject) => {
   r.readAsDataURL(blob);
 });
 
+/** Write one made part and its recipe to the library (local/Made parts/<model>/). Resolves to { name, folder }. */
+async function savePartFile(m, blob, values, { name, category = null, replace = false, folder = null }) {
+  return platform.api("part_save", {
+    model: m.key, model_name: m.name, project: m.source_id || null, project_version: sourceById(m.source_id)?.version || null,
+    name, category, values: changedValues(m, values), edits: editsRecord(m), data: await dataUrl(blob), replace, folder });
+}
+
+/** After saving: read Made parts again and find a saved part's page (`#/parts/<pack>/<part>`). */
+async function madePartHref({ name, folder }) {
+  await rescanLocal(true);
+  const rel = `${folder}/${name}.stl`;
+  const lib = state.libraries.find((l) => l.items.some((i) => i.made_from && i.files[0]?.path === rel));
+  const it = lib?.items.find((i) => i.made_from && i.files[0]?.path === rel);
+  return it ? `#/parts/${lib.id}/${it.id}` : null;
+}
+
 /** Write the last render and its recipe to the library, read Made parts again, and say where it went. */
-async function writePart({ name, category = null, replace = false, folder = null }) {
+async function writePart(opts) {
   const m = state.model, blob = state.lastResult?.blob;
   if (!m || !blob) return;
   try {
     setStatus("busy", "Saving the part…");
-    const r = await platform.api("part_save", {
-      model: m.key, model_name: m.name, project: m.source_id || null, project_version: sourceById(m.source_id)?.version || null,
-      name, category, values: changedValues(m, state.lastResultValues), edits: editsRecord(m), data: await dataUrl(blob), replace, folder });
-    await rescanLocal(true);
-    const rel = `${r.folder}/${r.name}.stl`;
-    const lib = state.libraries.find((l) => l.items.some((i) => i.made_from && i.files[0]?.path === rel));
-    const it = lib?.items.find((i) => i.made_from && i.files[0]?.path === rel);
+    const r = await savePartFile(m, blob, state.lastResultValues, opts);
+    const href = await madePartHref(r);
     if (state.model === m) updateStatusForEdits();
-    toast(replace ? `Made ${r.name} again.` : `Saved ${r.name} to the Parts Library.`,
-      it ? { label: "Show", run: () => { location.hash = `#/parts/${lib.id}/${it.id}`; } } : null);
+    toast(opts.replace ? `Made ${r.name} again.` : `Saved ${r.name} to the Parts Library.`,
+      href ? { label: "Show", run: () => { location.hash = href; } } : null);
   } catch (e) {
     setStatus("error", `Couldn't save the part: ${e.message || e}`);
   }
@@ -1192,7 +1206,8 @@ $("#cancel").addEventListener("click", () => { cancelJob(); setStatus("stale", "
 
 // ---------------------------------------------------------------- batch
 const BATCH_MAX = 200;
-const batch = { rows: [], running: null };
+// what to make: combinations of settings (rows), or saved settings (Make several, milestone 4)
+const batch = { rows: [], running: null, mode: "vary", picked: new Set() };
 const batchable = () => state.model.parameters.filter((p) => !p.hidden && !Array.isArray(p.default) &&
   ["number", "string", "boolean"].includes(p.type));
 
@@ -1230,6 +1245,56 @@ function batchCombos() {
   }
   return combos;
 }
+
+/**
+ * What Make several makes: { values, file, part } for each, with the whole form's values, a file
+ * name for the ZIP, and a name for the Parts Library ("Basic Bin 2×1": the model, its sizes, and
+ * whatever else varies).
+ */
+function batchItems() {
+  const m = state.model;
+  if (batch.mode === "saved") {
+    return saved.list.filter((r) => batch.picked.has(r.id) && !hasCode(r)).map((r) => ({
+      values: withChanges(m, r.values).values, file: `${m.family}-${m.id}-${r.name}`, part: `${m.name} ${r.name}` }));
+  }
+  if (!batch.rows.length) return [];
+  return batchCombos().map((c) => {
+    const values = { ...structuredClone(state.values), ...c };
+    const other = Object.entries(c).filter(([k]) => !SIZE_KEYS.includes(k)).map(([k, v]) => {
+      const p = m.parameters.find((x) => x.name === k);
+      if (typeof v === "boolean") return v ? (p?.label || humanize(k)) : `no ${(p?.label || humanize(k)).toLowerCase()}`;
+      return p?.options?.find((o) => same(o.value, v))?.label || String(v);
+    });
+    return { values, file: `${m.family}-${m.id}-` + Object.entries(c).map(([k, v]) => `${k}-${v}`).join("-"), part: [partName(m, values), ...other].join(" ") };
+  });
+}
+
+/** A saved setting with code edits: Make several uses the form's code, so it isn't offered. */
+const hasCode = (r) => !!r.edits && Object.keys(r.edits).length > 0;
+
+function renderBatchSaved() {
+  const box = $("#batch-saved");
+  box.replaceChildren(
+    el("p", { class: "muted", text: "Each one you tick becomes its own part, with its own settings." }),
+    ...saved.list.map((r) => {
+      const cb = el("input", { type: "checkbox", value: r.id, disabled: hasCode(r), onchange: (e) => {
+        if (e.target.checked) batch.picked.add(r.id); else batch.picked.delete(r.id);
+        updateBatchCount();
+      } });
+      cb.checked = batch.picked.has(r.id) && !hasCode(r);
+      return el("label", { class: "batch-saved-row", title: hasCode(r) ? "Saved with code edits: open it to make it" : null }, cb, r.name,
+        hasCode(r) ? el("small", { class: "muted", text: " (code edited: open it to make it)" }) : null);
+    }));
+}
+
+function setBatchMode(mode) {
+  batch.mode = mode;
+  document.querySelectorAll('#batch-mode input').forEach((i) => { i.checked = i.value === mode; });
+  $("#batch-vary").hidden = mode !== "vary";
+  $("#batch-saved").hidden = mode !== "saved";
+  updateBatchCount();
+}
+document.querySelectorAll('#batch-mode input').forEach((i) => i.addEventListener("change", () => setBatchMode(i.value)));
 
 function renderBatchRows() {
   const box = $("#batch-rows");
@@ -1269,12 +1334,13 @@ function renderBatchRows() {
 }
 
 function updateBatchCount() {
-  const n = batchCombos().length;
-  const run = $("#batch-run");
+  const n = batchItems().length;
+  const run = $("#batch-run"), keep = $("#batch-keep");
   $("#batch-count").textContent = n > BATCH_MAX ? `${n} combinations: the limit is ${BATCH_MAX}. Narrow the ranges.`
-    : n ? `${n} file${n === 1 ? "" : "s"} will be made.` : "Pick at least one value.";
-  run.disabled = !n || n > BATCH_MAX || !!batch.running;
-  run.textContent = n && n <= BATCH_MAX ? `Generate ${n} and download ZIP` : "Generate";
+    : n ? `${plural(n, "part")} will be made.` : batch.mode === "saved" ? "Tick at least one." : "Pick at least one value.";
+  run.disabled = keep.disabled = !n || n > BATCH_MAX || !!batch.running;
+  run.textContent = n && n <= BATCH_MAX ? `Make ${n} and download ZIP` : "Make and download ZIP";
+  keep.textContent = n && n <= BATCH_MAX ? `Save ${n} to the Parts Library` : "Save to the Parts Library";
 }
 
 $("#batch-open").addEventListener("click", () => {
@@ -1286,9 +1352,17 @@ $("#batch-open").addEventListener("click", () => {
     const guess = params.find((p) => p.type === "number" && /len|length|size|width|height|grid/i.test(p.name)) ||
       params.find((p) => p.type === "number") || params[0];
     batch.rows = guess ? [batchRow(guess)] : [];
+    batch.picked = new Set();
+    batch.mode = "vary";
   }
   $("#batch-progress").hidden = true;
+  // saved settings as another way to choose (when there are any); the Parts Library as another way out (the app)
+  $("#batch-mode").hidden = !saved.list.length;
+  if (!saved.list.length) batch.mode = "vary";
+  $("#batch-keep").hidden = platform.kind !== "desktop" || !!state.catalog.library?.read_only;
   renderBatchRows();
+  renderBatchSaved();
+  setBatchMode(batch.mode);
   $("#batch").showModal();
 });
 $("#batch-add").addEventListener("click", () => {
@@ -1302,9 +1376,13 @@ $("#batch-close").addEventListener("click", () => {
 });
 $("#batch").addEventListener("cancel", () => { if (batch.running) { batch.running.cancel(); batch.running = null; } });
 
-$("#batch-run").addEventListener("click", async () => {
+$("#batch-run").addEventListener("click", () => runBatch(false));
+$("#batch-keep").addEventListener("click", () => runBatch(true));
+
+/** Make every part Make several lists, then download them as one ZIP or (keep) save each to the Parts Library. */
+async function runBatch(keep) {
   const model = state.model;
-  const combos = batchCombos();
+  const combos = batchItems();
   if (!combos.length || combos.length > BATCH_MAX) return;
   cancelJob();
   const files = [];
@@ -1323,13 +1401,13 @@ $("#batch-run").addEventListener("click", async () => {
   const progress = () => {
     bar.style.width = `${(done / combos.length) * 100}%`;
     text.textContent = width > 1 ? `Making ${combos.length} parts, ${width} at a time: ${done} done`
-      : `Making ${Math.min(done + 1, combos.length)} of ${combos.length}: ${Object.entries(combos[Math.min(done, combos.length - 1)]).map(([k, v]) => `${humanize(k)} ${v}`).join(", ")}`;
+      : `Making ${Math.min(done + 1, combos.length)} of ${combos.length}: ${combos[Math.min(done, combos.length - 1)].part}`;
   };
   const worker = async () => {
     while (next < combos.length) {
       if (run.cancelled) throw Object.assign(new Error("Batch cancelled."), { cancelled: true });
       const i = next++;
-      const values = { ...structuredClone(state.values), ...combos[i] };
+      const { values } = combos[i];
       const job = state.engine.render(forRender(model), renderValues(model, values));
       run.jobs.add(job);
       try { results[i] = { values, result: await job.promise }; } finally { run.jobs.delete(job); }
@@ -1340,8 +1418,27 @@ $("#batch-run").addEventListener("click", async () => {
   try {
     progress();
     await Promise.all(Array.from({ length: width }, worker));
+    if (keep) {
+      // each to local/Made parts/<model>/ with its recipe, named from what varies
+      let first = null;
+      for (let i = 0; i < combos.length; i++) {
+        if (run.cancelled) throw Object.assign(new Error("Batch cancelled."), { cancelled: true });
+        text.textContent = `Saving ${i + 1} of ${combos.length} to the Parts Library…`;
+        const r = await savePartFile(model, results[i].result.blob, results[i].values, { name: combos[i].part, category: model.kind === "component" ? null : model.category || null });
+        first ||= r;
+      }
+      const href = await madePartHref(first);
+      text.textContent = `Done: ${plural(combos.length, "part")} saved to the Parts Library under Made parts › ${first.folder}, in ${Math.round((Date.now() - started) / 1000)} s.`;
+      toast(`Saved ${plural(combos.length, "part")} to the Parts Library.`, href ? { label: "Show", run: () => { $("#batch").close(); location.hash = href; } } : null);
+      const last = results[combos.length - 1];
+      state.viewerOwner = "model";
+      await showResult(last.result, last.values, true, editsKey(editsOf(model.key)));
+      bar.style.width = "100%";
+      setStatus("ok", `${plural(combos.length, "part")} saved to the Parts Library. The preview shows the last one.`);
+      return;
+    }
     for (let i = 0; i < combos.length; i++) {
-      let name = `${model.family}-${model.id}-` + Object.entries(combos[i]).map(([k, v]) => `${k}-${v}`).join("-");
+      let name = combos[i].file;
       name = name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 140);
       while (names.has(name)) name += "_";
       names.add(name);
@@ -1358,12 +1455,12 @@ $("#batch-run").addEventListener("click", async () => {
       (saved === null ? "Not saved." : saved ? `Saved to ${saved}.` : "Your download has started.");
     setStatus("ok", `Batch of ${files.length} ${saved === null ? "made" : saved ? "saved" : "downloaded"}. The preview shows the last one.`);
   } catch (e) {
-    text.textContent = e.cancelled ? "Batch cancelled. Nothing was downloaded." : `Stopped: ${e.message}`;
+    text.textContent = e.cancelled ? `Cancelled. ${keep ? "Parts already saved stay in the Parts Library." : "Nothing was downloaded."}` : `Stopped: ${e.message}`;
   } finally {
     batch.running = null;
     updateBatchCount();
   }
-});
+}
 
 // ---------------------------------------------------------------- part libraries
 async function openLibrary(libId, itemId) {

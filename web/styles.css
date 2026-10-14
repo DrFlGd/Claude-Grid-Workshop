@@ -388,8 +388,13 @@ body.show-help .field .help { display: block; }
 .batch-progress { display: grid; gap: 6px; font-size: 13px; color: var(--graphite); }
 .progress-bar { height: 6px; background: var(--steel); border-radius: 3px; overflow: hidden; }
 .progress-bar span { display: block; height: 100%; width: 0; background: var(--tool); transition: width .2s; }
-.batch-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.batch-actions .primary { padding: 10px 16px; }
+.batch-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.batch-actions .primary, .batch-actions .secondary { padding: 10px 16px; }
+#batch-vary { display: grid; gap: 12px; }
+#batch-vary[hidden], #batch-saved[hidden] { display: none; }
+.batch-mode { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; font-weight: 600; }
+.batch-mode label, .batch-saved-row { display: flex; gap: 6px; align-items: center; }
+.batch-saved { display: grid; gap: 6px; max-height: 260px; overflow: auto; font-size: 13.5px; }
 
 /* ---- licenses page and footer ----------------------------------------- */
 .about { max-width: 1040px; min-width: 0; }

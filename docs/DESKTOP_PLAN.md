@@ -950,7 +950,7 @@ Only the changed values are stored (as saved settings do), with the code edits w
 
 **F-15: a folder of example files.** When reading a project finds one folder with more than 20 files that draw something, each of which only includes or uses the same main file and calls one of its modules (LEGO.scad's `examples/`), the project page asks once: **List them as models** (as today), **Make them parts** (each is rendered once at its own values into the project's parts, through the same queue, so they're browsable without 180 forms), or **Leave them out**. The answer is kept in the project's `metadata.json` (`examples: { "folder": "examples", "as": "parts" }`) so it holds across updates, and `catalog/suggested.json` can carry it for LEGO.scad. Gears' `examples/` (18 files with settings of their own) isn't asked about: the rule needs files that are only calls.
 
-**Order:** 0.4.11 Save as part and made parts' pages (recipe, Open with these settings, Make again); 0.4.12 Make several (Batch to the Parts Library, saved settings as rows) and F-15. Review 4 follows.
+**Order:** 0.4.11 Save as part and made parts' pages (recipe, Open with these settings, Make again); 0.4.12 Make several (Batch to the Parts Library, saved settings as rows); 0.4.13 F-15. Review 4 follows.
 
 ### 0.4.11 notes
 
@@ -961,3 +961,12 @@ Save as part and made parts' pages, built as planned, except:
 - **A made part carries its project's license** (the edited one when you've changed it), since what's made from a project is under its license.
 - **Your own projects' part files** (in `local/` or linked) were looked for in a stored copy that only added projects have, so their previews, thumbnails and downloads failed. Their files are now read where the project is (`library/local/<name>/…`, `library/~linked/<id>/…`), and the backend's `read` serves `library/` paths the same way as the `library://` protocol.
 - The recipe keeps the code edits as saved settings do (`{ path: { text, base } }`), so an edited part opens with the same code.
+
+### 0.4.12 notes
+
+Make several, built as planned, except:
+
+- **F-15 moves to 0.4.13**, so Make several ships on its own: example folders made into parts need their own place for the made files in an added project (whose stored copy never changes) and a queue that survives closing the app, which is more than a dialog.
+- The dialog chooses **either** combinations of settings **or** saved settings ("Vary settings" or "Your saved settings", shown when the model has saved settings), rather than mixing them as rows. Saved settings with code edits aren't offered: the parts are made with the form's code.
+- Parts are named by the model, its sizes and whatever else varies (a choice by its label, a yes/no by its name), or by the saved setting's name ("Basic Bin Drawer wide"). Two with the same name get " 2" from the backend, as Save as part does.
+- Made parts are filed under the model's category, with no dialog to ask: Edit details changes it afterwards.

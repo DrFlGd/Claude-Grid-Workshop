@@ -1067,6 +1067,20 @@ async def main():
             await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear' && location.hash==='#/m/local-bevel/bevel-gear'")
             await pg.wait_for_function(DONE, timeout=300000)
             check("Open with these settings opens the model and makes it", "matches" in await pg.inner_text("#status"))
+            # (0.4.12) Make several… saves each part to the Parts Library, named from the setting that varies
+            await pg.click("#model-more summary")
+            await pg.click("#batch-open")
+            await pg.wait_for_selector("#batch[open] .batch-range input")
+            ins = pg.locator(".batch-range input")
+            for i, v in enumerate(("20", "24", "2")):
+                await ins.nth(i).fill(v)
+            await pg.click("#batch-keep")
+            await pg.wait_for_function(toast_js, arg="Saved 3 parts", timeout=300000)
+            several = sorted(f.name for f in made[0].parent.glob("*.stl"))
+            several_recipes = [json.loads(f.read_text()).get("model") for f in made[0].parent.glob("*.recipe.json")]
+            await pg.click("#batch-close")
+            check("Make several saves each part to the Parts Library with its recipe, named from what varies",
+                  len(several) == 4 and several_recipes.count("local-bevel/bevel-gear") == 4, several)
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"
