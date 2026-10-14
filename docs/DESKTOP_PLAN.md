@@ -10,6 +10,7 @@ Status (2026-10-05):
 - **Phase 2 done:** the portable library, adding projects, update checks, metadata editing; see "Phase 2 notes" at the end.
 - **0.2.x (Phase 2 follow-ups):** numbered releases, the left menu by category (Parametric Models and Parts Library), Library settings, hide / delete / flag as broken, the trash; see "0.2 notes" at the end.
 - **Phase 3 done (0.3):** bundled libraries and their modules as **Components**, pinning, the form editor; see "Components" in section 2 and "0.3 notes" at the end.
+- **Next (owner, 2026-10-14):** five milestones and a review after each; see "Owner direction of 2026-10-14".
 - **Phase 4 (0.4) started:** the side viewer (a model's code, a project's reference documents) in 0.4.0; see "Reference documents and the side viewer" in section 5. Next: importing ready-made models and Printables ZIPs, one item per file name, 3MF export, collections.
 
 ## Goal
@@ -528,12 +529,18 @@ The app notices changes by itself only in `local/` projects and linked folders, 
 
 ### 6. A standard project folder layout (the owner's question: should there be one?)
 
+Now part of milestone 3, "Consistent projects", in "Owner direction of 2026-10-14" below.
+
+
 **Recommendation: yes, as a convention the app reads when it's present, never a requirement.** Projects from GitHub, Printables and ZIPs arrive in whatever shape their authors chose, so the app must keep guessing well; but a project you make yourself, or tidy up, should be able to say exactly what it is.
 
 - **The layout:** a `workshop.json` at the project's top level naming its models (file, name, picture, category), the files that are library code only, its documents and pictures, and its license and authors. Suggested folders: `models/` (the `.scad` files to open), `lib/` (included code), `parts/` (ready-made STL/3MF/STEP), `docs/`, `images/`. Without `workshop.json` the app guesses as now; with it, it doesn't guess. The app can write one for you from what it found plus your edits (**Save as project file**), which makes a project portable to another library or a fresh install with no work.
 - **Relation to today:** `editor.toml` (settings forms) and the family manifests in `catalog/families/` (the website's models) already do part of this; `workshop.json` should reuse the family manifest's shape so one reader serves both. It also settles the Birdhouse kind of case: the project says which file is the engine.
 
 ### 7. Open a .scad file without adding it, and generate from it
+
+**On hold** (owner, 2026-10-14).
+
 
 Today a `.scad` file only gets a page after it's added to the library (as a ZIP, a folder, or dropped into `local/`).
 
@@ -565,6 +572,60 @@ This moves "Multiple libraries" out of the future options below and makes it a r
 ### Bug: Birdhouse Workshop shows only Castle and Engine
 
 Reported with the project's folder from the library (`zip-birdhouse-workshop-main`). Triage: see "0.5 notes" at the end.
+
+## Owner direction of 2026-10-14 (next: 0.4.4 onwards)
+
+After reviewing the project at 0.4.3, the owner set the direction for the next releases. In the owner's words, "the major work that needs to be done is increase the consistency of the workflow so that imported scad files work more consistently, default values are valid, the file structure is consistent across files and generators regardless of source (while maintaining the ability to conduct update checks from source)."
+
+### What changes in the plan
+
+- **Item 7 (open a .scad file without adding it) is on hold** until the owner brings it back.
+- **Consistency is the main theme** (below). Item 6 (a standard project layout, `workshop.json`) becomes part of it rather than a feature of its own.
+- **Periodic reviews** of the interface and of the library's file structure (below), as Model Library does after each group.
+- **Reuse from Model Library** ([DrFlGd/Model-Library](https://github.com/DrFlGd/Model-Library), the owner's other app, which began as a trimmed copy of this one): its **skins** first, then whatever else fits (below).
+
+### Milestones, in order
+
+Each milestone is a release (0.4.x while Phase 4 runs) and is followed by a review. The order can change after any review.
+
+| # | Milestone | Done when |
+| --- | --- | --- |
+| 1 | **Rename clean-up.** Links and text that still say Claude-Grid-Workshop (README, CHANGELOG, this plan, the app's releases link) point at SCAD-Workshop; the website's address is the new one; 0.4.3's notes move out of Unreleased. | No old addresses left except where history is described; the website and the app's releases link open |
+| 2 | **Skins from Model Library.** Drafting Sheet, Parts Bin, Layer Line and Classic (today's look), chosen in Settings, on the website and in the app (design below). | Every page looks right in each skin, light, dark and night, in the website test and the app test screenshots |
+| 3 | **Consistent projects** (design below): one project description for every source, defaults that render, a check for every model on import, and the `workshop.json` layout. | The consistency checks below pass for the 19 starter projects and the test projects; an update from GitHub still compares against upstream's own files |
+| 4 | **Make parts from a generator** (item 8): Save as part and Make several…, with recipes. | As in item 8 |
+| 5 | **The rest of Phase 4:** importing STL/3MF/OBJ/STEP and Printables ZIPs (with Model Library's readers where they fit), one item per file name with a format picker, multi-colour and multi-part 3MF, collections, ZIP export. | Phase 4's "done when" in the Phases table |
+
+Items 1, 2 and 9 of the requests of 2026-10-12 (pictures, your own content, several libraries) come after these, unless a review moves them up.
+
+### Consistency: what it means and how it's checked
+
+Today a project's shape depends on where it came from: the built-in generators are described by hand-written family manifests (`catalog/families/*.json`, with `ui` overlays) and arrive as starter projects; projects added from GitHub, ZIPs and folders are described by what reading guessed (`derived/<version>.json`); `local/` and linked projects are read when they change; components and pinned components, lifted copies (`generated/`) and saved settings each have their own records. The aim is that every project, whatever its source, ends up described the same way, with the same guarantees, while its upstream files stay untouched so updates can still be checked against the source.
+
+- **One project description.** Every project has the same description in the library, in the shape of a family manifest (models with entrypoints, library folders, settings overlays, presets, license, authors, links, documents, pictures), whether it was written by hand (`workshop.json` in the project, a family manifest for the built-ins) or found by reading. What reading found and what you edited stay separate (as `derived/` and `metadata.json` are now), and one reader serves the website build, the starter library and added projects.
+- **Upstream files stay as they came** in `files/<version>/`, so an update still downloads the new version beside the old one and compares them. Anything the app makes (lifted copies, the description, thumbnails) lives beside them, never inside.
+- **`workshop.json`** (item 6): a project can carry its own description at its top level; when present the app uses it instead of guessing. **Save as project file** writes one from what reading found plus your edits.
+- **Defaults that work.** When a project is read, every model is rendered once at its defaults (natively, in the background, like the bench). A model that fails is listed under Needs attention with OpenSCAD's message, and the reason is kept with the project. Settings whose default is outside its own range or choices, or empty when required, are reported the same way. Components get the same check (today about 370 of 796 open with required settings empty).
+- **The same checks in CI** for the starter projects and a set of test projects of different shapes (Gears, LEGO.scad, Birdhouse, a library-only project, a ZIP with its files in a subfolder).
+
+The detailed design (formats, commands, what changes in `derived/`) is written here before it's built, as usual.
+
+### Periodic reviews
+
+After each milestone, a review in two parts, published as a page for the owner with numbered items, ranked, each with a recommended fix (Model Library's R17 is the model for this):
+
+- **Interface:** every page in the website and the app (screenshots from CI at two window sizes, light and dark, and each skin once skins land), looking for inconsistent wording, layout, controls and behaviour between pages.
+- **Library file structure:** a library built from the starter projects and the test projects, looking at how each project is stored (`source.json`, `metadata.json`, `derived/`, `generated/`, recipes, thumbnails), for differences between sources, files that can't be explained without the app, and anything that would break an update check or a move to another computer.
+
+The owner picks which items to take; they ship in the next release, and the review is noted under "Review N" in the notes at the end.
+
+### Reusing Model Library's work
+
+Model Library began as a trimmed copy of this repository (its Tauri shell, command table, library folder code and Preact interface), so its code fits here with little change. In order of use:
+
+- **Skins** (its 0.5.19 and 0.5.20; its plan's "Skins design"). The skin is `data-skin` on the page's root beside `data-theme`; each skin is a block of colour names in `web/styles.css` for light and dark, plus names for what used to be written in place (`--font-head`, `--font-mono`, `--radius-s`, `--radius-m`, `--accent-hover`, `--accent-edge`, `--chrome-ink`, the icon line `--icon-stroke`, `--icon-cap`, `--icon-join`). Icons keep their names and follow the skin's line; anything a skin adds beyond colours (grid paper, tape labels, layer lines) is a few rules under its `data-skin`, never a change to the pages' markup. Fonts (all SIL OFL) are bundled into the app by `tools/build_desktop.py --fetch-fonts` and come from Google Fonts on the website. The skins: **Drafting Sheet** (technical drawing: square corners, fine rules, drafting blue, Overpass and Overpass Mono), **Parts Bin** (workshop drawers: machine-tool green, Sofia Sans, label-tape headings, pegboard), **Layer Line** (print bed and filament: silk magenta, M PLUS Rounded 1c and Atkinson Hyperlegible, pill shapes, layer lines) and **Classic** (today's look). The choice is per computer, in Settings beside Theme.
+- **Later, where they fit Phase 4:** `mesh.rs` (reading STL, OBJ and 3MF, with 3MF colours and the picture a slicer saved), `archive.rs` (7z and RAR beside ZIP), `dupes.rs` (duplicates by fingerprint and SHA-256), `watch.rs` (a folder watcher, for live reload and Scan for changes), the journal with Undo for changes that move files, and the About page with the changelog.
+- **Lessons:** a review after each group of work keeps the interface consistent; the library folder must make sense without the app (keep unknown keys, sorted JSON, never a database); one action list per kind of thing, used by every menu and bar.
 
 ## Future and experimental options
 

@@ -72,6 +72,7 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ### Requested and waiting (roadmap)
 
+- **Now (owner, 2026-10-14):** see "Owner direction of 2026-10-14" in `docs/DESKTOP_PLAN.md`: (1) rename clean-up, (2) skins from Model Library, (3) consistent projects whatever their source (one description, defaults that render, `workshop.json`; update checks kept), (4) make parts from a generator, (5) the rest of Phase 4; a review of the interface and the library's file structure after each. Opening a `.scad` file without adding it is on hold.
 - **Phase 4 (0.4), model library and file formats:** the side viewer and reference documents are done (0.4.0); settings borrowed from the library and editing code in the viewer (0.4.1); still to do: collections; importing STL/3MF/OBJ/STEP; Printables ZIPs with their PDF metadata; a scratch pad of notes per part (owner, later); one item per file name with a download format picker; multi-colour and multi-part 3MF; recipes, quantities, notes, status; ZIP export; more metadata filters (creator, license family, date added).
 - **Phase 5:** batch from CSV, sweeps, 3MF arranged on the bed, send to slicer, live reload of a watched `.scad` file.
 - **Owner requests of 2026-10-12 (order to be chosen):** done in 0.4.3: category pickers that list every category; grouping (Condense) with a selection; scan the library for changes; library backups. Still to do: pick the picture shown for any item; add your own content (videos, documents, pictures, links) to a model, component or part; a standard project layout (`workshop.json`, read when present); open a `.scad` file without adding it; save generator output (one or a batch) as ready-made parts; several libraries open at once, each item labelled with its library. The Birdhouse bug was fixed in 0.4.2. Each is described in "Owner requests of 2026-10-12" in `docs/DESKTOP_PLAN.md`.
@@ -81,6 +82,10 @@ The development sandbox has a network allowlist and is reset between sessions (t
 ---
 
 ## Unreleased
+
+- **Roadmap: the owner's direction of 2026-10-14** in `docs/DESKTOP_PLAN.md` ("Owner direction of 2026-10-14"): consistency of imported projects is the main theme (one project description for every source, defaults that render, `workshop.json`), a review of the interface and of the library's file structure after each milestone, skins and other work reused from Model Library, and five milestones in order (rename clean-up, skins, consistent projects, making parts from a generator, the rest of Phase 4). Opening a `.scad` file without adding it is on hold. Documentation only.
+
+## 0.4.3 — 2026-10-12 · Category picker, Condense with a selection, Scan for changes, backups
 
 0.4.3: the small and mid-sized requests of 2026-10-12, as the owner asked (items 3, 4, 5 and 10 of "Owner requests of 2026-10-12" in `docs/DESKTOP_PLAN.md`), before reviewing priorities.
 
@@ -287,3 +292,4 @@ What the owner asked for, so the reasons behind the design stay visible. From th
 22. After using 0.4.1: choose an icon or picture for an object; add content (video, documents…) to a model, component or part; category drop-downs that show the other categories; grouping behaves strangely after selecting something and turning Condense off; scan the library for changes; should there be a standard folder format?; open a .scad file with or without importing it and generate models; make single or batch parts from a generator into the ready-made parts; several libraries open at once, showing which library an item is from; library backups as a ZIP through a save dialog. Bug: Birdhouse Workshop shows only Castle and Engine → "Owner requests of 2026-10-12" in the plan.
 23. Make the Birdhouse fix (the owner re-imports Birdhouse to test it), then work through the 0.5 features → 0.4.2.
 24. Start with the small and mid-sized requests (category picker, grouping, scan for changes, backups), release, then review priorities → 0.4.3.
+25. After a review of the project at 0.4.3: put opening a `.scad` file without adding it on hold; periodic reviews of the interface and the library's file structure; the major work is consistency (imported SCAD files that work more consistently, valid default values, one file structure for files and generators whatever their source, keeping update checks from the source); reuse lessons and features from Model Library, the skins first; then the remaining milestones → "Owner direction of 2026-10-14" in the plan.
