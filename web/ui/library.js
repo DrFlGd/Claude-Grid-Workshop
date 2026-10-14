@@ -237,6 +237,25 @@ function ExamplesChoice({ src }) {
   </div>`;
 }
 
+/** Parts that look like one ("latch_v2.stl" beside "latch.3mf", milestone 5): made one on request. */
+function NearMisses({ src }) {
+  const [busy, setBusy] = useState(false);
+  const near = src.near_misses || [];
+  if (!near.length || readOnly()) return null;
+  const merge = async (ids) => {
+    setBusy(true);
+    try {
+      await api("parts_merge", { source: src.id, ids });
+      await ctx.reloadCatalog();
+      ctx.toast("Made one part. Its page can split it again.");
+    } catch (e) { ctx.toast(String(e.message || e)); } finally { setBusy(false); }
+  };
+  return html`<div class="info-note near-misses" id="near-misses">
+    <p><b>${near.length === 1 ? "These look like one part" : `${near.length} groups of files look like one part each`}</b>: their names differ only by a version or copy mark, and they have no format in common.</p>
+    <ul>${near.map((g) => html`<li>${listText(g.names)} <button type="button" class="link-btn" disabled=${busy} data-merge=${g.ids.join(",")} onClick=${() => merge(g.ids)}>Make one part</button></li>`)}</ul>
+  </div>`;
+}
+
 export function SourcePanel({ id }) {
   const v = useStore(ui, (s) => s.catalogVersion);
   // the parts you've made from models (local/Made parts/): no source of its own to show, read or keep versions of (UI-28)
@@ -315,6 +334,7 @@ export function SourcePanel({ id }) {
     </div>
     <${UpdateBanner} src=${src} />
     <${ExamplesChoice} src=${src} />
+    <${NearMisses} src=${src} />
     ${src.kind === "bundled" && src.update?.state === "upstream" ? html`<p class="lic-summary" id="upstream-newer">A newer version is on GitHub, from ${when(src.update.latest?.date)}${src.update.latest?.ahead_by ? ` (${plural(src.update.latest.ahead_by, "change")} since the app's copy)` : ""}.
       ${origin.not_updatable ? html` This copy can't be updated in place because ${origin.not_updatable}: <a href=${origin.repository} target="_blank" rel="noopener">add it from GitHub</a> to follow it.`
         : html` <a href="#/library-settings/projects">Get it from GitHub</a> (Library settings) to follow it.`}</p>` : null}

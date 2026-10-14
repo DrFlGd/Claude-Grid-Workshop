@@ -85,7 +85,16 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 - Milestone 5 planned in docs/DESKTOP_PLAN.md, "Ready-made models and collections design": previews from 3MF and OBJ and dropping files on the window (0.4.14), one download with a format picker (0.4.15), Printables ZIPs (0.4.16, then Review 5), collections with ZIP export (0.4.17), multi-colour and multi-part 3MF (0.4.18, then Review 6), reusing Model Library's mesh reader, duplicate check and drop handling.
 
-Milestone 5, first part (0.4.14): ready-made parts look and come in like generated ones.
+Milestone 5, second part (0.4.15): one download with a format picker.
+
+- **A part with several formats has one Download** with the format beside it (STL · 3MF · STEP …). It offers the format you last chose for that part, else Settings › Downloads › **Preferred format** ("STL where there is one", "3MF where there is one, otherwise STL" or "STEP where there is one, otherwise STL"). Parts with labelled variants keep a button per file.
+- **A model's render downloads as STL or 3MF**, picked beside Download and kept per model; the 3MF is written by the app from the render (one object, named after the model).
+- **Near misses:** files in one folder whose names differ only by a version or copy mark (`latch_v2.stl` beside `latch.3mf`) and share no format are listed on the project's page with **Make one part**. A part made one says so on its page, with **Split into separate parts**. Kept in the project's `metadata.json` (`merged`), so it holds when the project is read again or updated.
+- CI: checks for the part and model pickers (the 3MF read back), and a near miss made one and split.
+
+## 0.4.14 — 2026-10-14 · Milestone 5, first part: 3MF and OBJ previews, dropping files on the window, duplicates named
+
+Ready-made parts look and come in like generated ones. 72 of 72 acceptance checks, on the third run (two fixes below).
 
 - **3MF and OBJ parts show in 3D.** A part's 3D view and thumbnail now come from its 3MF, then STL, then OBJ (before, only an STL gave a 3D view). The app reads the file with Model Library's mesh reader and hands the viewer an STL. A 3MF with colours of its own shows them when you tick **Show the file's colours** on the part's page (kept for next time); otherwise it's drawn in the filament colour. A 3MF's own picture (the one its slicer saved) is its thumbnail.
 - **Drop files, folders and ZIPs on the window** to add them. A dialog offers **Add as a project** (copied into the library, like Add project; loose files become one project, named as you like, and each folder or ZIP its own), **Add to <project>** when one of your own projects is open, or **Add as a project of your own** (a new folder in `local/`). A hint shows while dragging.

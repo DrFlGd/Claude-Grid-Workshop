@@ -38,6 +38,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import zipfile
 
 import model_files
 from pathlib import Path
@@ -1244,6 +1245,59 @@ async def main():
             check("a file dropped on one of your own projects is copied into its folder and listed",
                   (library / "local/blocks/spacer.stl").is_file()
                   and await pg.evaluate("() => window.__workshop.index.items.some((i) => i.projectId === 'local-blocks' && i.name === 'Spacer')"), None)
+
+            # 13j. (0.4.15) one Download with a format picker, remembered per part and per model; a model's
+            # render as 3MF; near misses made one part and split again
+            await pg.goto(B + latch)
+            await pg.wait_for_selector("#part-format", timeout=30000)
+            part_formats = await pg.evaluate("() => [...document.querySelectorAll('#part-format option')].map((o) => o.value)")
+            first_pick = await pg.evaluate("() => document.querySelector('#part-format').value")
+            await pg.select_option("#part-format", "3mf")
+            await pg.goto(B + "#/")
+            await pg.goto(B + latch)
+            await pg.wait_for_selector("#part-format", timeout=30000)
+            kept_pick = await pg.evaluate("() => [document.querySelector('#part-format').value, document.querySelector('#part-download').textContent, document.querySelector('#part-download').getAttribute('download')]")
+            await pg.screenshot(path=str(out / "m5-03-format-picker.png"))
+            check("a part with several formats has one Download with a format picker, STL first by default, the choice kept for that part",
+                  sorted(part_formats) == ["3mf", "stl"] and first_pick == "stl" and kept_pick[0] == "3mf" and "3MF" in kept_pick[1] and kept_pick[2] == "latch.3mf",
+                  (part_formats, first_pick, kept_pick))
+            await pg.goto(B + "#/m/local-bevel/bevel-gear")
+            await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear'", timeout=60000)
+            await pg.wait_for_function("() => !document.querySelector('#download').classList.contains('is-disabled')", timeout=300000)
+            await pg.select_option("#download-format", "3mf")
+            await pg.wait_for_function("() => (document.querySelector('#download').getAttribute('download') || '').endsWith('.3mf')", timeout=30000)
+            before_3mf = set(saved_stl.glob("*.3mf"))
+            await pg.click("#download")
+            for _ in range(50):
+                if set(saved_stl.glob("*.3mf")) - before_3mf:
+                    break
+                await pg.wait_for_timeout(200)
+            new_3mf = sorted(set(saved_stl.glob("*.3mf")) - before_3mf)
+            names_3mf = zipfile.ZipFile(new_3mf[0]).namelist() if new_3mf else []
+            check("a model's render downloads as 3MF when chosen", "3D/3dmodel.model" in names_3mf, (new_3mf, names_3mf))
+            near = library / "local" / "near"
+            near.mkdir(parents=True, exist_ok=True)
+            model_files.write_3mf(near / "clip.3mf")
+            model_files.write_stl(near / "clip_v2.stl")
+            await pg.evaluate("import('/ui/library.js').then(async (m) => { await m.rescanLocal(false); await m.rescanLocal(false); })")
+            await pg.goto(B + "#/browse/source/local-near")
+            near_js = "() => window.__workshop.index.items.filter((i) => i.projectId === 'local-near').map((i) => i.files.map((f) => f.format).sort().join('+')).sort()"
+            near_before = near_after = near_split = None
+            try:
+                await pg.wait_for_selector("#near-misses [data-merge]", timeout=60000)
+                near_before = await pg.evaluate(near_js)
+                await pg.click("#near-misses [data-merge]")
+                await pg.wait_for_function(f"() => ({near_js})().length === 1", timeout=30000)
+                near_after = await pg.evaluate(near_js)
+                await pg.goto(B + await pg.evaluate("() => window.__workshop.index.items.find((i) => i.projectId === 'local-near').href"))
+                await pg.wait_for_selector("#part-split", timeout=20000)
+                await pg.click("#part-split")
+                await pg.wait_for_function(f"() => ({near_js})().length === 2", timeout=30000)
+                near_split = await pg.evaluate(near_js)
+            except Exception as e:
+                print("near misses:", e)
+            check("files whose names differ by a version mark are offered as one part, made one, and split again",
+                  near_before == ["3mf", "stl"] and near_after == ["3mf+stl"] and near_split == ["3mf", "stl"], (near_before, near_after, near_split))
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"

@@ -960,7 +960,7 @@ function updateStatusForEdits() {
   const codeSame = (state.renderedEdits || "") === editsKey(editsOf(state.model.key));
   if (valuesSame && codeSame) {
     setStatus("ok", "Preview matches your settings.");
-    if (!a.classList.contains("is-disabled")) a.textContent = "Download STL";
+    if (!a.classList.contains("is-disabled")) a.textContent = `Download ${FORMAT_LABEL[state.downloadFormat] || "STL"}`;
   } else if (state.rendered) {
     setStatus("stale", valuesSame ? "Code changed. Generate to update the preview and download." : "Settings changed. Generate to update the preview and download.");
     if (!a.classList.contains("is-disabled")) a.textContent = "Download last render";
@@ -989,15 +989,61 @@ function friendlyName(model, values) {
 }
 
 function setDownload(blob, name) {
-  const a = $("#download");
+  state.lastStl = blob ? { blob, name: name || "model.stl" } : null;
+  return applyDownloadFormat();
+}
+
+// ---------------------------------------------------------------- download formats (milestone 5)
+// A model's render downloads as STL or 3MF (the core writes the 3MF from the render); a part with
+// several formats has one Download button and a format beside it. The choice is kept per model or
+// part, and Settings › Downloads gives the default.
+const PREFERRED = [["stl", "STL where there is one"], ["3mf", "3MF where there is one, otherwise STL"], ["step", "STEP where there is one, otherwise STL"]];
+const preferredFormat = () => store.prefs.get("gw-format-pref") || "stl";
+/** The format to offer first among `formats` (["stl", "3mf", ...]): the one last chosen for `key`, else Settings' rule. */
+function pickFormat(key, formats) {
+  const last = (store.prefs.get("gw-formats", {}) || {})[key];
+  if (last && formats.includes(last)) return last;
+  const pref = preferredFormat();
+  return formats.includes(pref) ? pref : formats.includes("stl") ? "stl" : formats[0];
+}
+function rememberFormat(key, fmt) {
+  store.prefs.set("gw-formats", { ...(store.prefs.get("gw-formats", {}) || {}), [key]: fmt });
+}
+
+let formatJob = 0;
+async function applyDownloadFormat() {
+  const a = $("#download"), sel = $("#download-format");
+  const desktop = platform.kind === "desktop";
+  sel.hidden = !desktop;
+  const fmt = desktop && state.model ? pickFormat(state.model.key, ["stl", "3mf"]) : "stl";
+  sel.value = fmt;
+  state.downloadFormat = fmt;
+  const job = ++formatJob;
+  const last = state.lastStl;
+  let blob = last?.blob || null, name = last?.name || "model.stl";
+  if (blob && fmt === "3mf") {
+    try {
+      const bytes = await platform.apiBytes("to_3mf", { data: await dataUrl(blob), name: state.model?.name || "Model" });
+      blob = new Blob([bytes], { type: "model/3mf" });
+      name = name.replace(/\.stl$/i, ".3mf");
+    } catch (e) {
+      toast(`Couldn't make the 3MF: ${e?.message || e}`);
+    }
+  }
+  if (job !== formatJob) return;
   if (state.downloadUrl) URL.revokeObjectURL(state.downloadUrl);
   state.downloadUrl = blob ? URL.createObjectURL(blob) : null;
   a.href = state.downloadUrl || "#";
-  a.download = name || "model.stl";
+  a.download = name;
   a.classList.toggle("is-disabled", !blob);
   if (blob) a.removeAttribute("aria-disabled"); else a.setAttribute("aria-disabled", "true");
-  a.textContent = "Download STL";
+  a.textContent = `Download ${FORMAT_LABEL[fmt] || fmt.toUpperCase()}`;
+  updateStatusForEdits();
 }
+$("#download-format").addEventListener("change", (e) => {
+  if (state.model) rememberFormat(state.model.key, e.target.value);
+  applyDownloadFormat();
+});
 
 // ---------------------------------------------------------------- save as part (milestone 4)
 // What's made can be kept in the Parts Library (local/Made parts/<model>/<name>.stl) with a recipe
@@ -1560,12 +1606,45 @@ async function showPart(lib, item) {
       ...(item.main_model && state.catalog?.models?.some((m) => m.key === item.main_model)
         ? [", or ", el("a", { href: `#/m/${item.main_model}`, id: "example-main", text: `open ${state.catalog.models.find((m) => m.key === item.main_model).name}` }), " to make it at other sizes."] : ["."])));
   } else if (item.generator) status.append(el("p", { class: "help" }, el("a", { href: `#/m/${item.generator}`, text: "Open the parametric model" }), " to print it at any size."));
+  // a part made from several files ("Make one part", milestone 5) can be split again
+  if (item.merged?.length && platform.kind === "desktop" && !state.catalog.library?.read_only) {
+    status.append(el("p", { class: "help" }, `Made one part from ${item.merged.length + 1} files. `,
+      el("button", { type: "button", class: "link-btn", id: "part-split", text: "Split into separate parts",
+        onclick: async () => {
+          try {
+            await platform.api("parts_merge", { source: lib.source_id || lib.id, ids: [item.id], split: true });
+            await reloadCatalog();
+            toast("Split into separate parts.");
+          } catch (e) { toast(String(e.message || e)); }
+        } })));
+  }
   const dl = $("#part-downloads");
-  dl.replaceChildren(...item.files.map((f, i) => el("a", {
-    class: `button ${i === 0 && !["step", "shapr"].includes(f.format) ? "primary" : "secondary"}`, href: f.url,
-    download: f.path.split("/").pop(), title: f.path.split("/").pop(),
-    text: `${f.label ? f.label + ": " : ""}${FORMAT_LABEL[f.format] || f.format} (${bytes(f.bytes)})` })));
-  dl.classList.toggle("many", item.files.length > 4);
+  const formats = item.files.map((f) => f.format);
+  if (formats.length > 1 && new Set(formats).size === formats.length && !item.files.some((f) => f.label)) {
+    // one Download with the format beside it (milestone 5): the last one chosen for this part, else Settings' rule
+    const key = `part:${lib.id}/${item.id}`;
+    const link = el("a", { class: "button primary", id: "part-download" });
+    const show = (fmt) => {
+      const f = item.files.find((x) => x.format === fmt) || item.files[0];
+      link.href = f.url;
+      link.setAttribute("download", f.path.split("/").pop());
+      link.title = f.path.split("/").pop();
+      link.textContent = `Download ${FORMAT_LABEL[f.format] || f.format} (${bytes(f.bytes)})`;
+    };
+    const sel = el("select", { class: "format-pick", id: "part-format", "aria-label": "Format",
+      onchange: (e) => { rememberFormat(key, e.target.value); show(e.target.value); } },
+      item.files.map((f) => el("option", { value: f.format, text: FORMAT_LABEL[f.format] || f.format })));
+    sel.value = pickFormat(key, formats);
+    show(sel.value);
+    dl.replaceChildren(el("span", { class: "download-pick" }, link, sel));
+    dl.classList.remove("many");
+  } else {
+    dl.replaceChildren(...item.files.map((f, i) => el("a", {
+      class: `button ${i === 0 && !["step", "shapr"].includes(f.format) ? "primary" : "secondary"}`, href: f.url,
+      download: f.path.split("/").pop(), title: f.path.split("/").pop(),
+      text: `${f.label ? f.label + ": " : ""}${FORMAT_LABEL[f.format] || f.format} (${bytes(f.bytes)})` })));
+    dl.classList.toggle("many", item.files.length > 4);
+  }
   state.viewerOwner = "library";
   $("#log").hidden = true;
   showOverlay(null);
@@ -1785,7 +1864,10 @@ function showSettings() {
   const printer = section("profile", "Printer profile", "Models that ask for these start with your values instead of the author's. Leave a value empty to keep the defaults. Magnet and tolerance settings aren't linked: each project measures them differently.",
     el("div", { class: "profile-grid" }, fields),
     el("p", { id: "profile-note", class: "muted", role: "status" }));
-  const sections = [appearance, printer, ...(platform.kind === "desktop" ? desktopSettings()
+  const downloads = platform.kind === "desktop" ? section("downloads", "Downloads", "Which format a part's Download offers first when it comes in several, and a model's render. What you pick for one part or model is kept for it.",
+    el("div", { class: "theme-pick", id: "format-pref", role: "radiogroup", "aria-label": "Preferred format" }, el("b", { text: "Preferred format" }), PREFERRED.map(([id, label]) => el("label", {},
+      el("input", { type: "radio", name: "format-pref", value: id, checked: preferredFormat() === id, onchange: () => store.prefs.set("gw-format-pref", id) }), " ", label)))) : null;
+  const sections = [appearance, printer, downloads, ...(platform.kind === "desktop" ? desktopSettings()
     : [section("data", "Your data", "Saved settings and this profile are kept in this browser only. Use Export for OpenSCAD on a model to keep a copy as a file.")])];
   showPage([el("div", { class: "library-settings" }, settingsToc(sections), sections)]);
 }
@@ -1881,7 +1963,7 @@ async function reloadCatalog() {
   state.index = new LocalIndex(catalog, libraries);
   setContext({ catalog, libraries, index: state.index });
   ui.set((s) => ({ catalogVersion: s.catalogVersion + 1 }));
-  if (ui.get().view === "library" && location.hash.startsWith("#/parts/")) route();
+  if (ui.get().view === "library" && location.hash.startsWith("#/parts/")) { state.openLib = null; route(); } // (its list too: parts made one or split)
   // the open model's header (name, credits, a broken flag) follows edits
   // (unless another model has been opened meanwhile: its header isn't this one's to draw)
   if (ui.get().view === "model" && state.model) {

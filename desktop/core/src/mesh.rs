@@ -737,6 +737,45 @@ pub fn to_stl_coloured(t: &[f32], colours: Option<&[Option<Rgb>]>) -> Vec<u8> {
     out
 }
 
+/// A 3MF of the triangles, one object named `name` (SCAD Workshop, milestone 5: a model's render
+/// downloaded as 3MF). Shared corners are written once, as slicers expect.
+pub fn to_3mf(t: &[f32], name: &str) -> Result<Vec<u8>> {
+    use std::fmt::Write as _;
+    use std::io::Write as _;
+    let mut index: HashMap<[u32; 3], usize> = HashMap::new();
+    let mut vertices = String::new();
+    let mut triangles = String::new();
+    for tri in t.chunks_exact(9) {
+        let mut ids = [0usize; 3];
+        for (k, p) in tri.chunks_exact(3).enumerate() {
+            let key = [p[0].to_bits(), p[1].to_bits(), p[2].to_bits()];
+            let next = index.len();
+            ids[k] = *index.entry(key).or_insert_with(|| {
+                let _ = write!(vertices, "<vertex x=\"{}\" y=\"{}\" z=\"{}\"/>", p[0], p[1], p[2]);
+                next
+            });
+        }
+        if ids[0] != ids[1] && ids[1] != ids[2] && ids[0] != ids[2] {
+            let _ = write!(triangles, "<triangle v1=\"{}\" v2=\"{}\" v3=\"{}\"/>", ids[0], ids[1], ids[2]);
+        }
+    }
+    let esc = name.replace('&', "&amp;").replace('<', "&lt;").replace('"', "&quot;");
+    let model = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<model unit=\"millimeter\" xml:lang=\"en-US\" xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\">\
+<metadata name=\"Application\">SCAD Workshop</metadata><resources><object id=\"1\" type=\"model\" name=\"{esc}\"><mesh><vertices>{vertices}</vertices>\
+<triangles>{triangles}</triangles></mesh></object></resources><build><item objectid=\"1\"/></build></model>\n"
+    );
+    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file("[Content_Types].xml", opts)?;
+    zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#)?;
+    zip.start_file("_rels/.rels", opts)?;
+    zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>"#)?;
+    zip.start_file("3D/3dmodel.model", opts)?;
+    zip.write_all(model.as_bytes())?;
+    Ok(zip.finish()?.into_inner())
+}
+
 /// A triangle's unit normal (zero for a degenerate one).
 pub fn normal(t: &[f32]) -> [f32; 3] {
     let (a, b) = (
@@ -758,6 +797,23 @@ pub fn normal(t: &[f32]) -> [f32; 3] {
 
 #[cfg(test)]
 pub mod tests {
+    #[test]
+    fn writes_a_3mf_that_reads_back() {
+        let tris: Vec<f32> = vec![0., 0., 0., 10., 0., 0., 0., 10., 0., 10., 0., 0., 10., 10., 0., 0., 10., 0.];
+        let b = super::to_3mf(&tris, "Bin & lid").unwrap();
+        let back = super::read("x.3mf", &b).unwrap();
+        assert_eq!(back.len(), tris.len());
+        let xml = {
+            use std::io::Read;
+            let mut z = zip::ZipArchive::new(std::io::Cursor::new(&b)).unwrap();
+            let mut s = String::new();
+            z.by_name("3D/3dmodel.model").unwrap().read_to_string(&mut s).unwrap();
+            s
+        };
+        assert_eq!(xml.matches("<vertex ").count(), 4, "shared corners written once");
+        assert!(xml.contains("name=\"Bin &amp; lid\""));
+    }
+
     use super::*;
     use std::io::Write;
 

@@ -65,7 +65,7 @@
         <div id="status" class="status" role="status" aria-live="polite"></div>
         <div class="actions">
           <button type="button" id="generate" class="primary">Generate</button>
-          <a id="download" class="button secondary is-disabled" aria-disabled="true" href="#" download="model.stl">Download STL</a>
+          <span class="download-pick"><a id="download" class="button secondary is-disabled" aria-disabled="true" href="#" download="model.stl">Download STL</a><select id="download-format" class="format-pick" aria-label="Format" title="The format to download" hidden><option value="stl">STL</option><option value="3mf">3MF</option></select></span>
           <button type="button" id="save-part" class="ghost save-part" hidden title="Keep what you made in the Parts Library, with how it was made">Save as part…</button>
         </div>
       </div>

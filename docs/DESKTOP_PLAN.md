@@ -1048,3 +1048,12 @@ Built as planned, except:
 - **Drops** use a dialog rather than Model Library's menu at the pointer (this app has no pop-up menu yet). Loose files dropped together are one project (kind `folder`, `origin.files` lists them); each folder or ZIP dropped is its own project, through the same command as Add project. A ZIP can't be added to a project of your own (it'd need unpacking there).
 - **Show the file's colours** is a box on the part's page, remembered on this computer, not a Settings item.
 - **Previews:** a part's 3MF is preferred over its STL, as planned; the 3MF's picture is used only for the thumbnail, never instead of the 3D view.
+
+### 0.4.15 notes
+
+Built as planned, except:
+
+- **The default stays STL** ("STL where there is one"), so downloads don't change for anyone until they choose otherwise; the plan's "3MF where there is one, otherwise STL" is the second choice.
+- **Formats are kept per part and per model** (this computer's preferences), not in saved settings or recipes: a saved setting reopens the model, whose picker already remembers its format, and a made part is always kept as STL (its page then offers whatever formats it has).
+- **A model's 3MF** is written by the app from the render (`mesh::to_3mf`, shared corners written once), not by OpenSCAD's own 3MF export, so it works the same with every engine; 0.4.18's colours and parts will need OpenSCAD's.
+- **Near misses** strip `v2`/`v1.3`, `final`, `copy`, `new` and `(1)` from the end of a name (after a space, `_`, `-` or `.`), so `bolt10` and `bolt12` are never offered. Merged parts are kept as `merged: { <kept part>: [<parts it took>] }` in `metadata.json`.

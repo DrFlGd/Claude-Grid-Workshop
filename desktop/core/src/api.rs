@@ -505,6 +505,12 @@ impl App {
                 }))
             }
             "read" => self.read_file(arg(&args, "path").map_err(e2s)?).map(Reply::Bytes).map_err(e2s),
+            "to_3mf" => {
+                // { data, name }: a render (STL, as a data URL) as a 3MF, for Download as 3MF (milestone 5)
+                let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
+                let tris = crate::mesh::read("render.stl", &data).map_err(e2s)?;
+                crate::mesh::to_3mf(&tris, args["name"].as_str().unwrap_or("Model")).map(Reply::Bytes).map_err(e2s)
+            }
             "blob" => {
                 let sha = arg(&args, "sha").map_err(e2s)?;
                 let p = self.site.blob(sha).map_err(e2s)?;
@@ -1330,6 +1336,32 @@ impl App {
                 }
                 self.invalidate();
                 j(Value::Null)
+            }
+            "parts_merge" => {
+                // { source, ids: [keep, ...others] }: parts made one (near misses, milestone 5), kept in the
+                // project's metadata.json as `merged: { keep: [others] }`; with `split: true`, made separate again
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let id = arg(&args, "source").map_err(e2s)?.to_string();
+                let ids: Vec<String> = args["ids"].as_array().into_iter().flatten().filter_map(Value::as_str).map(String::from).collect();
+                let keep = ids.first().ok_or("Name the parts to make one.")?.clone();
+                let mut meta = lib.metadata(&id);
+                if !meta["merged"].is_object() {
+                    meta["merged"] = json!({});
+                }
+                if args["split"] == true {
+                    meta["merged"].as_object_mut().unwrap().remove(&keep);
+                } else {
+                    let mut all: Vec<Value> = meta["merged"][&keep].as_array().cloned().unwrap_or_default();
+                    all.extend(ids[1..].iter().map(|i| json!(i)));
+                    meta["merged"][&keep] = json!(all);
+                }
+                if meta["merged"].as_object().is_some_and(|m| m.is_empty()) {
+                    meta.as_object_mut().unwrap().remove("merged");
+                }
+                lib.save_metadata(&id, &meta).map_err(e2s)?;
+                self.invalidate();
+                j(json!({ "part": keep }))
             }
             "examples_set" => {
                 // { source, as: "models" | "parts" | "leave" }: what a project's folder of examples is (F-15),

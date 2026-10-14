@@ -331,6 +331,10 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         }
         // ready-made parts: one pack per project
         let mut parts = derived["parts"].as_array().cloned().unwrap_or_default();
+        // parts you made one ("latch_v2.stl" with "latch.3mf", milestone 5): metadata.json's
+        // `merged: { <part>: [<parts whose files it takes>] }`, kept across updates
+        merge_parts(&mut parts, &edits["merged"]);
+        entry["near_misses"] = json!(near_misses(&parts));
         // and the examples made into parts: sources/<id>/examples/<fingerprint>/<model id>.stl, made by the
         // app, so only those whose files changed are made again (F-20)
         let examples_rel = format!("sources/{id}/examples");
@@ -587,6 +591,91 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
 
 /// "app@6cacf1b7d69a" in words, with {} where the library's name goes: "{}, the app's copy (6cacf1b)",
 /// "{}, your copy (a1b2c3d)".
+/// Fold the files of parts named in `merged` ({ keep: [others] }) into the part kept, which lists them.
+fn merge_parts(parts: &mut Vec<Value>, merged: &Value) {
+    for (keep, others) in merged.as_object().into_iter().flatten() {
+        let others: Vec<&str> = others.as_array().into_iter().flatten().filter_map(Value::as_str).filter(|o| o != keep).collect();
+        if !parts.iter().any(|p| p["id"] == keep.as_str()) {
+            continue;
+        }
+        let mut files = vec![];
+        let mut taken = vec![];
+        parts.retain(|p| match p["id"].as_str().filter(|id| others.contains(id)) {
+            Some(id) => {
+                files.extend(p["files"].as_array().cloned().unwrap_or_default());
+                taken.push(json!(id));
+                false
+            }
+            None => true,
+        });
+        if let Some(p) = parts.iter_mut().find(|p| p["id"] == keep.as_str()) {
+            if let Some(fs) = p["files"].as_array_mut() {
+                fs.extend(files);
+            }
+            p["merged"] = json!(taken);
+            if p["preview"].is_null() {
+                p["preview"] = ["3mf", "stl", "obj"].iter().find_map(|x| p["files"].as_array().into_iter().flatten().find(|f| f["format"] == *x)).map(|f| f["path"].clone()).unwrap_or(Value::Null);
+            }
+        }
+    }
+}
+
+/// Parts in one folder whose names differ only by a version or copy mark ("latch_v2", "latch (1)",
+/// "latch final") and that have no format in common: likely one part, offered to be made one.
+fn near_misses(parts: &[Value]) -> Vec<Value> {
+    fn base(stem: &str) -> String {
+        let mut s = stem.to_lowercase();
+        loop {
+            let t = s.trim_end_matches([' ', '_', '-', '.']).to_string();
+            let word = |w: &&&str| t.ends_with(**w) && (t.len() == w.len() || !t.as_bytes()[t.len() - w.len() - 1].is_ascii_alphanumeric());
+            let cut = ["final", "copy", "new"].iter().find(word).map(|w| t.len() - w.len())
+                .or_else(|| {
+                    // "v2", "v1.3"
+                    let i = t.rfind(['v', 'V'])?;
+                    let tail = &t[i + 1..];
+                    (!tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit() || c == '.') && (i == 0 || !t.as_bytes()[i - 1].is_ascii_alphanumeric())).then_some(i)
+                })
+                .or_else(|| {
+                    // "(1)"
+                    let open = t.strip_suffix(')')?.rfind('(')?;
+                    t[open + 1..t.len() - 1].chars().all(|c| c.is_ascii_digit()).then_some(open)
+                });
+            match cut {
+                Some(i) if i > 0 => s = t[..i].to_string(),
+                _ => return t,
+            }
+        }
+    }
+    let key = |p: &Value| -> Option<(String, String)> {
+        let path = p["files"][0]["path"].as_str()?;
+        let (dir, file) = path.rsplit_once('/').unwrap_or(("", path));
+        Some((dir.to_string(), base(file.rsplit_once('.').map(|(s, _)| s).unwrap_or(file))))
+    };
+    let formats = |p: &Value| -> Vec<String> { p["files"].as_array().into_iter().flatten().filter_map(|f| f["format"].as_str().map(String::from)).collect() };
+    let mut out = vec![];
+    let mut seen: Vec<String> = vec![];
+    for (i, a) in parts.iter().enumerate() {
+        let (Some(ka), Some(ida)) = (key(a), a["id"].as_str()) else { continue };
+        if seen.iter().any(|s| s == ida) || a["example"] == true {
+            continue;
+        }
+        let mut group = vec![a];
+        for b in &parts[i + 1..] {
+            if b["example"] != true && key(b).as_ref() == Some(&ka) && formats(b).iter().all(|f| group.iter().all(|g| !formats(g).contains(f))) {
+                group.push(b);
+            }
+        }
+        if group.len() > 1 {
+            seen.extend(group.iter().filter_map(|g| g["id"].as_str().map(String::from)));
+            out.push(json!({
+                "ids": group.iter().map(|g| g["id"].clone()).collect::<Vec<_>>(),
+                "names": group.iter().map(|g| g["files"][0]["path"].as_str().unwrap_or("").rsplit('/').next().unwrap_or("").to_string()).collect::<Vec<_>>(),
+            }));
+        }
+    }
+    out
+}
+
 fn copy_text(copy: &str) -> String {
     let (who, ver) = copy.split_once('@').unwrap_or((copy, ""));
     let ver = &ver[..ver.len().min(7)];
@@ -851,6 +940,28 @@ fn suggested(lib: &Library) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn near_misses_and_merging() {
+        let part = |id: &str, files: &[&str]| json!({ "id": id, "files": files.iter().map(|f| json!({ "path": f, "format": f.rsplit('.').next().unwrap() })).collect::<Vec<_>>() });
+        let mut parts = vec![
+            part("parts-latch", &["parts/latch.3mf"]),
+            part("parts-latch-v2", &["parts/latch_v2.stl"]),
+            part("parts-knob", &["parts/knob.stl", "parts/knob.3mf"]),
+            part("parts-knob-1", &["parts/knob (1).stl"]),
+            part("parts-renew", &["parts/renew.stl"]),
+            part("parts-re", &["parts/re.3mf"]),
+            part("other-latch", &["other/latch.step"]),
+        ];
+        let near = near_misses(&parts);
+        // latch.3mf + latch_v2.stl; not knob (1).stl (knob has an STL already), renew/re or another folder's latch
+        assert_eq!(near, vec![json!({ "ids": ["parts-latch", "parts-latch-v2"], "names": ["latch.3mf", "latch_v2.stl"] })]);
+        merge_parts(&mut parts, &json!({ "parts-latch": ["parts-latch-v2"] }));
+        assert_eq!(parts.len(), 6);
+        assert_eq!(parts[0]["files"].as_array().unwrap().len(), 2);
+        assert_eq!(parts[0]["merged"], json!(["parts-latch-v2"]));
+        assert!(near_misses(&parts).is_empty());
+    }
+
     use super::*;
 
     /// The plan's check: a form edit made in the app gives the same settings as the
