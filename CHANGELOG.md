@@ -83,7 +83,11 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-Review 4 (https://claude.ai/artifact/RAhYcNBQ9WnFJowHZVfunC, UI-28 to UI-32 and F-19 to F-22): planned for 0.4.13 in docs/DESKTOP_PLAN.md, "0.4.13 plan".
+- Milestone 5 planned in docs/DESKTOP_PLAN.md, "Ready-made models and collections design": previews from 3MF and OBJ and dropping files on the window (0.4.14), one download with a format picker (0.4.15), Printables ZIPs (0.4.16, then Review 5), collections with ZIP export (0.4.17), multi-colour and multi-part 3MF (0.4.18, then Review 6), reusing Model Library's mesh reader, duplicate check and drop handling.
+
+## 0.4.13 — 2026-10-14 · Review 4: the Made parts shelf, example parts, your own licenses, changes counted by the files a model uses
+
+Review 4 (https://claude.ai/artifact/RAhYcNBQ9WnFJowHZVfunC, UI-28 to UI-32 and F-19 to F-22), all nine items. 69 of 69 acceptance checks.
 
 - **Made parts shelf** (UI-28): no source line, Read again or Versions; it says each part keeps the license of the project it was made from, and each card names the model and project it was made from ("Basic Bin · Gridfinity Rebuilt").
 - **Example parts** (UI-29): the link reads "Open the example as a model", plus the main file's model when it has settings; part lists sort by number (Brick 1x2 before 1x17); the project page's examples note is a plain information box, not a warning.

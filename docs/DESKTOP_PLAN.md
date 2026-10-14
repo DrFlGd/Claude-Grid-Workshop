@@ -1005,3 +1005,37 @@ Review 4's nine items, built as planned, except:
 - **F-20:** the fingerprint is of the model's file map (each file's path and SHA-256), which is what the render cache keys on; components don't have one, so recipes made from components (and recipes from before 0.4.13) still compare the project's version. Each example made into a part has a folder of its own under `examples/` (named by its fingerprint) because each example's own file is in its map. Remove versions no longer touches `examples/`: an example's earlier part is removed when it's made again.
 - **F-21:** Add project's message names the folder and asks you to choose on the project's page (it opens there), rather than a second dialog. The examples' model pages still open.
 - **CI:** a fifth screenshot, the Made parts shelf.
+
+## Ready-made models and collections design (milestone 5, 0.4.14 onwards)
+
+The rest of Phase 4 ("4. Model library" and "Files and formats" above), in five releases, each followed by its checks in the app test. Review 5 follows 0.4.16 (everything about bringing ready-made files in); Review 6 follows 0.4.18. Model Library's code is reused where it fits (its `desktop/core/src/mesh.rs`, `thumb.rs`, `dupes.rs` and `web/ui/drop.js`, read from the owner's copy); its 7z/RAR reading and folder watcher need crates this build doesn't have offline, so they wait.
+
+**0.4.14: ready-made parts look and come in like generated ones.**
+- **Previews from any format.** Model Library's `mesh.rs` (STL, OBJ and 3MF, with a 3MF's colours from its colour groups, materials and the slicer's extruder settings) is ported as is; it needs only crates the app already has. A part's 3D view and thumbnail use 3MF, then STL, then OBJ: the core reads the file and hands the viewer an STL (with per-triangle colours when the 3MF has them, drawn only when you turn on "Show the file's colours"). Today a part that comes only as 3MF or OBJ has no 3D view. A 3MF's own picture (the one the slicer saved) is its thumbnail when it has one. STEP keeps "No 3D preview" until OpenCascade's license is checked.
+- **Dropping files on the window**, as Model Library's `drop.js` does (Tauri's drag-drop events): `.scad` files, model files, folders and ZIPs. A drop offers **Add as a project** (copied into the library, like Add project › Folder or ZIP) and, for files of your own, **Add to a project of yours** (copied into a `local/` folder you pick). A hint shows while dragging.
+- **Already in the library:** each model file is checked by size and SHA-256 (Model Library's `dupes.rs` quick fingerprint, then the full hash) against the library's parts; the add's message lists what was already there ("3 of 12 files are already in Gridfinity Rebuilt") and adds them anyway, so nothing is silently dropped.
+- **Tests:** a folder with `latch.stl`, `latch.3mf` (two colours), `knob.obj` and `case.step` added as a project gives 3 parts; the 3MF part's 3D view shows, and its colours when asked; the OBJ part's view shows; the drop is driven by a shim event (Model Library's `__shimEmit`); a duplicate is named in the message.
+
+**0.4.15: one download with a format picker.**
+- A part with several formats gets one **Download** button with the format beside it (STL · 3MF · STEP); the default is Settings › Downloads › **Preferred format** ("3MF where there is one, otherwise STL", "STL", "3MF", "STEP where there is one") and the last choice for that part is remembered. Generators get the same picker for their output (STL or 3MF; OpenSCAD writes both), and recipes and saved settings keep the format.
+- **Near misses** (`latch_v2.stl` beside `latch.3mf`) are listed on the project's page after it's read, with **Make one part**; any part can be split again (kept in `metadata.json` as `parts.<id>.files`, so it holds across updates).
+- **Tests:** the picker's default follows the setting; the choice is remembered; a merge holds after the project is read again.
+
+**0.4.16: Printables ZIPs.**
+- A Printables download (a ZIP with the model files and PDFs of the page) is added like any ZIP; its PDF's text is read for **creator, license, published and updated dates, description and tags**, which become the project's details with "from the Printables PDF" as where each came from. The text comes from the PDF's content streams (Flate, which the app already reads); no new library. Print settings in the PDF go in the project's notes.
+- What can't be read leaves the field empty, as for any project, and the PDF stays in the side viewer.
+- **Tests:** a Printables-style ZIP made by the test (a PDF written with the page's usual sections) fills each field; a PDF that can't be read leaves them empty and the project is still added. The owner is asked for one or two real Printables downloads to check against before release, since the session can't download them.
+- **Review 5** follows.
+
+**0.4.17: collections.**
+- `collections/<id>/collection.json` (as in "Library folder"): name, summary, icon, and items by id (parts, made parts, models with saved settings) with **quantity, notes, status** (to print / printed) and the format to use. Items are never copied.
+- **Collections** in the left menu, a collection's page (its items as cards with quantity and status, a total count), **Add to collection…** on any part, made part or model (one action list, used by the inspector, the card menu and the part page), and remove.
+- **Export as ZIP** (written like a library backup, with progress and Cancel): each item's file in the chosen format, a copy per quantity or one file with the count in its name (asked once), a parts list (`parts.csv` and `README.txt` with each item's license and source), and models made at their saved settings first.
+- **Tests:** make a collection of a part, a made part and a model with saved settings; set quantities and status; export it; the ZIP has the files, the counts and the parts list with licenses.
+
+**0.4.18: multi-colour and multi-part 3MF from generators.**
+- First a check against the app's OpenSCAD: that 3MF export with lazy union keeps top-level objects apart and writes `color()` as materials, natively and in the WebAssembly engine. If either doesn't, the app writes the 3MF itself from the separate objects (Model Library's 3MF writer pattern) and says so here.
+- When a render has more than one object or colour, the format picker offers "3MF, 2 colours" or "3MF, 3 parts"; the 3D view colours each object, with a parts list to show or hide them.
+- A family manifest can name a part-picker setting ("part to print"); the download then offers **All parts in one 3MF**, made from each choice and laid out side by side. Make several gains "one 3MF with every variant".
+- **Tests:** a two-colour label and a three-part model download as 3MF files whose objects and materials are checked by reading the file back (`mesh.rs`); opening them in Bambu Studio and OrcaSlicer is a manual check for the owner.
+- **Review 6** follows; then milestone 6 (pictures, your own content, several libraries, and Model Library's folder watcher and 7z/RAR if their crates can be vendored).
