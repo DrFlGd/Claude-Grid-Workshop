@@ -981,8 +981,9 @@ async def main():
                 old_v = [v for v in sj.get("versions", []) if v.get("id") == was]
                 old_copy[i] = "removed" if not old_v and not (library / f"sources/{i}/files/{was}").exists() else (old_v[0].get("message", "") if old_v else "?")
                 conv[i] = [sj["kind"], sj.get("origin", {}).get("track", "")[:7], json.loads(d.read_text()).get("described_by") if d.is_file() else None,
-                           model_ids(i) == ids_before[i], len(list((library / f"sources/{i}/thumbs").glob("*.webp"))) == thumbs_before[i]]
+                           model_ids(i) == ids_before[i], len(list((library / f"sources/{i}/thumbs").glob("*.webp"))) >= thumbs_before[i]]   # (more: made meanwhile)
             print("the app's old copies:", old_copy)
+            print("after converting:", toast)
             edit_keys = list(json.loads((library / "recipes/f1-edit.json").read_text())["edits"])
             others = {json.loads((library / f"sources/{i}/source.json").read_text())["kind"] for i in ("hsw", "gridflock", "anylid")}
             await pg.goto(B + "#/m/gridfinity-basket/basket")
@@ -1028,8 +1029,13 @@ async def main():
             # 13g. (0.4.11, milestone 4) Save as part keeps what's made in the Parts Library (local/Made parts/<model>/)
             # with a recipe; its page opens the model with those settings or makes it again, and says when
             # the model's project has changed since
+            # (LEGO.scad's 180 examples are still being checked in the background, so the page can be slow)
             await pg.goto(B + "#/m/local-bevel/bevel-gear")
-            await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear'")
+            try:
+                await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear'", timeout=300000)
+            except Exception:
+                print("bevel gear page didn't open:", await pg.evaluate("() => [location.hash, document.body.dataset.model, document.querySelector('#status')?.textContent]"))
+                raise
             await pg.wait_for_function(DONE, timeout=300000)
             await pg.click("#save-part")
             await pg.fill("#save-part-name", "Test gear")

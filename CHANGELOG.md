@@ -55,6 +55,7 @@ The development sandbox has a network allowlist and is reset between sessions (t
 - **The GitHub stand-in and the proxy:** the app's HTTP client sends even `http://127.0.0.1` through `HTTPS_PROXY`, which refuses plain HTTP; start `workshop-cli serve` with `env -u HTTPS_PROXY -u https_proxy` when it uses `tests/github_mock.py`. The app can't reach real GitHub from the session (the proxy's certificate isn't in its trust store); CI uses real GitHub. To try a starter project's conversion locally, make clones named `owner__repo` from `vendor/<x>/` and let the stand-in answer any unknown commit with HEAD.
 - **GitHub from the session:** `gh` works through the REST API only (`gh api repos/DrFlGd/SCAD-Workshop/...`); GraphQL commands such as `gh release view` are refused, and editing releases isn't permitted. Pushes to `main` are fine. CI reports land on the `desktop-ci-linux` and `desktop-ci-windows` branches (logs, JSON reports, screenshots, and the acceptance test's library as `p2/library.zip`); clone those to read results when job logs aren't downloadable.
 - **Careful with `pkill -f`:** a pattern that matches your own command line kills your shell.
+- **One push at a time:** `desktop.yml` cancels a run when `main` moves, so a commit pushed before the previous run released is released together with it. Check the release exists (`gh api repos/DrFlGd/SCAD-Workshop/releases`) before pushing the next one.
 - **Hosted runners sometimes aren't acquired** ("The job was not acquired by Runner…"): that's GitHub, not the code; re-run (`gh run rerun <id>`).
 
 ### Branches
@@ -82,19 +83,20 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-Milestone 4, second part (0.4.12): Make several.
+Milestone 4, first and second parts: Save as part and Make several, released together as 0.4.11 (0.4.11's own CI run was cancelled when Make several was pushed before it finished; see For agents › Working in a cloud session).
+
+Make several:
 
 - **Make several…** (was Batch… in a model's ⋯ menu) can **Save to the Parts Library** as well as download a ZIP: each part goes to Made parts with its recipe, named from what varies ("Basic Bin 2×1×6", "Bevel gear 22"), so each can be opened with its settings or made again.
 - **Your saved settings can be what's made**: Make several offers them as a second way to choose (tick the ones to make). Ones saved with code edits aren't offered, since every part is made with the form's code.
 
-## 0.4.11 — 2026-10-14 · Save as part: made parts kept in the Parts Library with their recipes
-
-Milestone 4, first part (0.4.11): Save as part.
+Save as part:
 
 - **Save as part…** under Generate and Download STL keeps what you made in the Parts Library: a name ("Basic Bin 2×2×6" to start with) and a category (the model's), made first if the preview isn't up to date. It goes in `local/Made parts/<model>/` as `<name>.stl` with `<name>.recipe.json` beside it: the model, its project and version, the settings you changed and any code edits. A message says where it went, with **Show**.
 - **A made part's page says what it was made from** ("Made from Basic Bin (Gridfinity Rebuilt), 1 setting changed.") with **Open with these settings** and **Make again** (the same settings, replacing its files and keeping its name), and says when the model's project has been updated since. The inspector says the same with Open with these settings. Made parts carry their project's license.
 - **Parts in your own projects** (`local/` and linked folders) show their previews, thumbnails and downloads; they were looked for in a copy only added projects have.
 - **The ⋯ menu stays open when the library is read again** while you're on the same model (a pin, a thumbnail); it closed under you, which also failed the acceptance test's Edit form step.
+- CI: the acceptance test gives the bevel gear's page up to 5 minutes to open while LEGO.scad's examples are checked in the background, counts thumbnails made meanwhile as kept, and logs the message after converting starter projects.
 
 ## 0.4.10 — 2026-10-14 · Review 3: the 3D view beside the side viewer, Copy settings, messages in the status bar, one credit pattern, older projects catch up
 
