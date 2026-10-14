@@ -1039,3 +1039,12 @@ The rest of Phase 4 ("4. Model library" and "Files and formats" above), in five 
 - A family manifest can name a part-picker setting ("part to print"); the download then offers **All parts in one 3MF**, made from each choice and laid out side by side. Make several gains "one 3MF with every variant".
 - **Tests:** a two-colour label and a three-part model download as 3MF files whose objects and materials are checked by reading the file back (`mesh.rs`); opening them in Bambu Studio and OrcaSlicer is a manual check for the owner.
 - **Review 6** follows; then milestone 6 (pictures, your own content, several libraries, and Model Library's folder watcher and 7z/RAR if their crates can be vendored).
+
+### 0.4.14 notes
+
+Built as planned, except:
+
+- **Duplicates** are found by comparing sizes, then SHA-256, against the files of every other project's parts in the catalog; Model Library's `dupes.rs` (a quick fingerprint of the first and last 64 KB, kept in a sidecar) wasn't needed at this size. Linked projects' files aren't compared.
+- **Drops** use a dialog rather than Model Library's menu at the pointer (this app has no pop-up menu yet). Loose files dropped together are one project (kind `folder`, `origin.files` lists them); each folder or ZIP dropped is its own project, through the same command as Add project. A ZIP can't be added to a project of your own (it'd need unpacking there).
+- **Show the file's colours** is a box on the part's page, remembered on this computer, not a Settings item.
+- **Previews:** a part's 3MF is preferred over its STL, as planned; the 3MF's picture is used only for the thumbnail, never instead of the 3D view.

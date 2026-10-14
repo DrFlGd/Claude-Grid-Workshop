@@ -38,6 +38,8 @@ import subprocess
 import sys
 import time
 import urllib.request
+
+import model_files
 from pathlib import Path
 
 from playwright.async_api import async_playwright
@@ -1187,6 +1189,59 @@ async def main():
             ex_files_after = sorted(p.relative_to(library / "sources/local-blocks/examples").as_posix() for p in (library / "sources/local-blocks/examples").rglob("*.stl"))
             check("example parts are kept by the files they use: changing another file in the project doesn't make them again",
                   todo == 0 and after == [1, 22] and len(ex_files) == 22 and ex_files_after == ex_files, (todo, after, len(ex_files), ex_files[:2], ex_files_after[:2]))
+
+            # 13i. (0.4.14, milestone 5) files dropped on the window: added as one project, one part per name;
+            # 3MF and OBJ parts show in 3D (a 3MF's colours when asked), a 3MF's own picture is its thumbnail,
+            # and a file another project has already is named
+            drops = home / "drops"
+            drops.mkdir(parents=True, exist_ok=True)
+            model_files.write_stl(drops / "latch.stl")
+            model_files.write_3mf(drops / "latch.3mf")
+            model_files.write_obj(drops / "knob.obj")
+            (drops / "case.step").write_text("ISO-10303-21;\nEND-ISO-10303-21;\n")
+            model_files.write_3mf(drops / "badge.3mf", png=model_files.png())
+            shutil.copy(made[0], drops / "gear copy.stl")
+            await pg.goto(B + "#/")
+            await pg.evaluate("() => window.__shimEmit('tauri://drag-enter', {})")
+            hint = await pg.is_visible("#drop-hint")
+            await pg.evaluate("(p) => window.__shimEmit('tauri://drag-drop', { paths: p, position: { x: 400, y: 300 } })",
+                              [str(drops / n) for n in ("latch.stl", "latch.3mf", "knob.obj", "case.step", "badge.3mf", "gear copy.stl")])
+            await pg.wait_for_selector(".drop-dialog", timeout=20000)
+            await pg.fill("#drop-name", "Drop test")
+            await pg.screenshot(path=str(out / "m5-01-drop.png"))
+            await pg.click("#drop-project")
+            await pg.wait_for_function("(t)=>{const e=document.querySelector('#toast');return e&&!e.hidden&&e.textContent.toLowerCase().includes(t)}", arg="added drop test", timeout=180000)
+            drop_toast = await pg.evaluate("() => document.querySelector('#toast').textContent")
+            drop_js = "() => window.__workshop.index.items.filter((i) => i.project === 'Drop test').map((i) => [i.name, (i.preview || '').split('.').pop(), i.files.map((f) => f.format).sort().join('+'), !!i.thumb])"
+            try:
+                await pg.wait_for_function(f"() => ({drop_js})().filter((x) => x[3]).length >= 4", timeout=120000)
+            except Exception:
+                pass
+            dropped = sorted(await pg.evaluate(drop_js))
+            check("files dropped on the window are added as one project, one part per name, each viewable (3MF, STL, OBJ) with a thumbnail, and a file already in the library is named",
+                  hint and dropped == [["Badge", "3mf", "3mf", True], ["Case", "", "step", False], ["Gear copy", "stl", "stl", True], ["Knob", "obj", "obj", True], ["Latch", "3mf", "3mf+stl", True]]
+                  and "gear copy.stl is in made parts already" in drop_toast.lower(), (hint, dropped, drop_toast))
+            latch = await pg.evaluate("() => window.__workshop.index.items.find((i) => i.project === 'Drop test' && i.name === 'Latch')?.href")
+            await pg.goto(B + latch)
+            await pg.wait_for_selector("#file-colours", timeout=30000)
+            await pg.click("#file-colours")
+            latch_dims = await pg.evaluate("() => !document.querySelector('#dims').hidden && document.querySelector('#dims').textContent")
+            await pg.screenshot(path=str(out / "m5-02-3mf-colours.png"))
+            check("a 3MF part shows in 3D at its size, with its own colours when asked", "10 × 10 × 16" in (latch_dims or ""), latch_dims)
+            # into one of your own projects: the one open
+            model_files.write_stl(drops / "spacer.stl")
+            await pg.goto(B + "#/browse/source/local-blocks")
+            await pg.wait_for_selector(".source-panel[data-source=local-blocks]", timeout=20000)
+            await pg.evaluate("(p) => window.__shimEmit('tauri://drag-drop', { paths: p })", [str(drops / "spacer.stl")])
+            await pg.wait_for_selector("#drop-own", timeout=20000)
+            await pg.click("#drop-own")
+            try:
+                await pg.wait_for_function("() => window.__workshop.index.items.some((i) => i.projectId === 'local-blocks' && i.name === 'Spacer')", timeout=60000)
+            except Exception:
+                pass
+            check("a file dropped on one of your own projects is copied into its folder and listed",
+                  (library / "local/blocks/spacer.stl").is_file()
+                  and await pg.evaluate("() => window.__workshop.index.items.some((i) => i.projectId === 'local-blocks' && i.name === 'Spacer')"), None)
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"

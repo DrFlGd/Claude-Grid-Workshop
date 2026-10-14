@@ -332,6 +332,8 @@ pub enum AddRequest {
     GitHub { url: String, releases: bool },
     Zip { path: PathBuf },
     Folder { path: PathBuf, link: bool },
+    /// Files (and folders) dropped on the window, copied in together as one project (milestone 5).
+    Files { paths: Vec<PathBuf>, name: Option<String> },
 }
 
 /// Detected details shared by every kind of source.
@@ -462,7 +464,85 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
             lib.save_source(&src)?;
             Ok(src)
         }
+        AddRequest::Files { paths, name } => {
+            let first = paths.first().context("Nothing to add.")?;
+            // the version: what was copied (names, and each file's SHA-256 or each folder's fingerprint)
+            let mut h = Sha256::new();
+            for p in paths {
+                h.update(p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+                h.update(if p.is_dir() { scan::fingerprint(p) } else { sha256_file(p).with_context(|| format!("couldn't read {}", p.display()))? });
+            }
+            let version = format!("copy-{}", &hex::encode(h.finalize())[..12]);
+            let stem = name.clone().filter(|n| !n.trim().is_empty())
+                .unwrap_or_else(|| first.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "project".into()));
+            let id = lib.new_source_id(&format!("folder {stem}"));
+            let (root, n) = install_version(lib, &id, &version, |tmp| copy_paths(paths, tmp))?;
+            let names: Vec<String> = paths.iter().filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
+            let src = json!({
+                "id": id, "kind": "folder", "role": role, "added": now,
+                "origin": { "type": "folder", "path": first.parent().map(|p| p.display().to_string()), "files": names },
+                "version": version, "version_date": now,
+                "versions": [{ "id": version, "date": now, "added": now, "files": n }],
+                "detected": detected(&scan::humanize(&stem), &scan::readme_text(&root).map(|t| scan::readme_summary(&t)).unwrap_or_default(),
+                    scan::survey_license(&root), json!([]), json!([]), None),
+            });
+            lib.save_source(&src)?;
+            Ok(src)
+        }
     }
+}
+
+/// Copy files and folders (each by its own name) into `to`. Returns how many files.
+pub fn copy_paths(paths: &[PathBuf], to: &Path) -> Result<usize> {
+    let mut n = 0;
+    for p in paths {
+        let name = p.file_name().with_context(|| format!("{} has no name", p.display()))?;
+        if p.is_dir() {
+            std::fs::create_dir_all(to.join(name))?;
+            n += copy_folder(p, &to.join(name))?;
+        } else {
+            std::fs::copy(p, to.join(name)).with_context(|| format!("couldn't copy {}", p.display()))?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+/// Copy dropped files and folders into one of your own projects: `local/<folder>/`, a new folder
+/// named after the first of them (made unique) when `folder` is None. Returns the folder's name.
+pub fn add_to_local(lib: &Library, paths: &[PathBuf], folder: Option<&str>) -> Result<String> {
+    let local = lib.root().join("local");
+    let name = match folder {
+        Some(f) => {
+            let f = library::rel_inside(f)?.to_string_lossy().into_owned();
+            if !local.join(&f).is_dir() {
+                bail!("There's no folder {f} among your own projects.");
+            }
+            f
+        }
+        None => {
+            let first = paths.first().context("Nothing to add.")?;
+            let base = first.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "New project".into());
+            let mut name = base.clone();
+            let mut n = 2;
+            while local.join(&name).exists() {
+                name = format!("{base} {n}");
+                n += 1;
+            }
+            std::fs::create_dir_all(local.join(&name))?;
+            name
+        }
+    };
+    let dir = local.join(&name);
+    for p in paths {
+        if let Some(n) = p.file_name() {
+            if dir.join(n).exists() {
+                bail!("{} already has a {}; nothing was copied.", name, n.to_string_lossy());
+            }
+        }
+    }
+    copy_paths(paths, &dir)?;
+    Ok(name)
 }
 
 /// The project already in the library that `same` picks out: (id, name).

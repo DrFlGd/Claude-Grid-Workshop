@@ -1580,9 +1580,18 @@ async function showPart(lib, item) {
   empty.hidden = true;
   try {
     const url = platform.kind === "browser" ? item.preview_url : URL.createObjectURL(await (await platform.fetch(item.preview_url)).blob());
+    state.viewer.setFileColours(!!store.prefs.get("gw-file-colours"));
     const d = await state.viewer.load(url);
     if (url !== item.preview_url) URL.revokeObjectURL(url);
-    if (state.viewerOwner === "library") showDims(d);
+    if (state.viewerOwner === "library") {
+      showDims(d);
+      // a 3MF with colours of its own: drawn in the filament colour unless asked (milestone 5)
+      if (d.coloured) {
+        const box = el("input", { type: "checkbox", id: "file-colours", checked: !!store.prefs.get("gw-file-colours"),
+          onchange: (e) => { store.prefs.set("gw-file-colours", e.target.checked); state.viewer.setFileColours(e.target.checked); } });
+        status.append(el("label", { class: "check-row file-colours" }, box, " Show the file's colours"));
+      }
+    }
   } catch (e) {
     empty.textContent = `Preview unavailable: ${e.message}`;
     empty.hidden = false;

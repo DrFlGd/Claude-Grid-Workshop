@@ -14,6 +14,7 @@ import { MetaEditor, undoNow } from "./metaedit.js";
 import { FlagDialog, SavePartDialog } from "./actions.js";
 import { PinDialog, FormEditor } from "./forms.js";
 import { SideView } from "./sideview.js";
+import { DropDialog, DropHint, onDropped } from "./drop.js";
 
 /** Modal dialogs (desktop): adding a project, editing details, flagging as broken, saving as a part, merge differences, pinning, the form editor. */
 function Dialogs() {
@@ -30,8 +31,8 @@ function Dialogs() {
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
   }, [d]);
-  if (!d) return null;
-  const body = d.type === "add-project" ? html`<${AddProject} />` : d.type === "edit" ? html`<${MetaEditor} spec=${d} key=${JSON.stringify(d)} />`
+  if (!d) return html`<${DropHint} />`;
+  const body = d.type === "drop" ? html`<${DropDialog} spec=${d} key=${JSON.stringify(d.info)} />` : d.type === "add-project" ? html`<${AddProject} />` : d.type === "edit" ? html`<${MetaEditor} spec=${d} key=${JSON.stringify(d)} />`
     : d.type === "flag" ? html`<${FlagDialog} spec=${d} />` : d.type === "save-part" ? html`<${SavePartDialog} spec=${d} />` : d.type === "merge" ? html`<${MergeConflicts} result=${d.result} />`
     : d.type === "pin" ? html`<${PinDialog} spec=${d} key=${d.key} />` : d.type === "form" ? html`<${FormEditor} spec=${d} key=${d.key} />` : null;
   return html`<div class="dialog-backdrop">${body}</div>`;
@@ -52,6 +53,8 @@ export function mountShell(context) {
   mount("quicklook-root", QuickLook);
   mount("dialog-root", Dialogs);
   mount("sideview-root", SideView);
+  // files, folders and ZIPs dropped on the window (milestone 5)
+  context.platform.onDrop?.(onDropped, (dragging) => ui.set({ dragging }));
   // Ctrl+Z undoes the last edit of details (outside text fields)
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z" && !e.target.closest?.("input, textarea, select, [contenteditable]") && ui.get().undo.length) {

@@ -85,6 +85,13 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 - Milestone 5 planned in docs/DESKTOP_PLAN.md, "Ready-made models and collections design": previews from 3MF and OBJ and dropping files on the window (0.4.14), one download with a format picker (0.4.15), Printables ZIPs (0.4.16, then Review 5), collections with ZIP export (0.4.17), multi-colour and multi-part 3MF (0.4.18, then Review 6), reusing Model Library's mesh reader, duplicate check and drop handling.
 
+Milestone 5, first part (0.4.14): ready-made parts look and come in like generated ones.
+
+- **3MF and OBJ parts show in 3D.** A part's 3D view and thumbnail now come from its 3MF, then STL, then OBJ (before, only an STL gave a 3D view). The app reads the file with Model Library's mesh reader and hands the viewer an STL. A 3MF with colours of its own shows them when you tick **Show the file's colours** on the part's page (kept for next time); otherwise it's drawn in the filament colour. A 3MF's own picture (the one its slicer saved) is its thumbnail.
+- **Drop files, folders and ZIPs on the window** to add them. A dialog offers **Add as a project** (copied into the library, like Add project; loose files become one project, named as you like, and each folder or ZIP its own), **Add to <project>** when one of your own projects is open, or **Add as a project of your own** (a new folder in `local/`). A hint shows while dragging.
+- **Files already in the library are named** when a project is added ("gear copy.stl is in Made parts already"), found by size and then SHA-256. They're added anyway.
+- CI: the acceptance test drops a folder's worth of files (STL, a two-colour 3MF, OBJ, STEP, a 3MF with a picture, a copy of a made part) and one file onto a project of your own, with screenshots.
+
 ## 0.4.13 — 2026-10-14 · Review 4: the Made parts shelf, example parts, your own licenses, changes counted by the files a model uses
 
 Review 4 (https://claude.ai/artifact/RAhYcNBQ9WnFJowHZVfunC, UI-28 to UI-32 and F-19 to F-22), all nine items. 69 of 69 acceptance checks.

@@ -426,6 +426,9 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
                     it["preview_url"] = json!(format!("library/sources/{id}/{stl}"));
                 } else if let Some(p) = it["preview"].as_str().filter(|p| p.to_lowercase().ends_with(".stl")) {
                     it["preview_url"] = json!(format!("library/{base}/{p}"));
+                } else if let Some(p) = it["preview"].as_str().filter(|p| crate::mesh::readable(p)) {
+                    // a 3MF or OBJ, read by the core and handed over as STL (milestone 5)
+                    it["preview_url"] = json!(format!("mesh/library/{base}/{p}"));
                 }
                 if has_thumb(&format!("part-{pid}.webp")) {
                     it["thumb"] = json!(file_url(&format!("sources/{id}/thumbs/part-{pid}.webp")));

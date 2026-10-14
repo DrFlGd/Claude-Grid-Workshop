@@ -22,6 +22,7 @@ pub mod engine;
 pub mod ingest;
 pub mod library;
 pub mod merge;
+pub mod mesh;
 pub mod meta;
 pub mod project;
 pub mod scan;

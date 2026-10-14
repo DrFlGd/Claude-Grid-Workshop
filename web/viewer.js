@@ -85,7 +85,19 @@ export class Viewer {
     this.redraw();
   }
 
-  setColor(hex) { this.material.color.set(hex); this.redraw(); }
+  setColor(hex) { this.colour = hex; this._paint(); }
+
+  /** Draw a file's own colours (a 3MF's, carried in the STL the way Materialise Magics writes them)
+   * when it has some, rather than the filament colour (milestone 5, from Model Library). */
+  setFileColours(on) { this.fileColours = !!on; this._paint(); }
+
+  _paint() {
+    const own = !!this.fileColours && !!this.mesh?.geometry.hasColors;
+    this.material.vertexColors = own;
+    this.material.color.set(own ? 0xffffff : this.colour || 0xf2b705);
+    this.material.needsUpdate = true;
+    this.redraw();
+  }
 
   setEdges(on) {
     this.showEdges = on;
@@ -123,6 +135,7 @@ export class Viewer {
     this.clear();
     this.mesh = new THREE.Mesh(geom, this.material);
     this.scene.add(this.mesh);
+    this._paint();
     const triangles = geom.attributes.position.count / 3;
     if (triangles < 400000) {
       this.edges = new THREE.LineSegments(new THREE.EdgesGeometry(geom, 30), this.edgeMaterial);
@@ -136,7 +149,7 @@ export class Viewer {
     // keep the user's camera if the part barely changed size; otherwise re-frame
     if (!prevSize || prevSize.distanceTo(size) > 0.15 * Math.max(prevSize.length(), 1)) this.view("iso");
     this.redraw();
-    return { x: size.x, y: size.y, z: size.z, triangles };
+    return { x: size.x, y: size.y, z: size.z, triangles, coloured: !!geom.hasColors };
   }
 
   clear() {

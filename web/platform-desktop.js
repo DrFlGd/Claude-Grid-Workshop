@@ -224,6 +224,15 @@ export async function createPlatform() {
       return invoke("save_file", bytes, { headers: { "x-name": encodeURIComponent(name) } });
     },
     reveal: (path) => invoke("reveal", { path }),
+    /** Files and folders dragged onto the window (Tauri's drag-drop events): `cb(paths, at)` on a drop,
+     * `over(true/false)` while dragging (milestone 5, as Model Library does). */
+    onDrop(cb, over) {
+      const listen = (name, fn) => tauri.event?.listen?.(name, fn)?.catch?.(() => {});
+      const at = (p) => (p && typeof p.x === "number" ? { x: p.x / (devicePixelRatio || 1), y: p.y / (devicePixelRatio || 1) } : null);
+      listen("tauri://drag-drop", (e) => { over?.(false); cb(e.payload?.paths || [], at(e.payload?.position)); });
+      listen("tauri://drag-enter", () => over?.(true));
+      listen("tauri://drag-leave", () => over?.(false));
+    },
     async refreshInfo() { Object.assign(info, await api("app_info")); return info; },
     workspace: {
       choose: async () => {

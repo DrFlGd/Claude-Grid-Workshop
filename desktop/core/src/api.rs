@@ -14,7 +14,7 @@ use crate::sources::{self, AddRequest};
 use crate::{NativeEngine, SiteDir};
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Map, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -763,6 +763,11 @@ impl App {
                     "github" => AddRequest::GitHub { url: arg(&args, "url").map_err(e2s)?.to_string(), releases: args["follow"] == "releases" },
                     "zip" => AddRequest::Zip { path: PathBuf::from(arg(&args, "path").map_err(e2s)?) },
                     "folder" => AddRequest::Folder { path: PathBuf::from(arg(&args, "path").map_err(e2s)?), link: args["link"].as_bool() == Some(true) },
+                    // files dropped on the window, copied in as one project (milestone 5)
+                    "files" => AddRequest::Files {
+                        paths: args["paths"].as_array().into_iter().flatten().filter_map(Value::as_str).map(PathBuf::from).collect(),
+                        name: args["name"].as_str().map(String::from),
+                    },
                     other => return Err(format!("unknown kind {other}")),
                 };
                 let role = if args["role"] == "library" { "library" } else { "project" }.to_string();
@@ -771,6 +776,10 @@ impl App {
                     AddRequest::Zip { path } | AddRequest::Folder { path, .. } => {
                         format!("Adding {}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
                     }
+                    AddRequest::Files { paths, .. } => match paths.as_slice() {
+                        [one] => format!("Adding {}", one.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+                        many => format!("Adding {} files", many.len()),
+                    },
                 };
                 Ok(Reply::Json(self.spawn(&label, move |app, job| async move {
                     let lib = app.library().map_err(|e| anyhow!(e))?;
@@ -781,8 +790,29 @@ impl App {
                     let id = src["id"].as_str().unwrap_or("").to_string();
                     app.invalidate();
                     let read = app.read_project(&id, None, Some(&job)).await?;
-                    Ok(json!({ "source": id, "read": read }))
+                    // its model files that are in another project already (added anyway, milestone 5)
+                    let duplicates = app.duplicates(&id);
+                    Ok(json!({ "source": id, "read": read, "duplicates": duplicates }))
                 })))
+            }
+            "paths_info" => {
+                // { paths }: what was dropped on the window: [{ path, name, dir, zip, there }] (milestone 5)
+                let out: Vec<Value> = args["paths"].as_array().into_iter().flatten().filter_map(Value::as_str).map(|p| {
+                    let path = Path::new(p);
+                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.to_string());
+                    let zip = name.to_lowercase().ends_with(".zip");
+                    json!({ "path": p, "name": name, "dir": path.is_dir(), "zip": zip && path.is_file(), "there": path.exists() })
+                }).collect();
+                j(json!(out))
+            }
+            "local_add" => {
+                // { paths, folder? }: dropped files and folders copied into one of your own projects
+                // (local/<folder>/), or a new one; the scan for changes that follows reads it
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let paths: Vec<PathBuf> = args["paths"].as_array().into_iter().flatten().filter_map(Value::as_str).map(PathBuf::from).collect();
+                let folder = sources::add_to_local(&lib, &paths, args["folder"].as_str()).map_err(e2s)?;
+                j(json!({ "folder": folder }))
             }
             "source_read" => {
                 let id = arg(&args, "id").map_err(e2s)?.to_string();
@@ -1435,6 +1465,18 @@ impl App {
         if let Some(rel) = path.strip_prefix("library/") {
             return self.library_file(rel).with_context(|| format!("couldn't read {}", percent_decode(rel)));
         }
+        // a part's 3MF or OBJ as STL for the viewer, with a 3MF's colours (milestone 5)
+        if let Some(rel) = path.strip_prefix("mesh/library/") {
+            let name = percent_decode(rel);
+            let data = self.library_file(rel).with_context(|| format!("couldn't read {name}"))?;
+            let m = crate::mesh::read_mesh(&name, &data).with_context(|| format!("couldn't read the shapes in {name}"))?;
+            return Ok(crate::mesh::to_stl_coloured(&m.tris, m.colours.as_deref()));
+        }
+        // the picture a slicer saved in a 3MF, for its thumbnail
+        if let Some(rel) = path.strip_prefix("picture/library/") {
+            let data = self.library_file(rel).with_context(|| format!("couldn't read {}", percent_decode(rel)))?;
+            return crate::mesh::picture_3mf(&data).ok_or_else(|| anyhow!("no picture in {}", percent_decode(rel)));
+        }
         self.site.read(path)
     }
 
@@ -1497,6 +1539,36 @@ impl App {
             relative: true,
             keep_dir: writable.then(|| lib.source_dir(id).map(|d| d.join("docs").join(&version)).ok()).flatten(),
         })
+    }
+
+    /// The model files of project `id` that another project has too (same size, then same SHA-256):
+    /// [{ file, project }], for the message after adding it (milestone 5).
+    pub fn duplicates(&self, id: &str) -> Vec<Value> {
+        let (Ok(c), Ok(lib)) = (self.catalog(), self.library()) else { return vec![] };
+        let path_of = |f: &Value| f["url"].as_str().and_then(|u| u.strip_prefix("library/")).and_then(|r| lib.resolve(&percent_decode(r)).ok());
+        let mut by_size: HashMap<u64, Vec<(PathBuf, String)>> = HashMap::new();
+        for (pid, pack) in c.parts.iter().filter(|(pid, _)| pid.as_str() != id) {
+            let name = pack["name"].as_str().unwrap_or(pid).to_string();
+            for f in pack["items"].as_array().into_iter().flatten().flat_map(|it| it["files"].as_array().into_iter().flatten()) {
+                if let Some(p) = path_of(f) {
+                    if let Ok(m) = std::fs::metadata(&p) {
+                        by_size.entry(m.len()).or_default().push((p, name.clone()));
+                    }
+                }
+            }
+        }
+        let mut out = vec![];
+        let mut hashes: HashMap<PathBuf, String> = HashMap::new();
+        let mut sha = |p: &Path| hashes.entry(p.to_path_buf()).or_insert_with(|| sources::sha256_file(p).unwrap_or_default()).clone();
+        for f in c.parts.get(id).into_iter().flat_map(|pack| pack["items"].as_array().into_iter().flatten()).flat_map(|it| it["files"].as_array().into_iter().flatten()) {
+            let Some(p) = path_of(f) else { continue };
+            let Some(same) = std::fs::metadata(&p).ok().and_then(|m| by_size.get(&m.len())) else { continue };
+            let mine = sha(&p);
+            if let Some((_, project)) = same.iter().find(|(q, _)| !mine.is_empty() && sha(q) == mine) {
+                out.push(json!({ "file": f["path"], "project": project }));
+            }
+        }
+        out
     }
 
     pub fn library_file(&self, rel: &str) -> Result<Vec<u8>> {

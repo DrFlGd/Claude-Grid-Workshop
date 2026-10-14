@@ -48,8 +48,9 @@ export async function addProject(args, label) {
     const ex = src?.examples?.folder && !src.examples.as ? src.examples : null;
     const listed = ex ? Math.max(0, n - ex.count) : n;
     ctx.toast(args.role === "library" || src?.role === "library" ? `Added ${name}: a library, its modules are in Components.`
-      : `Added ${name}: ${plural(listed, "model")}${parts ? `, ${plural(parts, "part")}` : ""}${problems ? `; ${plural(problems, "problem")} to look at` : ""}.`
-        + (ex ? ` Choose what its ${ex.folder}/ folder's ${ex.count} examples should be, on its page.` : ""));
+      : `Added ${name}: ${[listed || !parts ? plural(listed, "model") : "", parts ? plural(parts, "part") : ""].filter(Boolean).join(", ")}${problems ? `; ${plural(problems, "problem")} to look at` : ""}.`
+        + (ex ? ` Choose what its ${ex.folder}/ folder's ${ex.count} examples should be, on its page.` : "")
+        + dupText(res.duplicates));
     location.hash = scopeHash(`source:${res.source}`);
     makeThumbnails();
     return res;
@@ -60,6 +61,13 @@ export async function addProject(args, label) {
     ctx.toast(`Couldn't add it: ${msg}`, same && sourceById(same) ? { label: "Open it", run: () => { location.hash = scopeHash(`source:${same}`); } } : undefined);
     return null;
   }
+}
+
+/** " 3 of its files are in Gridfinity Rebuilt already." (milestone 5: they're added anyway) */
+function dupText(d) {
+  if (!d?.length) return "";
+  const where = [...new Set(d.map((x) => x.project))];
+  return ` ${d.length === 1 ? `${d[0].file.split("/").pop()} is` : `${d.length} of its files are`} in ${listText(where)} already.`;
 }
 
 export function AddProject() {
@@ -380,6 +388,18 @@ async function drawThumb(url) {
   return v.renderer.domElement.toDataURL("image/webp", 0.86);
 }
 
+/** A picture (PNG) fitted into a thumbnail's 480×360, as WebP. */
+async function pictureThumb(blob) {
+  const img = await createImageBitmap(blob);
+  const c = document.createElement("canvas");
+  c.width = 480; c.height = 360;
+  const k = Math.min(c.width / img.width, c.height / img.height);
+  const w = img.width * k, h = img.height * k;
+  c.getContext("2d").drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h);
+  img.close?.();
+  return c.toDataURL("image/webp", 0.86);
+}
+
 // one thumbnail at a time: they share one hidden viewer
 let thumbLock = Promise.resolve();
 function drawThumbLocked(url) {
@@ -466,7 +486,17 @@ export async function makeThumbnails({ components = false, source = null, unchec
           await check(true);
           if (it.thumb && checking) { made++; continue; } // checking only: its thumbnail is kept
         } else {
-          blob = await (await ctx.platform.fetch(it.preview)).blob();
+          // a 3MF's own picture (the one its slicer saved), when it has one (milestone 5)
+          const pic = /^mesh\/.*\.3mf$/i.test(it.preview) ? await ctx.platform.fetch(it.preview.replace(/^mesh\//, "picture/")) : null;
+          if (pic?.ok) {
+            const data = await pictureThumb(await pic.blob());
+            await api("thumb_put", { source: it.sourceId || it.projectId, name: `part-${it.key.split("/")[1]}`, data });
+            made++;
+            continue;
+          }
+          const r = await ctx.platform.fetch(it.preview);
+          if (!r.ok) throw new Error(await r.text());
+          blob = await r.blob();
         }
         const url = URL.createObjectURL(blob);
         let data;

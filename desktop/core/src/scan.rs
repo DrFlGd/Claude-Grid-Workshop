@@ -613,7 +613,9 @@ pub fn survey(root: &Path) -> Found {
         let order = |r: &str| MODEL_EXTS.iter().position(|x| *x == ext(r)).unwrap_or(99);
         let mut fs = fs.clone();
         fs.sort_by_key(|f| order(&f.rel));
-        let preview = fs.iter().find(|f| ext(&f.rel) == "stl").map(|f| f.rel.clone());
+        // the 3D view's file: a 3MF (it can carry colours), then STL, then OBJ; the core hands the
+        // viewer any of them as STL (mesh.rs, milestone 5)
+        let preview = ["3mf", "stl", "obj"].iter().find_map(|x| fs.iter().find(|f| ext(&f.rel) == *x)).map(|f| f.rel.clone());
         let category = if dir.is_empty() { "Parts".to_string() } else { humanize(dir.rsplit('/').next().unwrap_or(&dir)) };
         // a part made from a model (milestone 4) has how it was made beside it: <name>.recipe.json
         let recipe_rel = if dir.is_empty() { format!("{stem}.recipe.json") } else { format!("{dir}/{stem}.recipe.json") };
@@ -811,6 +813,14 @@ mod tests {
         assert_eq!(f.parts.len(), 1);
         assert_eq!(f.parts[0]["files"].as_array().unwrap().len(), 2);
         assert_eq!(f.parts[0]["preview"], json!("parts/Latch.stl"));
+        // one item per name; its 3D view from the 3MF, else STL, else OBJ
+        std::fs::write(d.join("parts/latch.3mf"), b"3mf").unwrap();
+        std::fs::write(d.join("parts/knob.obj"), b"v 0 0 0").unwrap();
+        let f = survey(&d);
+        assert_eq!(f.parts.len(), 2);
+        let preview = |stem: &str| f.parts.iter().find(|p| p["id"].as_str().is_some_and(|i| i.contains(stem))).map(|p| p["preview"].clone());
+        assert_eq!(preview("latch"), Some(json!("parts/latch.3mf")));
+        assert_eq!(preview("knob"), Some(json!("parts/knob.obj")));
         assert_eq!(presets_for(&d, "box.scad"), vec![json!({"label": "Wide", "values": {"w": 4}})]);
         let r = resolver(&d, &[]);
         let (files, missing) = r.collect("box.scad");

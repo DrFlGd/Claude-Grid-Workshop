@@ -1361,3 +1361,12 @@ svg g[data-sk] { display: none; }
 .made-from { display: grid; gap: 6px; }
 .made-from .made-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 0; }
 .made-from .made-actions .button { padding: 6px 12px; font-size: 13.5px; }
+
+/* files dragged onto the window (milestone 5) */
+.drop-hint { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; pointer-events: none; background: color-mix(in srgb, var(--focus) 10%, transparent); outline: 3px dashed var(--focus); outline-offset: -10px; }
+.drop-hint-box { display: flex; align-items: center; gap: 12px; padding: 16px 22px; border-radius: var(--radius-m); background: var(--white); color: var(--ink); box-shadow: 0 6px 24px rgb(0 0 0 / 0.18); font-weight: 700; }
+.drop-dialog { width: min(520px, 92vw); }
+.drop-list { margin: 0 0 12px; padding-left: 18px; max-height: 160px; overflow: auto; overflow-wrap: anywhere; }
+.drop-choices { display: grid; gap: 4px; justify-items: start; }
+.drop-choices p { margin: 0 0 8px; }
+.file-colours { display: inline-flex; gap: 6px; align-items: center; margin-top: 6px; font-size: 14px; }
