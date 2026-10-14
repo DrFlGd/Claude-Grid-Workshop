@@ -82,6 +82,10 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+- The acceptance test waits for LEGO.scad's main model to be checked at its defaults, not all 182 of its examples (the slowest step: one 0.4.9 build failed without publishing its report, probably there).
+
+## 0.4.9 — 2026-10-14 · Starter projects from GitHub, suggested projects, one head for model pages, pins that know their library copy, projects that follow releases
+
 Milestone 3, last part (0.4.9): starter projects as GitHub projects, suggested projects, and Review 2's UI-16, F-9 and F-11.
 
 - **Starter projects that are on GitHub can come from there** (F-1): Library settings › Projects offers it once, for libraries made before 0.4.4. Gridfinity Rebuilt, Gridfinity Extended, Gridfinity Basket, Cullenect Label, Label Generator for Gridfinity and Underware are downloaded at the commit the app's copy came from, in their authors' own layout, and follow the default branch for updates. Each keeps its id, models, saved settings (code edits move to the new file paths) and thumbnails; one that doesn't read, or loses a model, is put back as it was. The other 13 stay as they are: HSW's first model is a file from an older commit, GridFlock and Rugged Box need git submodules GitHub's download leaves out, openGrid uses the app's adapter, and the rest aren't on GitHub.
