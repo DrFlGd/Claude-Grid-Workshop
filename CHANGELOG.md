@@ -83,6 +83,10 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+Review 4 (https://claude.ai/artifact/RAhYcNBQ9WnFJowHZVfunC, UI-28 to UI-32 and F-19 to F-22): planned for 0.4.13 in docs/DESKTOP_PLAN.md, "0.4.13 plan".
+
+## 0.4.12 — 2026-10-14 · Folders of examples made into parts; a model no longer dropped when its settings fail to read once
+
 Milestone 4, last part (0.4.12): Review 3's F-15, a folder of examples.
 
 - **A folder of examples is asked about once** on its project's page: more than 20 files in one folder that each only call the project's main file (LEGO.scad's `examples/`, a piece per file) can be **made into parts**, **listed as models** (as before) or **left out**. The answer is kept in the project's `metadata.json` (`examples: { folder, as }`), so it holds across updates, and can be changed from the same place.
