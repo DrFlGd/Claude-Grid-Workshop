@@ -731,11 +731,16 @@ async def main():
             seen = await pg.evaluate(f"() => [!!window.__workshop.index.get('gen:{ids['gears']}/scan-extra'), !!window.__workshop.index.get('gen:local-scanned/plate')]")
             toast1 = await pg.eval_on_selector_all(".toast", "els => els.map((e) => e.textContent).join(' | ')")
             shutil.rmtree(library / "local/scanned")
-            await pg.click("#library-rescan")
-            try:
-                await pg.wait_for_function("() => window.__workshop.catalog.attention.some((a) => a.kind === 'missing-folder' && a.source === 'local-scanned')", timeout=60000)
-            except Exception:
-                pass
+            # (a click while another scan runs, one started when the window got focus, only waits for that
+            # one, whose message doesn't mention the folder: click again until a scan of our own reports it)
+            for _ in range(3):
+                await pg.click("#library-rescan")
+                try:
+                    await pg.wait_for_function("() => window.__workshop.catalog.attention.some((a) => a.kind === 'missing-folder' && a.source === 'local-scanned')"
+                                               " && document.querySelector('#toast')?.textContent.includes('missing')", timeout=30000)
+                    break
+                except Exception:
+                    pass
             missing = await pg.evaluate("() => window.__workshop.catalog.attention.some((a) => a.kind === 'missing-folder' && a.source === 'local-scanned')")
             toast2 = await pg.eval_on_selector_all(".toast", "els => els.map((e) => e.textContent).join(' | ')")
             # (0.4.4) no Needs attention: a project's problems are marked in Library settings › Projects, beside its license

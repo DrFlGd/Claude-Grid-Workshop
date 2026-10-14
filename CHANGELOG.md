@@ -91,6 +91,7 @@ Milestone 2 of the owner's direction of 2026-10-14: Model Library's skins, and R
 - **A drop-down whose choices are long takes the whole row** under its label (UI-10), so "7mm increments - Excluding…" isn't cut off.
 - **Model and component pages have the same head** (UI-11): name, a one-line summary (a component's is the first sentence of its notes), credits, then one row of actions: Code, README, Edit form, with Copy code and Pin as a model… under ⋯ on a component.
 - **Fixed:** Settings showed "null" under Engine on Linux and macOS (an empty Windows-only line).
+- **Tests:** the acceptance test's Scan for changes check clicks again when its click only waited for a scan already running (one started when the window got focus), which stopped the first 0.4.5 build.
 
 ## 0.4.4 — 2026-10-14 · No starter projects, website retired, license status in Library settings
 
