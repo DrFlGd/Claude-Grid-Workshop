@@ -675,7 +675,7 @@ pub fn bundle_site(site: &Path, out: &Path) -> Result<Vec<String>> {
         crate::config::write_atomic(&dir.join("derived").join(format!("{version}.json")), &serde_json::to_vec(&derived)?)?;
         let src = json!({
             "id": id, "kind": "bundled", "role": "project", "added": made,
-            "origin": { "bundle": "scad-workshop", "url": origin_url },
+            "origin": { "type": "app", "bundle": "scad-workshop", "url": origin_url },
             "version": version, "version_date": updated.clone().unwrap_or_else(|| made.clone()),
             "versions": [{ "id": version, "date": updated, "added": made }],
             "detected": {
@@ -739,7 +739,7 @@ pub fn bundle_site(site: &Path, out: &Path) -> Result<Vec<String>> {
         crate::config::write_atomic(&dir.join("derived").join(format!("{version}.json")), &serde_json::to_vec(&derived)?)?;
         let src = json!({
             "id": id, "kind": "bundled", "role": "project", "added": made,
-            "origin": { "bundle": "scad-workshop", "url": detail["source_url"] },
+            "origin": { "type": "app", "bundle": "scad-workshop", "url": detail["source_url"] },
             "version": version, "version_date": made, "versions": [{ "id": version, "date": made, "added": made }],
             "detected": {
                 "name": detail["name"], "summary": detail["summary"], "license": detail["license"], "authors": detail["authors"],

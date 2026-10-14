@@ -1325,7 +1325,7 @@ fn ensure_pinned(lib: &Library) -> Result<String> {
     }
     lib.save_source(&json!({
         "id": id, "kind": "pinned", "role": "project", "added": library::now(), "version": "pins",
-        "origin": {}, "detected": { "name": "Pinned components", "summary": "Components from libraries, pinned as models.", "category": "other" },
+        "origin": { "type": "pinned" }, "detected": { "name": "Pinned components", "summary": "Components from libraries, pinned as models.", "category": "other" },
     }))?;
     Ok(id.into())
 }

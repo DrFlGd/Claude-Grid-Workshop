@@ -88,6 +88,7 @@ Milestone 3, second part (0.4.7): one project description, whatever the source (
 - **Save as project file** (⋯ on one of your own projects, in `local/` or linked) writes its description, with your edits (names, forms; deleted models left out), into its folder, so it goes with the files.
 - **Every project records where it came from and its versions the same way:** `origin.type` (`github`, `zip`, `folder`, `linked`, `local`, `app`, `pinned`) in every `source.json`, and `date`, `added`, `files` (count) and `content` (fingerprint) on every version; libraries from earlier versions are filled in when opened.
 - **Adding something that's already in the library says so** and offers to open that one: the same GitHub repository (as before), the same ZIP file (by its SHA-256) or the same folder.
+- The project that holds pinned components records its origin (`pinned`) as soon as it's made, not only when the library is next opened.
 
 ## 0.4.6 — 2026-10-14 · Every model checked at its defaults, defaults that fit their limits, readable setting names
 
