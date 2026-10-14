@@ -91,6 +91,7 @@ Milestone 5, second part (0.4.15): one download with a format picker.
 - **A model's render downloads as STL or 3MF**, picked beside Download and kept per model; the 3MF is written by the app from the render (one object, named after the model).
 - **Near misses:** files in one folder whose names differ only by a version or copy mark (`latch_v2.stl` beside `latch.3mf`) and share no format are listed on the project's page with **Make one part**. A part made one says so on its page, with **Split into separate parts**. Kept in the project's `metadata.json` (`merged`), so it holds when the project is read again or updated.
 - CI: checks for the part and model pickers (the 3MF read back), and a near miss made one and split.
+- Fix (CI's first run of 0.4.15): the acceptance test expected Settings without its new Downloads section, and an `import zipfile` left inside the test hid the module for the new 3MF check.
 
 ## 0.4.14 — 2026-10-14 · Milestone 5, first part: 3MF and OBJ previews, dropping files on the window, duplicates named
 

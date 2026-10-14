@@ -951,7 +951,7 @@ async def main():
             cols = await pg.evaluate("() => ['#p-Mirror_X', '#p-Width_Units'].map((s) => Math.round(document.querySelector(s).getBoundingClientRect().left))")
             readme = (library / "README.txt").read_text()
             check("Settings is laid out like Library settings; a yes/no setting's box is in the value column; the library's README explains pins, your own projects and old versions",
-                  toc[:4] == ["Appearance", "Printer profile", "Library", "Engine"] and abs(cols[0] - cols[1]) <= 2
+                  toc[:5] == ["Appearance", "Printer profile", "Downloads", "Library", "Engine"] and abs(cols[0] - cols[1]) <= 2
                   and "sources/pinned/pins/" in readme and "Remove versions not in use" in readme, (toc, cols))
 
             # 13e. (0.4.9, F-1) the starter projects that are on GitHub as the app had them become GitHub projects
@@ -1311,7 +1311,6 @@ async def main():
                 if backup.is_file():
                     break
                 await pg.wait_for_timeout(500)
-            import zipfile
             names = zipfile.ZipFile(backup).namelist() if backup.is_file() else []
             thumbs_in = any("/thumbs/" in n for n in names)
             check("Back up library: one ZIP of the library folder, without thumbnails when asked",
