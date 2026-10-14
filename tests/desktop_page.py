@@ -118,7 +118,10 @@ async def main():
             await ctx.add_init_script(path=str(SHIM))
             pg = await ctx.new_page()
             pg.on("pageerror", lambda e: errors.append(str(e)))
-            pg.on("console", lambda m: errors.append(f"{m.text} ({m.location.get('url', '')})") if m.type == "error" and "net::ERR_" not in m.text else None)
+            # (a render that fails answers 500, which the browser logs: section 13b's model that doesn't
+            # render at its defaults does so on purpose, and the checks report any other failed render)
+            pg.on("console", lambda m: errors.append(f"{m.text} ({m.location.get('url', '')})") if m.type == "error" and "net::ERR_" not in m.text
+                  and not ("status of 500" in m.text and m.location.get("url", "").endswith("/invoke/render")) else None)
             pg.on("dialog", lambda d: asyncio.ensure_future(d.accept()))
             await pg.goto(B)
             await pg.wait_for_selector(".home .tile", timeout=120000)
