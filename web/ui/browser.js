@@ -144,7 +144,7 @@ function GridView({ groups, size, sel, favs, onPick, onOpen, cols }) {
         class="card" data-item=${it.id} data-hidden=${it.hidden ? "" : null} key=${it.id} onClick=${(e) => onPick(it, e)} onDblClick=${() => onOpen(it)}>
         <${Thumb} item=${it} />
         <span class="card-name">${it.name}</span>
-        <span class="card-sub">${it.project}</span>
+        <span class="card-sub">${it.sub || it.project}</span>
         <span class="card-badges"><${Badges} item=${it} favs=${favs} /></span>
       </div>`)}
     </div>

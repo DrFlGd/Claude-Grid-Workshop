@@ -62,6 +62,7 @@ export class LocalIndex {
   constructor(catalog, libraries) {
     const famById = Object.fromEntries((catalog.families || []).map((f) => [f.id, f]));
     const label = (id) => categoryLabel(catalog, id);
+    const srcName = Object.fromEntries((catalog.sources || []).map((s) => [s.id, s.name]));
     const names = (list) => (list || []).map((a) => a.name || a);
     this.items = [];
     // projectId/project: where the item is listed (the user can move it to another project);
@@ -77,7 +78,7 @@ export class LocalIndex {
         desktopOnly: m.browser === false, terms: m.terms || "", href: `#/m/${m.key}`,
         updated: m.updated || null, updatedFrom: m.updated_from || null,
         folder: m.folder || "", fields: m.fields || {}, hidden: m.hidden || null, broken: m.broken || null,
-        check: m.check || null,
+        check: m.check || null, filesId: m.files_id || null,
       });
     }
     // components: library modules; their "project" is the library, their category a topic group
@@ -96,13 +97,16 @@ export class LocalIndex {
       for (const it of lib.items) {
         const cat = it.category_id || lib.category || "other";
         const license = it.license && typeof it.license === "object" && it.license.spdx ? it.license : lib.license || {};
+        // a made part's card says what it was made from, not "Made parts" (UI-28)
+        const mf = it.made_from;
+        const madeSub = mf?.project && mf.project !== (lib.source_id || lib.id) ? [mf.model_name, famById[mf.project]?.name || srcName[mf.project]].filter(Boolean).join(" · ") : "";
         this.items.push({
           id: `part:${lib.id}/${it.id}`, kind: "part", key: `${lib.id}/${it.id}`, name: it.name,
           project: it.project_name || lib.name, projectId: it.project_id || lib.id, sourceId: lib.source_id || lib.id,
           category: cat, categoryLabel: label(cat), subcategory: it.category, tags: it.tags || [],
           summary: it.description || "", license, licenseStatus: license.public_use || "ok",
           authors: names(it.authors || lib.authors), thumb: it.thumb || null, dims: it.dimensions || null,
-          files: it.files || [], preview: it.preview_url || null, generator: it.generator || null, madeFrom: it.made_from || null, terms: "",
+          files: it.files || [], preview: it.preview_url || null, generator: it.generator || null, madeFrom: it.made_from || null, terms: "", sub: madeSub || null,
           href: `#/parts/${lib.id}/${it.id}`, updated: it.updated || lib.updated || null, updatedFrom: null,
           folder: it.folder || "", fields: it.meta?.fields || {}, hidden: it.hidden || null, broken: it.broken || null,
         });

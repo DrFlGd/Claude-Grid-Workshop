@@ -97,8 +97,14 @@ function Backups({ lib }) {
 /** A project's license as the table shows it: the license, and a note when it isn't cleared for sharing prints. */
 function LicenseCell({ s }) {
   const lic = s.meta?.license || {};
-  const status = lic.public_use || (lic.spdx && lic.spdx !== "NOASSERTION" ? "ok" : "review");
-  const name = lic.spdx && lic.spdx !== "NOASSERTION" ? lic.spdx : "Not stated";
+  const stated = lic.spdx && lic.spdx !== "NOASSERTION";
+  // your own work (local/ or linked) with no license of its own: nothing to check before sharing prints (UI-31);
+  // Made parts carry their projects' licenses part by part
+  if (!stated && lic.public_use === "ok" && (s.kind === "local" || s.kind === "linked")) {
+    return html`<td class="ls-license">${s.id === "local-made-parts" ? "Each part's own" : "Yours"}</td>`;
+  }
+  const status = lic.public_use || (stated ? "ok" : "review");
+  const name = stated ? lic.spdx : "Not stated";
   return html`<td class="ls-license">${name}${status !== "ok" ? html` <span class=${`badge ${status}`} title="Not cleared for sharing or selling prints: check the project's license before you do">${LICENSE_TEXT[status] || status}</span>` : null}</td>`;
 }
 

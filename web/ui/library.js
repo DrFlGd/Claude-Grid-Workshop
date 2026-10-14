@@ -44,8 +44,12 @@ export async function addProject(args, label) {
     const n = res.read?.models ?? 0, parts = res.read?.parts ?? 0;
     const problems = (res.read?.problems || []).length;
     const src = sourceById(res.source), name = src?.name || label;
+    // a folder of examples is asked about on the project's page before they're listed (F-21)
+    const ex = src?.examples?.folder && !src.examples.as ? src.examples : null;
+    const listed = ex ? Math.max(0, n - ex.count) : n;
     ctx.toast(args.role === "library" || src?.role === "library" ? `Added ${name}: a library, its modules are in Components.`
-      : `Added ${name}: ${plural(n, "model")}${parts ? `, ${plural(parts, "part")}` : ""}${problems ? `; ${plural(problems, "problem")} to look at` : ""}.`);
+      : `Added ${name}: ${plural(listed, "model")}${parts ? `, ${plural(parts, "part")}` : ""}${problems ? `; ${plural(problems, "problem")} to look at` : ""}.`
+        + (ex ? ` Choose what its ${ex.folder}/ folder's ${ex.count} examples should be, on its page.` : ""));
     location.hash = scopeHash(`source:${res.source}`);
     makeThumbnails();
     return res;
@@ -142,9 +146,13 @@ export function madeFrom(r) {
   const text = `Made from ${what}, ${n ? `${plural(n, "setting")} changed` : "with its default settings"}${r.edits ? " and your code edits" : ""}.`;
   const src = m?.sourceId ? sourceById(m.sourceId) : null;
   let outdated = null;
-  if (src && r.project_version && src.version && src.version !== r.project_version) {
+  // changed since: the files the model uses (F-20), so an edit elsewhere in your own project doesn't count;
+  // recipes from before 0.4.13 (and components) compare the project's version
+  const changed = r.files_id && m?.filesId ? r.files_id !== m.filesId : !!(src && r.project_version && src.version && src.version !== r.project_version);
+  if (src && changed) {
     const then = (src.versions || []).find((v) => v.id === r.project_version);
-    outdated = `Made with ${then?.date ? `the version of ${when(then.date)}` : "an earlier version"}; ${src.name || m.project} has been updated since. Make again to use it.`;
+    outdated = src.kind === "local" || src.kind === "linked" ? `The files ${m.name} uses have changed since this was made. Make again to use them.`
+      : `Made with ${then?.date ? `the version of ${when(then.date)}` : "an earlier version"}; ${src.name || m.project} has been updated since. Make again to use it.`;
   }
   return { text, available: !!m, outdated, href: `#/m/${r.model}` };
 }
@@ -208,7 +216,7 @@ function ExamplesChoice({ src }) {
   };
   const folder = `${ex.folder}/`;
   if (ex.as && !open) {
-    return html`<p class="lic-summary" id="examples-choice">Its ${folder} folder (${plural(ex.count, "file")}): ${EXAMPLES_AS[ex.as] || ex.as}.
+    return html`<p class="info-note" id="examples-choice">Its ${folder} folder (${plural(ex.count, "file")}): ${EXAMPLES_AS[ex.as] || ex.as}.
       ${readOnly() ? null : html` <button type="button" class="link-btn" onClick=${() => setOpen(true)}>Change</button>`}</p>`;
   }
   if (readOnly()) return null;
@@ -223,7 +231,9 @@ function ExamplesChoice({ src }) {
 
 export function SourcePanel({ id }) {
   const v = useStore(ui, (s) => s.catalogVersion);
-  const tab = useStore(ui, (s) => s.sourceTab || "items");
+  // the parts you've made from models (local/Made parts/): no source of its own to show, read or keep versions of (UI-28)
+  const made = id === "local-made-parts";
+  const tab = useStore(ui, (s) => (made && s.sourceTab === "versions" ? "items" : s.sourceTab || "items"));
   const setTab = (t) => ui.set({ sourceTab: t });
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState("");
@@ -241,7 +251,7 @@ export function SourcePanel({ id }) {
   const origin = src.origin || {};
   const url = origin.url || src.meta?.origin;
   const problems = src.problems || [];
-  const tabs = [["items", "Items"], ["about", "About"], ["files", "Files"], ["versions", "Versions"]];
+  const tabs = [["items", "Items"], ["about", "About"], ["files", "Files"], ...(made ? [] : [["versions", "Versions"]])];
   // one main action beside the project's name (Check for updates, or Read again); the rest under ⋯ (Review 1, UI-3)
   const reread = html`<button type="button" class=${src.kind === "github" ? "" : "ghost"} disabled=${!!busy || ro} data-act="reread" onClick=${() => act("read", async () => {
     await runJob(api("source_read", { id }), `Reading ${src.name}`);
@@ -252,14 +262,14 @@ export function SourcePanel({ id }) {
     <div class="source-head">
       ${src.icon ? html`<img class="source-icon" src=${src.icon} alt="" />` : null}
       <div>
-        <p class="source-kind">${kindText(src)}${src.role === "library" ? " · library" : ""}${src.version_date ? ` · version of ${when(src.version_date)}` : ""}</p>
-        <p class="source-sub">${[
+        <p class="source-kind">${kindText(src)}${src.role === "library" ? " · library" : ""}${src.version_date && !made ? ` · version of ${when(src.version_date)}` : ""}</p>
+        ${made ? html`<p class="source-sub">Parts you've made from models. Each keeps the license of the project it was made from.</p>` : html`<p class="source-sub">${[
           url ? html`<a href=${url} target="_blank" rel="noopener">${url.replace(/^https?:\/\//, "")}</a>`
             : origin.path || origin.file ? html`<span title=${origin.path || origin.file}>${(origin.path || origin.file).split(/[\\/]/).filter(Boolean).slice(-2).join("/")}</span>` : null,
           src.meta?.license?.spdx ? (src.meta.license.spdx === "NOASSERTION" ? "License not stated" : src.meta.license.spdx) : null,
           // what its updates follow (F-11)
           src.kind === "github" && origin.track ? html`<span data-follows=${origin.track}>${origin.track === "releases" ? "updates: new releases" : `updates: changes on its ${String(origin.track).replace(/^branch:/, "") || "default"} branch`}</span>` : null,
-        ].filter(Boolean).flatMap((x, i) => (i ? [" · ", x] : [x]))}</p>
+        ].filter(Boolean).flatMap((x, i) => (i ? [" · ", x] : [x]))}</p>`}
       </div>
       <div class="source-actions">
         ${src.kind === "github" ? html`<button type="button" class="ghost" disabled=${!!busy || ro} data-act="check" onClick=${() => act("check", async () => {
@@ -267,7 +277,7 @@ export function SourcePanel({ id }) {
           await ctx.reloadCatalog();
           ctx.toast(r.updates?.length ? "An update is ready to review." : "No newer version.");
         })}>${busy === "check" ? "Checking…" : "Check for updates"}</button>`
-        : src.kind !== "bundled" ? reread : null}
+        : src.kind !== "bundled" && !made ? reread : null}
         <details class="menu" id="source-more"><summary class="ghost" aria-label="More" title="More">⋯</summary><div class="menu-panel" onClick=${(e) => {
           if (e.target.closest("button")) e.currentTarget.closest("details").open = false;
         }}>

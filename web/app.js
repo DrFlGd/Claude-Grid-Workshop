@@ -1041,7 +1041,7 @@ const dataUrl = (blob) => new Promise((resolve, reject) => {
 async function savePartFile(m, blob, values, { name, category = null, replace = false, folder = null }) {
   return platform.api("part_save", {
     model: m.key, model_name: m.name, project: m.source_id || null, project_version: sourceById(m.source_id)?.version || null,
-    name, category, values: changedValues(m, values), edits: editsRecord(m), data: await dataUrl(blob), replace, folder });
+    files_id: m.files_id || null, name, category, values: changedValues(m, values), edits: editsRecord(m), data: await dataUrl(blob), replace, folder });
 }
 
 /** After saving: read Made parts again and find a saved part's page (`#/parts/<pack>/<part>`). */
@@ -1490,7 +1490,9 @@ async function openLibrary(libId, itemId) {
     if (lib.authors?.length) parts.push(`By ${lib.authors.map((a) => a.name).join(", ")}`);
     if (lib.source_url) parts.push(el("a", { href: lib.source_url, target: "_blank", rel: "noopener", text: "Source" }));
     const spdx = lib.license?.spdx;
-    parts.push(el("a", { href: `#/licenses/${lib.id}`, text: spdx && spdx !== "NOASSERTION" ? `License ${spdx}` : "License details" }));
+    // parts you've made from models: each is under the license of the project it was made from (UI-28)
+    if (libId === "local-made-parts") parts.push("Each part keeps the license of the project it was made from");
+    else parts.push(el("a", { href: `#/licenses/${lib.id}`, text: spdx && spdx !== "NOASSERTION" ? `License ${spdx}` : "License details" }));
     credit.append(...parts.flatMap((x, i) => (i ? [" · ", x] : [x])));
     // the pack's project documents (its README), as on model pages, and in the side viewer's tabs (UI-25)
     const sourceId = lib.source_id || state.libraries.find((l) => l.id === libId)?.source_id || null;
@@ -1511,7 +1513,8 @@ function buildPartList(lib) {
   for (const c of [...new Set(lib.items.map((i) => i.category))]) {
     nav.append(el("div", { class: "part-group", "data-cat": c },
       el("h2", { text: c }),
-      el("ul", {}, lib.items.filter((i) => i.category === c).map((i) => el("li", {},
+      // by name, numbers as numbers (Brick 1x2 before 1x17), as the grid sorts (UI-29)
+      el("ul", {}, lib.items.filter((i) => i.category === c).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map((i) => el("li", {},
         el("a", { href: `#/parts/${lib.id}/${i.id}`, "data-id": i.id, "data-search": [i.name, c, ...(i.tags || [])].join(" ").toLowerCase() },
           el("span", { text: i.name }),
           el("span", { class: "formats", text: [...new Set(i.files.map((f) => FORMAT_LABEL[f.format] || f.format))].join(" ") })))))));
@@ -1550,6 +1553,12 @@ async function showPart(lib, item) {
         el("a", { class: "button secondary", id: "made-open", href: link, text: "Open with these settings" }),
         platform.kind === "desktop" && !state.catalog.library?.read_only
           ? el("a", { class: "button secondary", id: "made-again", href: `${link}&again`, title: "Make it with the same settings and replace its files, keeping the name", text: "Make again" }) : null) : null));
+  } else if (item.example) {
+    // one of a folder of examples made into parts: its own model prints this one size; the main file's model,
+    // when it has settings, prints any (UI-29)
+    status.append(el("p", { class: "help" }, el("a", { href: `#/m/${item.generator}`, id: "example-open", text: "Open the example as a model" }),
+      ...(item.main_model && state.catalog?.models?.some((m) => m.key === item.main_model)
+        ? [", or ", el("a", { href: `#/m/${item.main_model}`, id: "example-main", text: `open ${state.catalog.models.find((m) => m.key === item.main_model).name}` }), " to make it at other sizes."] : ["."])));
   } else if (item.generator) status.append(el("p", { class: "help" }, el("a", { href: `#/m/${item.generator}`, text: "Open the parametric model" }), " to print it at any size."));
   const dl = $("#part-downloads");
   dl.replaceChildren(...item.files.map((f, i) => el("a", {

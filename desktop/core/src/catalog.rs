@@ -179,6 +179,13 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         if let Some(c) = fam.get("category").filter(|_| det.get("category").is_none()) {
             det.insert("category".into(), c.clone());
         }
+        // your own work (local/ or linked) with no license stated, and none set for the whole library, has
+        // nothing to check before sharing prints (UI-31)
+        let lib_license = lib_defaults.as_ref().is_some_and(|d| d.get("license").is_some_and(|l| !l.is_null()));
+        if matches!(src["kind"].as_str(), Some("local" | "linked")) && !lib_license && det.get("license").is_none_or(|l| l["spdx"].as_str().is_none_or(|s| s == "NOASSERTION")) {
+            // ("own" so it isn't taken for no license at all; tidying the value drops it again)
+            det.insert("license".into(), json!({ "spdx": "NOASSERTION", "public_use": "ok", "own": true }));
+        }
         let empty = Map::new();
         let (pvals, pfrom) = meta::resolve(&Layers {
             item: edits.get("project").and_then(Value::as_object),
@@ -234,7 +241,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         let has_thumb = |name: &str| thumbs.as_ref().is_some_and(|t| t.join(name).is_file());
         // models
         let mut model_names = vec![];
-        let mut example_parts: Vec<(String, String, Value)> = vec![]; // (id, key, name)
+        let mut example_parts: Vec<(String, String, Value, String)> = vec![]; // (id, key, name, fingerprint)
         for d in derived["models"].as_array().into_iter().flatten() {
             let mid = d["id"].as_str().unwrap_or("").to_string();
             let key = d["key"].as_str().unwrap_or("").to_string();
@@ -264,6 +271,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             detail["from"] = Value::Object(from.clone());
             detail["meta"] = Value::Object(vals.clone());
             detail["source_id"] = json!(id);
+            detail["files_id"] = json!(project::files_id(&d["files"]));
             if has_thumb(&format!("{mid}.webp")) {
                 detail["thumb"] = json!(file_url(&format!("sources/{id}/thumbs/{mid}.webp")));
             }
@@ -281,7 +289,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
                 detail["check"] = json!({ "outdated": true });
             }
             let mut summary = Map::new();
-            for k in ["key", "family", "family_name", "id", "name", "category", "category_label", "summary", "tags", "license", "browser", "updated", "updated_from", "settings", "terms", "thumb", "source_id", "folder", "check"] {
+            for k in ["key", "family", "family_name", "id", "name", "category", "category_label", "summary", "tags", "license", "browser", "updated", "updated_from", "settings", "terms", "thumb", "source_id", "folder", "check", "files_id"] {
                 if let Some(v) = detail.get(k).filter(|v| !v.is_null()) {
                     summary.insert(k.into(), v.clone());
                 }
@@ -299,10 +307,16 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
                     profile_uses.entry(field).or_insert_with(|| json!([])).as_array_mut().unwrap().push(json!({ "key": key, "param": p["name"] }));
                 }
             }
+            if detail["example_pending"] == true {
+                // one of a folder of examples not yet asked about (F-21): its page opens, but it isn't listed
+                // (or checked at its defaults) until the project's page is answered
+                out.models.insert(key, detail);
+                continue;
+            }
             if detail["as_part"] == true {
                 // one of a folder of examples made into parts (F-15): listed in the Parts Library once
                 // made; its page stays, for making it at other sizes
-                example_parts.push((mid.clone(), key.clone(), detail["name"].clone()));
+                example_parts.push((mid.clone(), key.clone(), detail["name"].clone(), detail["files_id"].as_str().unwrap_or("").to_string()));
                 out.models.insert(key, detail);
                 continue;
             }
@@ -317,15 +331,22 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         }
         // ready-made parts: one pack per project
         let mut parts = derived["parts"].as_array().cloned().unwrap_or_default();
-        // and the examples made into parts: sources/<id>/examples/<version>/<model id>.stl, made by the app
-        let examples_rel = format!("sources/{id}/examples/{version}");
+        // and the examples made into parts: sources/<id>/examples/<fingerprint>/<model id>.stl, made by the
+        // app, so only those whose files changed are made again (F-20)
+        let examples_rel = format!("sources/{id}/examples");
         let examples_folder = crate::scan::humanize(derived["examples"]["folder"].as_str().unwrap_or("examples").rsplit('/').next().unwrap_or("examples"));
-        for (mid, key, name) in example_parts {
-            match lib.resolve(&format!("{examples_rel}/{mid}.stl")).ok().and_then(|p| std::fs::metadata(p).ok()) {
+        // the model of the file every example calls, when it has settings of its own (UI-29)
+        let examples_main = derived["examples"]["main"].as_str().map(|m| m.trim_start_matches('/'));
+        let main_model = derived["models"].as_array().into_iter().flatten()
+            .find(|d| examples_main.is_some_and(|m| d["entry"].as_str().map(|e| e.trim_start_matches('/')) == Some(m)) && d["as_part"] != true && d["parameters"].as_array().is_some_and(|p| !p.is_empty()))
+            .and_then(|d| d["key"].as_str()).map(String::from);
+        for (mid, key, name, fp) in example_parts {
+            let rel = format!("{fp}/{mid}.stl");
+            match lib.resolve(&format!("{examples_rel}/{rel}")).ok().and_then(|p| std::fs::metadata(p).ok()) {
                 Some(m) => parts.push(json!({
                     "id": mid, "name": name, "category": examples_folder, "kind": "printable", "tags": [],
-                    "files": [{ "path": format!("{mid}.stl"), "format": "stl", "bytes": m.len() }], "preview": format!("{mid}.stl"),
-                    "generator": key, "example": true,
+                    "files": [{ "path": rel, "format": "stl", "bytes": m.len() }], "preview": rel,
+                    "generator": key, "example": true, "main_model": main_model,
                 })),
                 // (one that didn't render isn't tried again until its defaults are checked again)
                 None if checks.get(&mid).is_some_and(|c| c["ok"] == false) => {}

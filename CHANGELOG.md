@@ -85,6 +85,17 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 Review 4 (https://claude.ai/artifact/RAhYcNBQ9WnFJowHZVfunC, UI-28 to UI-32 and F-19 to F-22): planned for 0.4.13 in docs/DESKTOP_PLAN.md, "0.4.13 plan".
 
+- **Made parts shelf** (UI-28): no source line, Read again or Versions; it says each part keeps the license of the project it was made from, and each card names the model and project it was made from ("Basic Bin · Gridfinity Rebuilt").
+- **Example parts** (UI-29): the link reads "Open the example as a model", plus the main file's model when it has settings; part lists sort by number (Brick 1x2 before 1x17); the project page's examples note is a plain information box, not a warning.
+- **Tabs** (UI-30): two open tabs with the same name both show their project, even when the tab bar is crowded.
+- **Your own projects' licenses** (UI-31): projects in `local/` or linked with no license stated read "Yours" in Library settings › Projects, with no Check, and no longer count as needing a license check; Made parts reads "Each part's own". A license set for the whole library still applies.
+- **Status bar** (UI-32): the space before a job's timer is back ("Making thumbnails · 1 of 4 · 3 s").
+- **Made parts folders** (F-19): when another model in the library has the same name, a model's parts go in "<model> (<project>)" ("Basic Bin (Gridfinity Rebuilt)"). Existing folders stay; Make again keeps using the part's own folder.
+- **What counts as changed** (F-20): a recipe records the fingerprint of the files its model uses, and a made part says its model changed only when those files did, not when anything else in the project changed. Examples made into parts are kept by the same fingerprint (`sources/<id>/examples/<fingerprint>/`), so editing one file remakes only the examples that use it. Example parts made by 0.4.12 are made once more on first start.
+- **Examples asked about first** (F-21): until a folder of examples is answered on its project's page, its files aren't listed under Parametric Models or checked at their defaults, and Add project's message asks you to choose.
+- **README** (F-22): describes `local/Made parts/<model>/` and the `<name>.recipe.json` beside each part.
+- CI: the acceptance test checks all of the above and takes screenshots of Save as part, a made part's page, Make several, the Made parts shelf and an example part.
+
 ## 0.4.12 — 2026-10-14 · Folders of examples made into parts; a model no longer dropped when its settings fail to read once
 
 Milestone 4, last part (0.4.12): Review 3's F-15, a folder of examples.

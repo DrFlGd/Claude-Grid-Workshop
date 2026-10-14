@@ -87,6 +87,9 @@ export function Tabs() {
     more = s.tabs.filter((k) => !shown.includes(k));
   }
   const crowded = shown.length * TAB_ROOMY > room;
+  // names two open tabs share: those tabs keep their project showing even when crowded (UI-30)
+  const names = s.tabs.map((k) => item(k)?.name);
+  const clash = (key) => { const n = item(key)?.name; return !!n && names.filter((x) => x === n).length > 1; };
   return html`<div class="tabbar" ref=${bar}>
     <div class=${`tabstrip${crowded ? " crowded" : ""}`} role="tablist" aria-label="Open models" ref=${strip}>
       <a role="tab" class=${`tab tab-lib${libActive ? " active" : ""}`} aria-selected=${libActive ? "true" : "false"}
@@ -94,7 +97,7 @@ export function Tabs() {
       ${shown.map((key) => {
         const it = item(key);
         const on = s.view === "model" && s.active === key;
-        return html`<a role="tab" class=${`tab${on ? " active" : ""}`} aria-selected=${on ? "true" : "false"} href=${`#/m/${key}`} key=${key}
+        return html`<a role="tab" class=${`tab${on ? " active" : ""}${clash(key) ? " clash" : ""}`} aria-selected=${on ? "true" : "false"} href=${`#/m/${key}`} key=${key}
           data-tab=${key} title=${it ? `${it.name}, ${it.project}` : "No longer in the library"}
           onAuxClick=${(e) => { if (e.button === 1) close(key, e); }}>
           ${it?.thumb ? html`<img src=${it.thumb} alt="" />` : null}
@@ -124,6 +127,7 @@ function Elapsed({ since }) {
 }
 
 // "Checking for updates · Checking Gridfinity openscad…" reads without its trailing dots; the time follows a "·"
+// (the text and its timer are one span: as separate items of the button's flex row, the space before the timer was lost, UI-32)
 const jobText = (label) => String(label || "").replace(/\s*(…|\.\.\.)\s*$/, "").replace(/(…|\.\.\.)(?= ·)/g, "");
 
 export function StatusBar() {
@@ -138,7 +142,7 @@ export function StatusBar() {
     <span>${plural(gens, "parametric model")}${comps ? ` · ${plural(comps, "component")}` : ""} · ${plural(shown.length - gens - comps, "part")}${ctx.index.hiddenCount ? ` · ${ctx.index.hiddenCount} hidden` : ""}</span>
     <span class="status-jobs">
       ${latest ? html`<button type="button" class="status-job" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>
-        <span class="dot busy"></span>${jobText(latest.label)} · <${Elapsed} since=${latest.started} />${s.jobs.length > 1 ? ` · ${s.jobs.length} running` : ""}</button>`
+        <span class="dot busy"></span><span>${jobText(latest.label)} · <${Elapsed} since=${latest.started} />${s.jobs.length > 1 ? ` · ${s.jobs.length} running` : ""}</span></button>`
         : html`<span class="status-idle"><span class="dot"></span>Ready</span>`}
       ${open && s.jobs.length ? html`<div class="jobs-panel" role="dialog" aria-label="Background work">
         ${s.jobs.map((j) => html`<div class="job" key=${j.id}><span>${jobText(j.label)}</span><span class="muted"><${Elapsed} since=${j.started} /></span>

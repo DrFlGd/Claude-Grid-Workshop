@@ -719,7 +719,6 @@ pub fn clean_versions(lib: &Library, src: &Value) -> Result<Vec<String>> {
             let _ = std::fs::remove_file(lib.source_dir(id)?.join("derived").join(format!("{name}.json")));
             let _ = std::fs::remove_dir_all(lib.source_dir(id)?.join("docs").join(&name));
             let _ = std::fs::remove_dir_all(lib.source_dir(id)?.join("generated").join(&name));
-            let _ = std::fs::remove_dir_all(lib.source_dir(id)?.join("examples").join(&name));
             removed.push(name);
         }
     }

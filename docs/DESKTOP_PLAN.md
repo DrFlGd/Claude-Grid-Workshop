@@ -996,3 +996,12 @@ The fourth periodic review, at the end of milestone 4: https://claude.ai/artifac
 - **F-21 (examples asked when added):** Add project's result asks about a folder of examples when reading finds one; until it's answered the examples aren't listed under Parametric Models or checked at their defaults.
 - **F-22 (README):** `local/Made parts/<model>/` and the `<name>.recipe.json` beside each part are described (not rebuildable; Make again and Open with these settings read it).
 - **CI:** the acceptance test takes screenshots of Save as part, a made part's page, Make several and an example part, for Review 5.
+
+### 0.4.13 notes
+
+Review 4's nine items, built as planned, except:
+
+- **UI-31:** a license set for the whole library (Library settings) still applies to your own projects; "Yours" is only for no license at all. Your own projects no longer count among the projects that need a license check. The project page's own line still says "License not stated", which is true.
+- **F-20:** the fingerprint is of the model's file map (each file's path and SHA-256), which is what the render cache keys on; components don't have one, so recipes made from components (and recipes from before 0.4.13) still compare the project's version. Each example made into a part has a folder of its own under `examples/` (named by its fingerprint) because each example's own file is in its map. Remove versions no longer touches `examples/`: an example's earlier part is removed when it's made again.
+- **F-21:** Add project's message names the folder and asks you to choose on the project's page (it opens there), rather than a second dialog. The examples' model pages still open.
+- **CI:** a fifth screenshot, the Made parts shelf.

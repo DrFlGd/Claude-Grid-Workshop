@@ -32,6 +32,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1051,6 +1052,7 @@ async def main():
             await pg.wait_for_function(DONE, timeout=300000)
             await pg.click("#save-part")
             await pg.fill("#save-part-name", "Test gear")
+            await pg.screenshot(path=str(out / "m4-01-save-part.png"))
             await pg.click("#save-part-save")
             toast_js = "(t)=>{const e=document.querySelector('#toast');return e&&!e.hidden&&e.textContent.includes(t)}"
             await pg.wait_for_function(toast_js, arg="Parts Library", timeout=120000)
@@ -1060,6 +1062,7 @@ async def main():
             await pg.click("#toast .ghost")
             await pg.wait_for_selector("#made-from", timeout=20000)
             made_text = await pg.inner_text("#made-from")
+            await pg.screenshot(path=str(out / "m4-02-made-part.png"))
             cats = await pg.evaluate("""() => { const i = window.__workshop.index.items;
                 const part = i.find((x) => x.kind === 'part' && x.madeFrom?.model === 'local-bevel/bevel-gear');
                 return [part?.category, i.find((x) => x.id === 'gen:local-bevel/bevel-gear')?.category] }""")
@@ -1067,18 +1070,29 @@ async def main():
                   len(made) == 1 and recipe.get("model") == "local-bevel/bevel-gear" and "Made from" in made_text
                   and cats[0] and cats[0] == cats[1], (made, recipe.get("model"), made_text, cats))
             part_hash = await pg.evaluate("location.hash")
-            # the project changes after the part was made: its page says so, and Make again brings it up to date
-            recipe["project_version"] = "an-older-version"
+            # (0.4.13, F-20) a change elsewhere in the project isn't a change to the part's model
+            version_before = await pg.evaluate("() => window.__workshop.catalog.sources.find((s) => s.id === 'local-bevel')?.version")
+            (library / "local/bevel/notes.txt").write_text("Not used by the gear.\n")
+            await pg.evaluate("import('/ui/library.js').then(async (m) => { await m.rescanLocal(false); await m.rescanLocal(false); })")  # (the second: after any scan already running)
+            await pg.wait_for_function("(v) => window.__workshop.catalog.sources.find((s) => s.id === 'local-bevel')?.version !== v", arg=version_before, timeout=60000)
+            await pg.goto(B + part_hash)
+            await pg.wait_for_selector("#made-from", timeout=20000)
+            unchanged_text = await pg.inner_text("#made-from")
+            check("A change elsewhere in the model's project doesn't count as a change to the part (the recipe keeps the fingerprint of the files its model uses)",
+                  bool(recipe.get("files_id")) and "since" not in unchanged_text, (recipe.get("files_id"), unchanged_text))
+            # the model's files change after the part was made: its page says so, and Make again brings it up to date
+            recipe["files_id"] = "000000000000"
             recipe_path.write_text(json.dumps(recipe))
             before = made[0].stat().st_mtime_ns
-            await pg.evaluate("import('/ui/library.js').then(async (m) => { await m.rescanLocal(false); await m.rescanLocal(false); })")  # (the second: after any scan already running)
-            await pg.wait_for_function("(h)=>location.hash===h && /updated since/.test(document.querySelector('#made-from')?.textContent || '')", arg=part_hash, timeout=30000)
+            await pg.evaluate("import('/ui/library.js').then(async (m) => { await m.rescanLocal(false); await m.rescanLocal(false); })")
+            await pg.goto(B + part_hash)
+            await pg.wait_for_function("(h)=>location.hash===h && /changed since/.test(document.querySelector('#made-from')?.textContent || '')", arg=part_hash, timeout=30000)
             await pg.click("#made-again")
             await pg.wait_for_function(toast_js, arg="Made Test gear again", timeout=300000)
             again = json.loads(recipe_path.read_text())
-            check("Make again replaces the part's file and brings its recipe up to the project's version",
-                  again.get("project_version") not in (None, "an-older-version") and made[0].stat().st_mtime_ns != before
-                  and len(list(made[0].parent.glob("*.stl"))) == 1, (again.get("project_version"), list(made[0].parent.iterdir())))
+            check("Make again replaces the part's file and brings its recipe up to the model's files",
+                  again.get("files_id") not in (None, "000000000000") and made[0].stat().st_mtime_ns != before
+                  and len(list(made[0].parent.glob("*.stl"))) == 1, (again.get("files_id"), list(made[0].parent.iterdir())))
             await pg.goto(B + part_hash)
             await pg.wait_for_selector("#made-open", timeout=20000)
             await pg.click("#made-open")
@@ -1092,6 +1106,7 @@ async def main():
             ins = pg.locator(".batch-range input")
             for i, v in enumerate(("20", "24", "2")):
                 await ins.nth(i).fill(v)
+            await pg.screenshot(path=str(out / "m4-03-make-several.png"))
             await pg.click("#batch-keep")
             await pg.wait_for_function(toast_js, arg="Saved 3 parts", timeout=300000)
             several = sorted(f.name for f in made[0].parent.glob("*.stl"))
@@ -1099,6 +1114,15 @@ async def main():
             await pg.click("#batch-close")
             check("Make several saves each part to the Parts Library with its recipe, named from what varies",
                   len(several) == 4 and several_recipes.count("local-bevel/bevel-gear") == 4, several)
+            # (0.4.13, UI-28) the Made parts shelf: no source line, Read again or Versions; cards say what each was made from
+            await pg.goto(B + "#/browse/source/local-made-parts")
+            await pg.wait_for_selector(".source-panel[data-source=local-made-parts]", timeout=20000)
+            shelf = await pg.evaluate("""() => [!!document.querySelector('.source-panel [data-act=reread]'), !!document.querySelector('[data-source-tab=versions]'),
+                document.querySelector('.source-panel .source-sub')?.textContent || '',
+                [...document.querySelectorAll('.card .card-sub')].map((e) => e.textContent)]""")
+            await pg.screenshot(path=str(out / "m4-05-made-parts.png"))
+            check("the Made parts shelf has no Read again or Versions, says each part keeps its project's license, and each card names its model and project",
+                  not shelf[0] and not shelf[1] and "license" in shelf[2] and shelf[3] and all(" · " in t for t in shelf[3]), shelf)
 
             # 13h. (0.4.12, F-15) a folder of examples (more than 20 files that only call the main file) is asked
             # about once on the project's page; made into parts, each is made once and listed as a part, kept in
@@ -1113,8 +1137,18 @@ async def main():
             await pg.goto(B + "#/browse/source/local-blocks")
             await pg.wait_for_selector("#examples-choice [data-examples=parts]", timeout=120000)
             asked = await pg.inner_text("#examples-choice")
-            await pg.click("#examples-choice [data-examples=parts]")
             count_js = "() => { const i = window.__workshop.index.items.filter((x) => x.projectId === 'local-blocks'); return [i.filter((x) => x.kind === 'generator').length, i.filter((x) => x.kind === 'part').length] }"
+            # (0.4.13, F-21) until it's answered, the examples aren't listed as models
+            unasked = await pg.evaluate(count_js)
+            await pg.click("#examples-choice [data-examples=parts]")
+            # (0.4.13, UI-32) the status line keeps the space before a job's timer
+            job_text = ""
+            try:
+                job_text = await (await pg.wait_for_function("() => { const t = document.querySelector('.status-job')?.innerText || ''; return /\\S · \\d+ s/.test(t) && t }", timeout=120000)).json_value()
+            except Exception:
+                pass
+            check("the status line reads a job and its time with a space before the timer",
+                  bool(re.search(r"\S · \d+ s", job_text)), job_text)
             try:
                 await pg.wait_for_function(f"() => ({count_js})()[1] >= 22", timeout=300000)
             except Exception:
@@ -1124,6 +1158,12 @@ async def main():
             brick = await pg.evaluate("() => window.__workshop.index.items.find((x) => x.projectId === 'local-blocks' && x.kind === 'part' && x.name === 'Brick 1x3')?.href")
             await pg.goto(B + (brick or "#/"))
             await pg.wait_for_selector("#part-status a", timeout=20000)
+            # (0.4.13, UI-29) the part list sorts by number, and the link opens the example as a model
+            listed = await pg.evaluate("() => [...document.querySelectorAll('#part-list a span:first-child')].map((e) => e.textContent)")
+            link_text = await pg.inner_text("#part-status a")
+            await pg.screenshot(path=str(out / "m4-04-example-part.png"))
+            check("example parts are listed by number (1x2 before 1x17) and open as the example's model",
+                  listed.index("Brick 1x2") < listed.index("Brick 1x17") and link_text == "Open the example as a model", (listed[:4], link_text))
             await pg.click("#part-status a")
             try:
                 await pg.wait_for_function("()=>document.body.dataset.model==='local-blocks/examples-brick-1x3'", timeout=60000)
@@ -1133,7 +1173,20 @@ async def main():
             ex_status = await pg.evaluate("() => [location.hash, document.body.dataset.model, document.querySelector('#status')?.textContent]")
             check("a folder of examples is asked about once; made into parts, each is made and listed as a part, the choice kept, its model page still opens",
                   "22 examples" in asked and counts == [1, 22] and ex_meta == {"folder": "examples", "as": "parts"}
-                  and ex_status[1] == "local-blocks/examples-brick-1x3" and "matches" in (ex_status[2] or ""), (asked[:80], counts, ex_meta, brick, ex_status))
+                  and unasked == [1, 0]
+                  and ex_status[1] == "local-blocks/examples-brick-1x3" and "matches" in (ex_status[2] or ""), (asked[:80], unasked, counts, ex_meta, brick, ex_status))
+            # (0.4.13, F-20) a change to a file the examples don't use doesn't make them again
+            ex_files = sorted(p.relative_to(library / "sources/local-blocks/examples").as_posix() for p in (library / "sources/local-blocks/examples").rglob("*.stl"))
+            ver_js = "() => window.__workshop.catalog.sources.find((s) => s.id === 'local-blocks')?.version"
+            blocks_version = await pg.evaluate(ver_js)
+            (blocks / "plate.scad").write_text("// Plate size\nsize = 5; // [1:10]\nuse <blocks.scad>\nblock(size, size);\n")
+            await pg.evaluate("import('/ui/library.js').then(async (m) => { await m.rescanLocal(false); await m.rescanLocal(false); })")
+            await pg.wait_for_function(f"(v) => ({ver_js})() !== v", arg=blocks_version, timeout=60000)
+            todo = await pg.evaluate("() => (window.__workshop.catalog.examples_todo || []).length")
+            after = await pg.evaluate(count_js)
+            ex_files_after = sorted(p.relative_to(library / "sources/local-blocks/examples").as_posix() for p in (library / "sources/local-blocks/examples").rglob("*.stl"))
+            check("example parts are kept by the files they use: changing another file in the project doesn't make them again",
+                  todo == 0 and after == [1, 22] and len(ex_files) == 22 and ex_files_after == ex_files, (todo, after, len(ex_files), ex_files[:2], ex_files_after[:2]))
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"

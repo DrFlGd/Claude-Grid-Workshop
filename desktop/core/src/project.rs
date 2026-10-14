@@ -261,6 +261,12 @@ pub fn library_sources(lib: &Library) -> Vec<LibrarySource> {
     out
 }
 
+/// A model's fingerprint: what its files are (the render cache's file map, path -> sha256), so it
+/// changes only when a file the model uses does (F-20), not with every edit elsewhere in its project.
+pub fn files_id(files: &Value) -> String {
+    hex::encode(Sha256::digest(serde_json::to_vec(files).unwrap_or_default()))[..12].to_string()
+}
+
 fn sha_file(p: &Path) -> Result<String> {
     Ok(hex::encode(Sha256::digest(std::fs::read(p).with_context(|| format!("couldn't read {}", p.display()))?)))
 }
@@ -560,6 +566,8 @@ pub async fn ingest(
                 detail["folder"] = json!(ingest::dirname(&format!("/{entry}")).trim_start_matches('/'));
                 if examples_as == "parts" && in_examples(&entry) {
                     detail["as_part"] = json!(true); // made once at its defaults and listed as a part (F-15)
+                } else if examples_as.is_empty() && in_examples(&entry) {
+                    detail["example_pending"] = json!(true); // not listed or checked until the project's page is answered (F-21)
                 }
                 if let Some((path, orig)) = bases.get(&mid) {
                     detail["file_bases"] = json!({ path.as_str(): orig });

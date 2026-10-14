@@ -1150,8 +1150,24 @@ impl App {
                     t.trim_matches('.').chars().take(100).collect()
                 };
                 let name = clean(arg(&args, "name").map_err(e2s)?);
-                // made again (replace): into the folder it's in now, whatever the model is called today
-                let folder = clean(args["folder"].as_str().or(args["model_name"].as_str()).unwrap_or("Parts"));
+                // made again (replace): into the folder it's in now, whatever the model is called today.
+                // Otherwise the model's name, with its project's when another model in the library has
+                // that name too ("Bevel gear (BOSL2)"), so two models' parts don't share a folder (F-19)
+                let folder = match args["folder"].as_str() {
+                    Some(f) => clean(f),
+                    None => {
+                        let model_name = args["model_name"].as_str().unwrap_or("Parts");
+                        let key = args["model"].as_str().unwrap_or("");
+                        let cat = self.catalog()?;
+                        let all = || ["models", "components"].into_iter().flat_map(|k| cat.catalog[k].as_array().into_iter().flatten());
+                        let shared = all().any(|m| m["key"].as_str() != Some(key) && m["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(model_name)));
+                        let project = all().find(|m| m["key"].as_str() == Some(key)).and_then(|m| m["family_name"].as_str()).map(String::from);
+                        match project.filter(|_| shared) {
+                            Some(p) => clean(&format!("{model_name} ({p})")),
+                            None => clean(model_name),
+                        }
+                    }
+                };
                 if name.is_empty() || folder.is_empty() {
                     return Err("Give the part a name.".into());
                 }
@@ -1170,7 +1186,7 @@ impl App {
                 let recipe = json!({
                     "made_by": format!("SCAD Workshop {}", env!("CARGO_PKG_VERSION")),
                     "model": args["model"], "model_name": args["model_name"], "project": args["project"], "project_version": args["project_version"],
-                    "category": args["category"], "values": args["values"], "edits": args["edits"],
+                    "files_id": args["files_id"], "category": args["category"], "values": args["values"], "edits": args["edits"],
                     "engine": self.engine_version_site, "date": library::now(),
                 });
                 crate::config::write_json(&dir.join(format!("{stem}.recipe.json")), &recipe).map_err(e2s)?;
@@ -1262,7 +1278,8 @@ impl App {
             }
             "example_put" => {
                 // { source, model, data }: an example made into a part (F-15), made at its defaults by the app:
-                // sources/<id>/examples/<version>/<model>.stl (rebuildable)
+                // sources/<id>/examples/<fingerprint>/<model>.stl (rebuildable), kept by the fingerprint of the
+                // files the model uses (F-20); the model's earlier ones go
                 let lib = self.library()?;
                 lib.writable().map_err(e2s)?;
                 let id = arg(&args, "source").map_err(e2s)?;
@@ -1270,17 +1287,15 @@ impl App {
                 if !model.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') {
                     return Err("invalid model id".into());
                 }
-                let src = lib.source(id).map_err(e2s)?;
-                let version = src["version"].as_str().unwrap_or("");
+                let fp = self.catalog()?.models.values().find(|m| m["source_id"] == id && m["id"] == model).and_then(|m| m["files_id"].as_str()).map(String::from)
+                    .ok_or("That example isn't in the library.")?;
                 let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
-                let p = lib.resolve(&format!("sources/{id}/examples/{version}/{model}.stl")).map_err(e2s)?;
+                let p = lib.resolve(&format!("sources/{id}/examples/{fp}/{model}.stl")).map_err(e2s)?;
                 crate::config::write_atomic(&p, &data).map_err(e2s)?;
-                // your own project's versions aren't kept: its earlier versions' parts go
-                if src["kind"] == "local" || src["kind"] == "linked" {
-                    for e in std::fs::read_dir(p.parent().and_then(Path::parent).ok_or("no folder")?).into_iter().flatten().flatten() {
-                        if e.file_name() != version {
-                            let _ = std::fs::remove_dir_all(e.path());
-                        }
+                for e in std::fs::read_dir(p.parent().and_then(Path::parent).ok_or("no folder")?).into_iter().flatten().flatten() {
+                    if e.file_name() != fp.as_str() && e.path().is_dir() {
+                        let _ = std::fs::remove_file(e.path().join(format!("{model}.stl")));
+                        let _ = std::fs::remove_dir(e.path()); // (only when nothing else is left in it)
                     }
                 }
                 self.invalidate();

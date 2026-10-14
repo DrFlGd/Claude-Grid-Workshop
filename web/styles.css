@@ -403,6 +403,7 @@ body.show-help .field .help { display: block; }
 .site-footer a { font-weight: 700; color: var(--ink); }
 .lic-summary { padding: 10px 14px; border: 1px solid var(--warn-border); background: var(--warn-bg); border-radius: var(--radius-s); font-size: 14px; }
 .lic-summary a { color: var(--ink); font-weight: 600; }
+.info-note { padding: 10px 14px; border: 1px solid var(--steel-2); background: var(--panel); border-radius: var(--radius-s); font-size: 14px; } /* a plain note: nothing is wrong (Review 4, UI-29) */
 .ls-offer { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--steel); border-radius: var(--radius-s); margin: 10px 0; }
 .ls-offer p { margin: 0; flex: 1 1 320px; }
 .lic-wrap { overflow-x: auto; }
@@ -655,6 +656,7 @@ body.show-help .field .help { display: block; }
 .tabbar { display: flex; align-items: flex-end; background: var(--steel); border-bottom: 1px solid var(--steel-2); flex: none; min-width: 0; }
 .tabstrip { display: flex; gap: 2px; padding: 6px 10px 0; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; margin-bottom: -1px; }
 .tabstrip.crowded .tab-project { display: none; }
+.tabstrip .tab.clash .tab-project { display: inline; max-width: 90px; } /* two open tabs with one name: say which project (UI-30) */
 .tabstrip .tab:not(.tab-lib) { min-width: 170px; }
 .tab-more { align-self: center; margin: 0 8px; }
 .tab-more .menu-panel { min-width: 260px; max-height: 60vh; overflow: auto; }
