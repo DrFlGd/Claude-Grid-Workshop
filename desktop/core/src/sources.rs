@@ -350,7 +350,7 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
                         && s["origin"]["subdir"].as_str().unwrap_or("") == u.subdir
                 })
             }) {
-                bail!("{}/{} is already in the library ({existing}).", u.owner, u.repo);
+                bail!("{}/{} is already in the library ({existing}).", u.owner, u.repo); // (the page offers to open it)
             }
             let id = lib.new_source_id(&format!("github {base}"));
             let version = r.commit_sha[..12].to_string();
@@ -376,7 +376,7 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
             let tags = repo["topics"].clone();
             let src = json!({
                 "id": id, "kind": "github", "role": role, "added": now,
-                "origin": { "url": html, "owner": u.owner, "repo": u.repo, "track": r.track, "subdir": u.subdir, "requested": u.reference },
+                "origin": { "type": "github", "url": html, "owner": u.owner, "repo": u.repo, "track": r.track, "subdir": u.subdir, "requested": u.reference },
                 "version": version, "version_date": r.commit_date,
                 "versions": [{ "id": version, "commit": r.commit_sha, "date": r.commit_date, "message": r.commit_message, "added": now, "files": n }],
                 "detected": detected(&name, &summary, license, authors, if tags.is_array() { tags } else { json!([]) }, Some(&html)),
@@ -386,6 +386,9 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
         }
         AddRequest::Zip { path } => {
             let sha = sha256_file(path).with_context(|| format!("couldn't read {}", path.display()))?;
+            if let Some((id, name)) = same_origin(lib, |s| s["kind"] == "zip" && s["versions"].as_array().into_iter().flatten().any(|v| v["sha256"] == sha.as_str())) {
+                bail!("{name} is already in the library, from the same ZIP file ({id}).");
+            }
             let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "project".into());
             let id = lib.new_source_id(&format!("zip {stem}"));
             let version = format!("zip-{}", &sha[..12]);
@@ -393,7 +396,7 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
             let file_name = path.file_name().map(|s| s.to_string_lossy().into_owned());
             let src = json!({
                 "id": id, "kind": "zip", "role": role, "added": now,
-                "origin": { "file": file_name },
+                "origin": { "type": "zip", "file": file_name },
                 "version": version, "version_date": now,
                 "versions": [{ "id": version, "sha256": sha, "date": now, "added": now, "files": n }],
                 "detected": detected(&scan::humanize(&stem), &scan::readme_text(&root).map(|t| scan::readme_summary(&t)).unwrap_or_default(),
@@ -410,6 +413,10 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
             if path.starts_with(lib.root()) {
                 bail!("That folder is inside the library already. Put your own projects in its local/ folder instead.");
             }
+            let shown = path.display().to_string();
+            if let Some((id, name)) = same_origin(lib, |s| (s["kind"] == "folder" || s["kind"] == "linked") && s["origin"]["path"] == shown.as_str()) {
+                bail!("{name} is already in the library, from the same folder ({id}).");
+            }
             let stem = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "project".into());
             let id = lib.new_source_id(&format!("{} {stem}", if *link { "linked" } else { "folder" }));
             let (kind, version, origin, root) = if *link {
@@ -417,14 +424,14 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
                 (
                     "linked",
                     format!("live-{fp}"),
-                    json!({ "path": path.display().to_string() }),
+                    json!({ "type": "linked", "path": path.display().to_string() }),
                     path.clone(),
                 )
             } else {
                 let fp = scan::fingerprint(&path);
                 let version = format!("copy-{fp}");
                 let (root, _) = install_version(lib, &id, &version, |tmp| copy_folder(&path, tmp))?;
-                ("folder", version, json!({ "path": path.display().to_string() }), root)
+                ("folder", version, json!({ "type": "folder", "path": path.display().to_string() }), root)
             };
             let src = json!({
                 "id": id, "kind": kind, "role": role, "added": now, "origin": origin,
@@ -437,6 +444,77 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
             Ok(src)
         }
     }
+}
+
+/// The project already in the library that `same` picks out: (id, name).
+fn same_origin(lib: &Library, same: impl Fn(&Value) -> bool) -> Option<(String, String)> {
+    lib.source_ids().into_iter().find_map(|id| {
+        let s = lib.source(&id).ok()?;
+        same(&s).then(|| (id.clone(), s["detected"]["name"].as_str().unwrap_or(&id).to_string()))
+    })
+}
+
+/// What every project's `origin.type` says it came from (F-3), by its kind.
+pub fn origin_type(kind: &str) -> &'static str {
+    match kind {
+        "github" => "github",
+        "zip" => "zip",
+        "folder" => "folder",
+        "linked" => "linked",
+        "local" => "local",
+        "bundled" => "app",
+        "pinned" => "pinned",
+        _ => "other",
+    }
+}
+
+/// Give projects added by older versions the fields every project now records: `origin.type`
+/// (F-3), and `date` and `added` on every version (F-2; `files` and `content` are filled in when
+/// a version is read). Returns the ids changed.
+pub fn normalise(lib: &Library) -> Result<Vec<String>> {
+    if lib.read_only().is_some() {
+        return Ok(vec![]);
+    }
+    let mut changed = vec![];
+    for id in lib.source_ids() {
+        let Ok(mut s) = lib.source(&id) else { continue };
+        let before = s.clone();
+        if !s["origin"].is_object() {
+            s["origin"] = json!({});
+        }
+        if s["origin"]["type"].is_null() {
+            s["origin"]["type"] = json!(origin_type(s["kind"].as_str().unwrap_or("")));
+        }
+        let fallback = s["version_date"].clone();
+        let added = s["added"].clone();
+        let kind = s["kind"].as_str().unwrap_or("").to_string();
+        let src_now = s.clone();
+        for v in s["versions"].as_array_mut().into_iter().flatten() {
+            if v["date"].is_null() {
+                v["date"] = fallback.clone();
+            }
+            if v["added"].is_null() {
+                v["added"] = added.clone();
+            }
+            // (projects read before 0.4.7: what Scan for changes kept, and a count of the files)
+            let vid = v["id"].as_str().unwrap_or("").to_string();
+            if v["content"].is_null() {
+                if let Some(fp) = lib.derived(&id, &vid).and_then(|d| d["files_fp"].as_str().map(String::from)) {
+                    v["content"] = json!(fp);
+                }
+            }
+            if v["files"].is_null() && kind != "pinned" {
+                if let Some(dir) = lib.version_dir(&src_now, &vid).ok().filter(|d| d.is_dir()) {
+                    v["files"] = json!(scan::list_files(&dir).len());
+                }
+            }
+        }
+        if s != before {
+            lib.save_source(&s)?;
+            changed.push(id);
+        }
+    }
+    Ok(changed)
 }
 
 /// Projects in the library's local/ folder get a source entry automatically;
@@ -473,7 +551,7 @@ pub fn sync_local(lib: &Library) -> Result<Vec<String>> {
             None => {
                 let id = lib.new_source_id(&format!("local {name}"));
                 let src = json!({
-                    "id": id, "kind": "local", "role": "project", "added": now, "origin": { "path": rel },
+                    "id": id, "kind": "local", "role": "project", "added": now, "origin": { "type": "local", "path": rel },
                     "version": fp, "version_date": now, "versions": [{ "id": fp, "date": now, "added": now }],
                     "detected": detected(&scan::humanize(&name), &scan::readme_text(&dir).map(|t| scan::readme_summary(&t)).unwrap_or_default(),
                         scan::survey_license(&dir), json!([]), json!([]), None),

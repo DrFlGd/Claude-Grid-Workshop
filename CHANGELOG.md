@@ -81,6 +81,16 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+Milestone 3, second part (0.4.7): one project description, whatever the source (Review 1's F-2, F-3 and F-5).
+
+- **`workshop.json`, a project's own description** (schema in `schema/workshop.schema.json`, a family manifest's shape): when a project has one at its top, the app takes its models (which files, their ids and names), notes, forms (`ui`, `hidden`, `fixed`), presets, name, summary, category, tags, license, authors and links from it instead of guessing; settings still come from the files. A file it lists that isn't there is noted as a problem.
+- **The library says what each project is without the app:** every project read gets `sources/<id>/workshop.json` beside its files (rebuildable; listed in the library's README), and derived data says whether the project described itself (`described_by`).
+- **Save as project file** (⋯ on one of your own projects, in `local/` or linked) writes its description, with your edits (names, forms; deleted models left out), into its folder, so it goes with the files.
+- **Every project records where it came from and its versions the same way:** `origin.type` (`github`, `zip`, `folder`, `linked`, `local`, `app`, `pinned`) in every `source.json`, and `date`, `added`, `files` (count) and `content` (fingerprint) on every version; libraries from earlier versions are filled in when opened.
+- **Adding something that's already in the library says so** and offers to open that one: the same GitHub repository (as before), the same ZIP file (by its SHA-256) or the same folder.
+
+## 0.4.6 — 2026-10-14 · Every model checked at its defaults, defaults that fit their limits, readable setting names
+
 Milestone 3, first part (0.4.6, "Consistent projects design" in `docs/DESKTOP_PLAN.md`): defaults that work, and Review 1's UI-4 and UI-5.
 
 - **Every model is rendered once at its defaults** when its thumbnail is made, and the result is kept with the project (`sources/<id>/checks.json`, rebuildable). A model that doesn't render is marked in Library settings › Projects ("Doesn't render at its defaults", with OpenSCAD's message on hover) and says so above its settings, and isn't tried again until the project or the engine changes. **Check defaults** in a project's ⋯ menu renders every model again and says how many failed (D-1).

@@ -11,6 +11,7 @@
 //!   sources/<id>/derived/<v>.json what ingest found (models, parts, problems); rebuildable
 //!   sources/<id>/thumbs/          thumbnails; rebuildable
 //!   sources/<id>/checks.json      each model rendered at its defaults: ok or OpenSCAD's message; rebuildable
+//!   sources/<id>/workshop.json    the description the app uses (models, names, forms); rebuildable
 //!   local/<project>/              the user's own projects, edited in place
 //!   collections/                  (Phase 4)
 //!   icons/, thumbs/components/    category pictures; component thumbnails (rebuildable)
@@ -69,6 +70,7 @@ Inside sources/<project>/:\n\
   docs/           the README as HTML, PDFs (rebuildable)\n\
   thumbs/, previews/   pictures (rebuildable)\n\
   checks.json     whether each model renders at its defaults (rebuildable)\n\
+  workshop.json   what the project is: its models and their names (rebuildable)\n\
 \n\
 Rebuildable folders can be deleted: the app makes them again.\n\
 The app's render cache and search index are kept on each computer, not here.\n";

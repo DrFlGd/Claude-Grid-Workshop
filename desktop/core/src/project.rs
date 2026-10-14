@@ -233,7 +233,23 @@ pub async fn ingest(
     };
     let det = &src["detected"];
     let role = src["role"].as_str().unwrap_or("project");
-    let entries: Vec<String> = if role == "library" { vec![] } else { found.entries.clone() };
+    // the project's own description (workshop.json at its top), when it has one
+    let own = read_workshop_json(&root);
+    let mut own_problems = vec![];
+    let listed: Option<Vec<String>> = own.as_ref().and_then(|w| w["models"].as_array()).map(|ms| {
+        ms.iter()
+            .filter_map(|m| m["entrypoint"].as_str())
+            .map(|e| e.trim_start_matches('/').to_string())
+            .filter(|e| {
+                let there = library::rel_inside(e).is_ok_and(|r| root.join(r).is_file());
+                if !there {
+                    own_problems.push(json!({ "kind": "scan", "message": format!("workshop.json lists {e}, which isn't in the project") }));
+                }
+                there
+            })
+            .collect()
+    });
+    let entries: Vec<String> = if role == "library" { vec![] } else { listed.clone().unwrap_or_else(|| found.entries.clone()) };
     let words = format!(
         "{} {} {} {}",
         det["name"].as_str().unwrap_or(""),
@@ -241,7 +257,9 @@ pub async fn ingest(
         det["tags"].as_array().into_iter().flatten().filter_map(Value::as_str).collect::<Vec<_>>().join(" "),
         entries.join(" ")
     );
-    let category = if role == "library" { "libraries" } else { scan::guess_category(&words) };
+    let own_category = own.as_ref().and_then(|w| w["category"].as_str()).map(String::from);
+    let category = if role == "library" { "libraries".to_string() } else { own_category.unwrap_or_else(|| scan::guess_category(&words).to_string()) };
+    let category = category.as_str();
     let origin_url = det["origin"].as_str().or(src["origin"]["url"].as_str());
     let mut source_info = Map::new();
     if let Some(u) = origin_url {
@@ -265,6 +283,13 @@ pub async fn ingest(
         "source": Value::Object(source_info),
         "models": [],
     });
+    if let Some(w) = &own {
+        for k in ["name", "summary", "tags", "license", "authors", "links", "ui"] {
+            if let Some(v) = w.get(k).filter(|v| !v.is_null()) {
+                fam[k] = if k == "license" { crate::meta::license_from(v) } else { v.clone() };
+            }
+        }
+    }
     let editor_cfg = match &found.editor_toml {
         Some(p) => ingest::load_editor_toml(&root.join(p)).unwrap_or(json!({})),
         None => json!({}),
@@ -272,6 +297,7 @@ pub async fn ingest(
     let libs = libs_ctx.search_order(lib, &id);
     let lib_dirs: Vec<LibraryDir> = libs.iter().map(|l| l.dir.clone()).collect();
     let mut problems: Vec<Value> = found.problems.iter().map(|p| json!({ "kind": "scan", "message": p })).collect();
+    problems.extend(own_problems);
     let mut blobs: BTreeMap<String, String> = BTreeMap::new();
     let mut renderable: Vec<(String, PathBuf)> = vec![];
     let mut used_ids: Vec<String> = vec![];
@@ -279,7 +305,10 @@ pub async fn ingest(
     let mut used: BTreeMap<String, Value> = BTreeMap::new(); // libraries the models include, by name
     let mut project_texts: Option<Vec<String>> = None;
     for entry in &entries {
-        let mut mid = model_id(entry);
+        let described = own.as_ref().and_then(|w| w["models"].as_array()).and_then(|ms| {
+            ms.iter().find(|m| m["entrypoint"].as_str().map(|e| e.trim_start_matches('/')) == Some(entry.as_str()))
+        });
+        let mut mid = described.and_then(|m| m["id"].as_str()).filter(|i| library::valid_id(i).is_ok()).map(String::from).unwrap_or_else(|| model_id(entry));
         let base = mid.clone();
         let mut n = 2;
         while used_ids.contains(&mid) {
@@ -359,6 +388,12 @@ pub async fn ingest(
             "id": mid, "name": scan::humanize(&stem), "entrypoint": entry, "status": "available",
             "presets": scan::presets_for(&root, entry),
         });
+        // what the project's workshop.json says about it: its name, notes, form (ui, hidden, fixed), presets…
+        for (k, v) in described.and_then(Value::as_object).into_iter().flatten() {
+            if !["id", "entrypoint", "status"].contains(&k.as_str()) && !v.is_null() {
+                model[k] = v.clone();
+            }
+        }
         if lifted {
             model["settings_from"] = json!("calls");
         }
@@ -461,9 +496,65 @@ pub async fn ingest(
         // compare), and contents (compared only when the first differs)
         "files_stat": scan::quick_fingerprint(&root),
         "files_fp": scan::fingerprint(&root),
+        "described_by": if own.is_some() { "workshop.json" } else { "reading" },
     });
     lib.save_derived(&id, version, &derived)?;
+    // every version records its file count and contents (F-2); the description beside the files (F-5)
+    if let Ok(mut s) = lib.source(&id) {
+        let before = s.clone();
+        let n = scan::list_files(&root).len();
+        for v in s["versions"].as_array_mut().into_iter().flatten().filter(|v| v["id"] == version) {
+            v["files"] = json!(n);
+            v["content"] = derived["files_fp"].clone();
+        }
+        if s != before {
+            lib.save_source(&s)?;
+        }
+    }
+    let _ = crate::config::write_json(&lib.source_dir(&id)?.join("workshop.json"), &describe(&derived["family"], &id, version));
     Ok(derived)
+}
+
+/// A project's own description, `workshop.json` at the top of its files (a family manifest's shape:
+/// docs/DESKTOP_PLAN.md, "Consistent projects design"), when it has a readable one.
+pub fn read_workshop_json(root: &Path) -> Option<Value> {
+    let v: Value = serde_json::from_slice(&std::fs::read(root.join("workshop.json")).ok()?).ok()?;
+    v.is_object().then_some(v)
+}
+
+/// The description the app uses for a project, in workshop.json's shape: written beside its files
+/// (sources/<id>/workshop.json) when it's read, so the library says what each project is without
+/// the app, and into a project's own folder by Save as project file.
+pub fn describe(fam: &Value, id: &str, version: &str) -> Value {
+    let mut out = Map::new();
+    out.insert("$schema".into(), json!("https://raw.githubusercontent.com/DrFlGd/SCAD-Workshop/main/schema/workshop.schema.json"));
+    out.insert("format".into(), json!(1));
+    let worth = |v: &&Value| !v.is_null() && v.as_object().is_none_or(|o| !o.is_empty()) && v.as_array().is_none_or(|a| !a.is_empty()) && v.as_str() != Some("");
+    for k in ["name", "summary", "category", "tags", "license", "authors", "links", "ui"] {
+        if k == "license" && fam[k]["spdx"].as_str().is_none_or(|s| s == "NOASSERTION") && fam[k]["notes"].is_null() {
+            continue; // not stated: nothing to say
+        }
+        if let Some(v) = fam.get(k).filter(worth) {
+            out.insert(k.into(), v.clone());
+        }
+    }
+    let models: Vec<Value> = fam["models"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|m| {
+            let mut o = Map::new();
+            for k in ["id", "name", "entrypoint", "notes", "ui", "hidden", "fixed", "defaults", "extra_params", "part_parameter", "presets", "browser"] {
+                if let Some(v) = m.get(k).filter(worth) {
+                    o.insert(k.into(), v.clone());
+                }
+            }
+            Value::Object(o)
+        })
+        .collect();
+    out.insert("models".into(), json!(models));
+    out.insert("made_by".into(), json!(format!("SCAD Workshop {}, for {id} at {version}", env!("CARGO_PKG_VERSION"))));
+    Value::Object(out)
 }
 
 pub fn category_label(id: &str) -> String {

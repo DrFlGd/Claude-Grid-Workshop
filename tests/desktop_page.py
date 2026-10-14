@@ -809,6 +809,34 @@ async def main():
                 pass
             toast = await pg.inner_text("#toast")
             check("Check defaults (project ⋯ menu) renders every model again and says how many failed", "1 model of 2" in toast, toast)
+            # 13c. (0.4.7) one project description: workshop.json beside every project's files; Save as project
+            # file writes one into your own project's folder; a project's own workshop.json says what its models are
+            await pg.click("#source-more summary")
+            await pg.click("[data-act=save-project-file]")
+            own = library / "local/defaults/workshop.json"
+            for _ in range(40):
+                if own.is_file():
+                    break
+                await pg.wait_for_timeout(250)
+            saved = json.loads(own.read_text()) if own.is_file() else {}
+            beside = (library / "sources/local-defaults/workshop.json").is_file()
+            saved["category"] = "labels"
+            saved["models"] = [dict(m, name="Grid tray") for m in saved.get("models", []) if m.get("id") == "tray"]
+            own.write_text(json.dumps(saved, indent=2))
+            await pg.goto(B + "#/library-settings")
+            await pg.click("#library-rescan")
+            try:
+                await pg.wait_for_function("() => window.__workshop.index.get('gen:local-defaults/tray')?.name === 'Grid tray' && !window.__workshop.index.get('gen:local-defaults/broken')", timeout=120000)
+            except Exception:
+                pass
+            tray = await pg.evaluate("() => { const t = window.__workshop.index.get('gen:local-defaults/tray'); return t && [t.name, t.category]; }")
+            gone = await pg.evaluate("() => !window.__workshop.index.get('gen:local-defaults/broken')")
+            origins = {json.loads(p.read_text()).get("origin", {}).get("type") for p in (library / "sources").glob("*/source.json")}
+            versions_ok = all(v.get("files") and v.get("content") for p in (library / "sources").glob("*/source.json")
+                              for s in [json.loads(p.read_text())] if s["kind"] in ("github", "local") for v in s["versions"] if v["id"] == s["version"])
+            check("workshop.json: written beside every project's files; Save as project file writes your project's; its models, names and category are used when it's read; every project records where it came from and its version's files the same way",
+                  [m.get("id") for m in json.loads(own.read_text()).get("models", [])] == ["tray"] and beside and tray == ["Grid tray", "labels"] and gone
+                  and None not in origins and versions_ok, (beside, tray, gone, origins, versions_ok))
             await pg.goto(B + "#/library-settings")
             await pg.click('[data-source="local-defaults"] [data-act=delete-project]')
 

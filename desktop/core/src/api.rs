@@ -170,6 +170,9 @@ impl App {
             }
         }
         let _ = sources::sync_local(&lib);
+        if let Err(e) = sources::normalise(&lib) {
+            eprintln!("library: {e:#}");
+        }
         let mut cfg = self.config();
         if cfg.library.as_deref() != Some(path) || cfg.recent_libraries.first().map(PathBuf::as_path) != Some(path) {
             cfg.set_library(path);
@@ -1024,6 +1027,58 @@ impl App {
                 crate::config::write_atomic(&p, &data).map_err(e2s)?;
                 self.invalidate();
                 j(Value::Null)
+            }
+            "workshop_save" => {
+                // { source }: write the description the app uses for one of your own projects (local/ or
+                // linked), with your edits, into its folder as workshop.json (F-5, "Save as project file")
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let id = arg(&args, "source").map_err(e2s)?.to_string();
+                let src = lib.source(&id).map_err(e2s)?;
+                if src["kind"] != "local" && src["kind"] != "linked" {
+                    return Err("Only your own projects (in the library's local/ folder, or linked) keep a project file in their folder.".into());
+                }
+                let c = self.catalog()?;
+                let (derived, root) = c.derived.get(&id).cloned().ok_or("Read the project first.")?;
+                let mut fam = derived["family"].clone();
+                let entry = c.catalog["sources"].as_array().into_iter().flatten().find(|s| s["id"] == id.as_str()).cloned().unwrap_or_default();
+                for k in ["name", "summary", "category", "tags", "license", "authors"] {
+                    if let Some(v) = entry["meta"].get(k).filter(|v| !v.is_null()) {
+                        fam[k] = v.clone();
+                    }
+                }
+                let models: Vec<Value> = fam["models"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|m| {
+                        let d = c.models.get(&format!("{id}/{}", m["id"].as_str().unwrap_or("")))?; // (deleted ones are left out)
+                        let mut m = m.clone();
+                        m["name"] = d["name"].clone();
+                        let form = &d["form"];
+                        for (k, v) in form.as_object().into_iter().flatten() {
+                            match (k.as_str(), m.get_mut(k)) {
+                                ("ui", Some(Value::Object(mine))) => {
+                                    for (name, over) in v.as_object().into_iter().flatten() {
+                                        let mut both = mine.get(name).and_then(Value::as_object).cloned().unwrap_or_default();
+                                        both.extend(over.as_object().cloned().unwrap_or_default());
+                                        mine.insert(name.clone(), Value::Object(both));
+                                    }
+                                }
+                                ("ui" | "hidden" | "fixed" | "presets", _) => m[k] = v.clone(),
+                                _ => {}
+                            }
+                        }
+                        Some(m)
+                    })
+                    .collect();
+                fam["models"] = json!(models);
+                let mut out = project::describe(&fam, &id, src["version"].as_str().unwrap_or(""));
+                out["made_by"] = json!(format!("Saved by SCAD Workshop {} on {}", env!("CARGO_PKG_VERSION"), library::now()));
+                let path = root.join("workshop.json");
+                crate::config::write_json(&path, &out).map_err(e2s)?;
+                self.invalidate();
+                j(json!({ "path": path.display().to_string(), "models": models.len() }))
             }
             "defaults_put" => {
                 // { source, model, ok, message?, seconds? }: what rendering a model at its defaults gave

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workshop.schema.json",
+  "title": "SCAD Workshop project description",
+  "description": "workshop.json at the top of an OpenSCAD project: what the project is and which files are its models, in the shape of a family manifest (family.schema.json). When a project has one, SCAD Workshop uses it instead of guessing; settings still come from the files. The app also writes one beside each project's files in its library (sources/<id>/workshop.json), and Save as project file writes one into your own projects' folders. Unknown keys are kept.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": 1 },
+    "name": { "type": "string" },
+    "summary": { "type": "string" },
+    "category": { "type": "string", "description": "A category id, such as gridfinity, labels, wall or other; a new id makes a new category." },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "license": {
+      "description": "An SPDX id (\"MIT\") or { spdx, public_use, notes }.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "object", "properties": { "spdx": { "type": "string" }, "public_use": { "enum": ["ok", "review", "blocked"] }, "notes": { "type": "string" } } }
+      ]
+    },
+    "authors": { "type": "array", "items": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "url": { "type": "string" } } } },
+    "links": { "type": "object", "additionalProperties": { "type": "string" } },
+    "ui": { "type": "object", "description": "Per-setting changes for every model (a model's own ui wins): label, group, min, max, step, options, help…, as in a family manifest." },
+    "models": {
+      "type": "array",
+      "description": "The project's models. Without this list, every .scad file that draws something is a model.",
+      "items": {
+        "type": "object",
+        "required": ["entrypoint"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "name": { "type": "string" },
+          "entrypoint": { "type": "string", "description": "The model's .scad file, relative to the project's top folder." },
+          "notes": { "type": "string" },
+          "ui": { "type": "object" },
+          "hidden": { "type": "array", "items": { "type": "string" } },
+          "fixed": { "type": "object", "description": "Settings forced to these values and hidden from the form." },
+          "defaults": { "type": "object" },
+          "presets": { "type": "array" },
+          "part_parameter": { "type": "string" },
+          "browser": { "type": "boolean" }
+        }
+      }
+    },
+    "made_by": { "type": "string", "description": "Which app wrote the file, and when (informational)." }
+  }
+}

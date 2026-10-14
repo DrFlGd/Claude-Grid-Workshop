@@ -69,7 +69,10 @@ export function AddProject() {
       location.hash = scopeHash(`source:${res.source}`);
       makeThumbnails();
     } catch (err) {
-      ctx.toast(`Couldn't add it: ${err.message || err}`);
+      const msg = String(err.message || err);
+      // the same project is in the library already: offer to open that one
+      const same = msg.match(/already in the library.*\(([^()]+)\)\.$/)?.[1];
+      ctx.toast(`Couldn't add it: ${msg}`, same && sourceById(same) ? { label: "Open it", run: () => { location.hash = scopeHash(`source:${same}`); } } : undefined);
     } finally {
       setBusy(false);
     }
@@ -187,6 +190,12 @@ export function SourcePanel({ id }) {
           <button type="button" disabled=${ro} onClick=${() => hideProject(id, !src.hidden)} data-act="hide-project"
             title=${src.hidden ? "List it again" : "Keep it and everything in it out of browsing and search"}>${src.hidden ? "Unhide" : "Hide"}</button>
           <button type="button" onClick=${() => api("source_get", { id }).then((i) => i.folder && ctx.platform.library.openPath(i.folder))}>Open its folder</button>
+          ${src.kind === "local" || src.kind === "linked" ? html`<button type="button" disabled=${ro} data-act="save-project-file"
+            title="Write this project's description (its models, names and forms, with your edits) into its folder as workshop.json, so it goes with the files"
+            onClick=${() => act("save-file", async () => {
+              const r = await api("workshop_save", { source: id });
+              ctx.toast(`Saved workshop.json in the project's folder (${plural(r.models, "model")}).`);
+            })}>Save as project file</button>` : null}
           ${src.models ? html`<button type="button" disabled=${ro} data-act="check-defaults" onClick=${() => makeThumbnails({ source: id })}
             title="Render every model at its default settings again and note which don't render">Check defaults</button>` : null}
           ${src.kind !== "bundled" && src.kind !== "local" ? html`<button type="button" disabled=${ro} onClick=${() => act("role", async () => {

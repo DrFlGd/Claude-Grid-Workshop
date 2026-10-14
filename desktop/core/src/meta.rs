@@ -62,6 +62,22 @@ pub fn license_value(spdx: &str) -> Value {
     json!({ "spdx": spdx, "public_use": public_use })
 }
 
+/// A license as a description gives it: "MIT", or `{ "spdx": "MIT", … }` (public use worked out
+/// when it isn't given).
+pub fn license_from(v: &Value) -> Value {
+    match v {
+        Value::String(s) => license_value(s),
+        Value::Object(o) => {
+            let mut l = license_value(o.get("spdx").and_then(Value::as_str).unwrap_or(""));
+            for (k, v) in o {
+                l[k] = v.clone();
+            }
+            l
+        }
+        _ => license_value(""),
+    }
+}
+
 /// The levels that apply to one item, most specific first.
 pub struct Layers<'a> {
     pub item: Option<&'a Map<String, Value>>,
