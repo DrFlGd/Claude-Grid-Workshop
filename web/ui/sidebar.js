@@ -1,10 +1,10 @@
 // Sidebar: Home, Recent, Favourites; Parametric Models, Components (desktop:
-// library modules by topic) and the Parts Library; "Needs attention"; Add a project
+// library modules by topic) and the Parts Library; Add a project
 // (desktop); Settings, Library settings, Licenses. The section being browsed shows
 // its categories (each opening to its projects) in a panel attached to the menu,
 // which scrolls on its own and folds away to a thin strip. In the small-window
 // drawer the categories open under each section instead.
-import { html, useState } from "../lib/html.js";
+import { html, useState, useEffect } from "../lib/html.js";
 import { useStore } from "../lib/store.js";
 import { ui, setPref } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
@@ -24,7 +24,6 @@ export function groupLabel(id) {
 }
 
 /** Everything that needs a look: licenses not cleared for sharing, and models flagged as broken. */
-export const needsAttention = (i) => i.licenseStatus !== "ok" || !!i.broken;
 
 export function scopeInfo(scope) {
   const { catalog, index } = ctx;
@@ -37,10 +36,6 @@ export function scopeInfo(scope) {
     note: "Modules from OpenSCAD libraries, as forms: set the values, preview, download. Pin one to keep it under Parametric Models with your settings." };
   if (scope === "favs") return { label: "Favourites", query: { ids: s.favs }, sort: "given" };
   if (scope === "recent") return { label: "Recent", query: { ids: s.recent.map((r) => r.id) }, sort: "given" };
-  if (scope === "attention") {
-    const ids = index.items.filter((i) => needsAttention(i) && !i.hidden).map((i) => i.id);
-    return { label: "Needs attention", note: "Models flagged as broken, and items whose license or author isn't stated or isn't cleared for sharing. Check before sharing or selling prints.", query: { ids } };
-  }
   const [kind, id] = scope.split(":");
   if (kind === "cat") return { label: categoryLabel(catalog, id), query: { kind: "generator", category: id } };
   if (kind === "pcat") return { label: `${categoryLabel(catalog, id)} parts`, query: { kind: "part", category: id } };
@@ -139,9 +134,19 @@ function CategoryPanel({ kind, current, open, toggle, shown }) {
   </aside>`;
 }
 
+const pageOfHash = () => location.hash.replace(/^#\/?/, "").split(/[/?]/)[0];
+
 export function Sidebar() {
   const s = useStore(ui, (st) => ({ scope: st.scope, view: st.view, favs: st.favs.length, recent: st.recent.length, ready: st.ready, navOpen: st.navOpen, v: st.catalogVersion, catPanel: st.catPanel }));
   const [open, setOpen] = useState(() => ({}));
+  // the page shown (#/settings, #/library-settings…), followed when the address changes by any route
+  // (a link on another page, the command palette), not only when the menu itself is clicked
+  const [page, setPage] = useState(pageOfHash);
+  useEffect(() => {
+    const follow = () => setPage(pageOfHash());
+    window.addEventListener("hashchange", follow);
+    return () => window.removeEventListener("hashchange", follow);
+  }, []);
   if (!s.ready) return null;
   const current = s.view === "browse" ? s.scope : null;
   const toggle = (k) => () => setOpen({ ...open, [k]: !open[k] });
@@ -150,8 +155,6 @@ export function Sidebar() {
     component: ctx.index.items.some((i) => i.kind === "component"),
     part: ctx.index.items.some((i) => i.kind === "part" && !i.hidden),
   };
-  const attention = count(scopeInfo("attention").query) + (ctx.catalog.attention || []).filter((a) => a.kind !== "license" && a.kind !== "broken").length;
-  const page = location.hash.replace(/^#\/?/, "").split(/[/?]/)[0];
   const browsing = sectionOf(current);
   // in the drawer (small windows) each section opens to its categories in place
   const sectionRow = (kind) => {
@@ -178,13 +181,10 @@ export function Sidebar() {
       <button type="button" class="nav-link" id="add-project" title="Add a project from GitHub, a ZIP or a folder. Its models and parts appear under Parametric Models and the Parts Library."
         onClick=${() => ui.set({ dialog: { type: "add-project" }, navOpen: false })}><span class="nav-icon">${Icon.plus(15)}</span><span class="nav-label">Add a project</span></button>
     </li></ul>` : null}
-    ${attention ? html`<ul class="nav-list nav-attention">
-      <${Row} scope="attention" label="Needs attention" n=${attention} icon=${Icon.alert(15)} current=${current} />
-    </ul>` : null}
     <ul class="nav-list nav-foot">
       <li><a class=${`nav-link${page === "settings" ? " active" : ""}`} href="#/settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.gear(15)}</span><span class="nav-label">Settings</span></a></li>
       ${isDesktop() ? html`<li><a class=${`nav-link${page === "library-settings" ? " active" : ""}`} href="#/library-settings" id="nav-library-settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.box(15)}</span><span class="nav-label">Library settings</span></a></li>` : null}
-      <li><a class="nav-link" href="#/licenses" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon"></span><span class="nav-label">Licenses & credits</span></a></li>
+      <li><a class=${`nav-link${page === "licenses" ? " active" : ""}`} href="#/licenses" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon"></span><span class="nav-label">Licenses & credits</span></a></li>
     </ul>
   </nav>
   ${browsing && has[browsing] ? html`<${CategoryPanel} kind=${browsing} current=${current} open=${open} toggle=${toggle} shown=${s.catPanel !== false} key=${browsing} />` : null}`;

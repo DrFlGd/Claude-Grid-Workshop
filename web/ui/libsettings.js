@@ -9,7 +9,8 @@ import { ui, pushUndo } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 import { CategoryPicker } from "./catpick.js";
-import { api, runJob, kindText, rescanLocal, when, makeThumbnails } from "./library.js";
+import { api, runJob, kindText, rescanLocal, when, makeThumbnails, ATTN_TEXT } from "./library.js";
+import { LICENSE_TEXT } from "./index-local.js";
 import { hideItems, hideProject, deleteProject, restoreItems } from "./actions.js";
 import { undoNow } from "./metaedit.js";
 import { bytes, plural } from "../lib/util.js";
@@ -93,23 +94,41 @@ function Backups({ lib }) {
 }
 
 // ---------------------------------------------------------------- projects
+/** A project's license as the table shows it: the license, and a note when it isn't cleared for sharing prints. */
+function LicenseCell({ s }) {
+  const lic = s.meta?.license || {};
+  const status = lic.public_use || (lic.spdx && lic.spdx !== "NOASSERTION" ? "ok" : "review");
+  const name = lic.spdx && lic.spdx !== "NOASSERTION" ? lic.spdx : "Not stated";
+  return html`<td class="ls-license">${name}${status !== "ok" ? html` <span class=${`badge ${status}`} title="Not cleared for sharing or selling prints: check the project's license before you do">${LICENSE_TEXT[status] || status}</span>` : null}</td>`;
+}
+
+/** What's wrong with a project (files missing, not read, flagged models…), as small badges with the details on hover. */
+function Problems({ id }) {
+  const byKind = {};
+  for (const a of ctx.catalog?.attention || []) if (a.source === id && a.kind !== "license" && a.kind !== "update") (byKind[a.kind] ||= []).push(a.message);
+  return Object.entries(byKind).map(([kind, msgs]) => html` <span class=${`badge-mini ${kind === "broken" ? "broken" : "problem"}`} data-problem=${kind}
+    title=${msgs.filter(Boolean).join("\n")}>${ATTN_TEXT[kind] || kind}${msgs.length > 1 ? ` (${msgs.length})` : ""}</span>`);
+}
+
 function Projects({ ro }) {
   const sources = (ctx.catalog?.sources || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
   return html`<${Section} id="projects" title="Projects"
-    intro="A project's models are listed under Parametric Models and its parts in the Parts Library, by category. Libraries that other projects include (like BOSL2) are only listed here.">
+    intro="A project's models are listed under Parametric Models and its parts in the Parts Library, by category. Libraries that other projects include (like BOSL2) are only listed here. Check a project's license before sharing or selling prints; anything wrong with a project is marked beside its name (point at the mark for details).">
     <div class="button-row">
       <button type="button" class="ghost" disabled=${ro} onClick=${() => ui.set({ dialog: { type: "add-project" } })} id="settings-add-project">${Icon.plus(14)} Add a project…</button>
       <button type="button" class="ghost" disabled=${ro} onClick=${() => rescanLocal(false)} id="library-rescan"
         title="Read projects again whose files changed outside the app (local/ folders, linked folders and the copies of added projects), and list ones whose files are gone">Scan for changes</button>
-      <button type="button" class="ghost" disabled=${ro} onClick=${async () => { const r = await api("source_restore_starter"); await ctx.reloadCatalog(); ctx.toast(r.installed.length ? `Brought back ${plural(r.installed.length, "project")}.` : "All the starter projects are there."); }}>Bring back starter projects</button>
+      ${ctx.platform.info?.starter ? html`<button type="button" class="ghost" disabled=${ro} onClick=${async () => { const r = await api("source_restore_starter"); await ctx.reloadCatalog(); ctx.toast(r.installed.length ? `Brought back ${plural(r.installed.length, "project")}.` : "All the starter projects are there."); }}>Bring back starter projects</button>` : null}
     </div>
     <p class="muted">Your own projects go in the library's <code>local/</code> folder (one folder each). The app looks for changed files when it starts and when its window comes back into focus; Scan for changes looks now.</p>
-    <table class="table-view ls-table" id="ls-project-table"><thead><tr><th>Project</th><th>From</th><th class="num">Items</th><th></th></tr></thead><tbody>
+    <table class="table-view ls-table" id="ls-project-table"><thead><tr><th>Project</th><th>From</th><th>License</th><th class="num">Items</th><th></th></tr></thead><tbody>
       ${sources.map((s) => html`<tr key=${s.id} data-source=${s.id} data-hidden=${s.hidden ? "" : null}>
         <td><a href=${scopeHash(`source:${s.id}`)}>${s.name}</a>
           ${s.hidden ? html` <span class="badge-mini hidden">hidden</span>` : null}
-          ${s.update?.state === "available" ? html` <span class="badge-mini update">update</span>` : null}</td>
+          ${s.update?.state === "available" ? html` <span class="badge-mini update">update</span>` : null}
+          <${Problems} id=${s.id} /></td>
         <td class="muted">${kindText(s)}${s.role === "library" ? " · library" : ""}</td>
+        <${LicenseCell} s=${s} />
         <td class="num">${s.role === "library" ? "–" : (s.models || 0) + (s.parts || 0)}</td>
         <td class="ls-actions">
           <button type="button" class="ghost small" disabled=${ro} data-act="edit-project" title="Edit the project's details: name, description, category, license, authors, icon"
@@ -295,7 +314,7 @@ export function LibrarySettingsPage() {
   const lib = info.library || ctx.catalog?.library || {};
   const ro = !!lib.read_only;
   return html`<div class="library-settings" data-v=${v}>
-    <nav class="ls-toc" aria-label="On this page">${[["folder", "Folder"], ["projects", "Projects"], ["libraries", "Libraries"], ["categories", "Categories"], ["items", "Hidden and deleted"], ["trash", "Trash"], ["defaults", "Defaults"], ["github", "GitHub"]]
+    <nav class="ls-toc" aria-label="On this page">${[["folder", "Folder"], ["backups", "Backups"], ["projects", "Projects"], ["libraries", "Libraries"], ["categories", "Categories"], ["items", "Hidden and deleted"], ["trash", "Trash"], ["defaults", "Defaults"], ["github", "GitHub"]]
       .map(([id, label]) => html`<a href=${`#/library-settings`} onClick=${(e) => { e.preventDefault(); document.getElementById(`ls-${id}`)?.scrollIntoView({ behavior: "smooth" }); }}>${label}</a>`)}</nav>
     <${Folder} info=${info} lib=${lib} ro=${ro} />
     <${Backups} lib=${lib} />

@@ -6,7 +6,7 @@ import { createStore } from "../lib/store.js";
 export const ui = createStore({
   ready: false,
   view: "browse",          // browse | model | library | about (which main view is showing)
-  scope: "home",           // home | all | cat:<id> | project:<id> | parts | lib:<id> | favs | recent | attention
+  scope: "home",           // home | all | cat:<id> | project:<id> | parts | lib:<id> | favs | recent
   q: "",                   // search text (may contain typed filters)
   filters: {},             // chip filters: { kind: [], cat: [], project: [], license: [] }
   layout: "grid",          // grid | list | table | grouped
@@ -80,7 +80,7 @@ export function setPref(patch) {
 export function layoutFor(scope) {
   const s = ui.get();
   if (s.layouts?.[scope]) return s.layouts[scope];
-  return scope === "parts" || scope.startsWith("lib:") ? "grid" : scope === "attention" ? "table" : "grid";
+  return scope === "parts" || scope.startsWith("lib:") ? "grid" : "grid";
 }
 export function setLayout(layout) {
   const s = ui.get();

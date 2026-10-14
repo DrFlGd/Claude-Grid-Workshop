@@ -1,10 +1,9 @@
 // Home: continue where you left off, favourites, the categories of Parametric
-// Models and the Parts Library to browse, and what needs attention.
+// Models and the Parts Library to browse.
 import { html } from "../lib/html.js";
 import { useStore } from "../lib/store.js";
 import { ui } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
-import { scopeInfo } from "./sidebar.js";
 import { plural } from "../lib/util.js";
 import { Icon } from "./icons.js";
 
@@ -28,10 +27,14 @@ export function Home() {
     <b>${label}</b><span class="muted">${sub}</span></a>`;
   const shown = index.items.filter((i) => !i.hidden);
   const firstThumb = (pred) => shown.find((i) => pred(i) && i.thumb)?.thumb;
-  const attention = scopeInfo("attention").query.ids;
-  const attentionProjects = [...new Set(attention.map((id) => index.get(id).project))];
   const gens = shown.filter((i) => i.kind === "generator").length;
   const parts = shown.filter((i) => i.kind === "part").length;
+  const comps = shown.filter((i) => i.kind === "component").length;
+  const where = platform.kind === "desktop" ? "on this computer" : "right here in your browser";
+  const counts = [gens && plural(gens, "parametric model"), comps && plural(comps, "component"), parts && plural(parts, "part")].filter(Boolean);
+  const intro = `Pick a model, set the sizes and save a print-ready file, made ${where} with OpenSCAD. ` + (counts.length
+    ? `${counts.length > 1 ? `${counts.slice(0, -1).join(", ")} and ${counts.at(-1)}` : counts[0]} ${platform.kind === "desktop" ? "in this library" : "here"}, each credited to its author.`
+    : "Your library is empty: add a project to start.");
   /** Category tiles for one kind, in the library's category order. */
   const categories = (kind) => {
     const counts = new Map();
@@ -43,12 +46,10 @@ export function Home() {
     return [...counts.entries()].sort((a, b) => rank(a[0]) - rank(b[0])).map(([id, c]) =>
       tile(`${scope}:${id}`, c.label, plural(c.n, noun), firstThumb((i) => i.kind === kind && i.category === id), kind === "component" ? Icon.cog(40) : null));
   };
-  const comps = shown.filter((i) => i.kind === "component").length;
   return html`<div class="home">
     <header class="home-head">
       <h1>Make things that fit</h1>
-      <p>Pick a model, set the sizes and save a print-ready file. ${plural(gens, "parametric model")} and ${plural(parts, "part")}, made
-        ${platform.kind === "desktop" ? " on this computer" : " right here in your browser"} with OpenSCAD. Every model is open work, credited to its author.</p>
+      <p>${intro}</p>
       ${platform.kind === "desktop" && !catalog.library?.read_only ? html`<div class="home-actions">
         <button type="button" class="primary" id="home-add-project" onClick=${() => ui.set({ dialog: { type: "add-project" } })}>${Icon.plus(16)} Add a project</button>
         <span class="muted">From a GitHub link, a ZIP file or a folder. Its models and parts join the library.</span>
@@ -59,7 +60,9 @@ export function Home() {
         <span class="thumb">${i.thumb ? html`<img src=${i.thumb} alt="" loading="lazy" />` : null}</span>
         <span><b>${i.name}</b><span class="muted">${i.project} · ${ago(i.t)}</span></span></a>`)}
     </div></section>` : null}
-    <section><h2>Parametric Models</h2><div class="home-tiles">${categories("generator")}</div></section>
+    <section data-home="models"><h2>Parametric Models</h2>${gens ? html`<div class="home-tiles">${categories("generator")}</div>`
+      : html`<p class="muted section-note" id="home-no-models">No parametric models yet. ${platform.kind === "desktop"
+        ? "Add a project from a GitHub link, a ZIP file or a folder, or put your own .scad files in a folder inside the library's local/ folder." : ""}</p>`}</section>
     ${comps ? html`<section data-home="components"><h2>Components</h2>
       <p class="muted section-note">Modules from ${(catalog.component_libraries || []).filter((l) => l.active).map((l) => l.name).join(", ")}, as forms. Search for one (“bevel gear”, “threaded rod”) or pick a topic.</p>
       <div class="home-tiles">${categories("component")}</div></section>` : null}
@@ -71,11 +74,6 @@ export function Home() {
           ${favs.length > 12 ? html`<a href=${scopeHash("favs")}>All ${favs.length} favourites</a>` : null}`
           : html`<p class="muted">Star a model or part (or select it and press F) to keep it here.</p>`}
       </section>
-      ${attentionProjects.length ? html`<section class="home-card attention"><h2>Needs attention</h2>
-        <p class="muted">Flagged as broken, or license or author not stated or not cleared for sharing. Check before sharing or selling prints.</p>
-        <p>${attentionProjects.join(" · ")}</p>
-        <a href=${scopeHash("attention")}>Show ${attention.length} items</a>
-      </section>` : null}
     </div>
     <footer class="site-footer">
       <a href="#/licenses">Licenses & credits</a>

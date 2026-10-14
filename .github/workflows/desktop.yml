@@ -13,6 +13,10 @@ on:
       - "web/**"
       - "tools/**"
       - "catalog/**"
+      - "vendor/**"
+      - "adapters/**"
+      - "libraries/**"
+      - "sources/**"
       - "tests/desktop_ui.py"
       - "tests/desktop_page.py"
       - "tests/tauri_shim.js"
@@ -67,6 +71,8 @@ jobs:
       - name: Build workshop-cli
         working-directory: desktop
         run: cargo build --release -p workshop-core
+      - name: Verify the test projects' vendored checksums
+        run: python tools/validate_sources.py
       - name: Build site (including desktop-only models) and thumbnails
         run: |
           python tools/build_site.py --engine build/engine --out _site --native-engine build/native/squashfs-root/AppRun
@@ -141,6 +147,12 @@ jobs:
           mkdir -p dist
           find desktop/target/release/bundle -maxdepth 2 \( -name '*.AppImage' -o -name '*.deb' \) -exec cp {} dist/ \; || true
           ls -la dist | tee -a ci-out/bundles.txt
+      - name: The installer has no starter projects (owner, 2026-10-14), but has the component libraries
+        run: |
+          deb=$(ls dist/*.deb | head -1)
+          dpkg -c "$deb" > ci-out/deb-contents.txt
+          if grep -q '/starter/' ci-out/deb-contents.txt; then echo "::error title=Installer::the .deb still ships starter/"; exit 1; fi
+          grep -q '/libs/' ci-out/deb-contents.txt || { echo "::error title=Installer::the .deb has no libs/"; exit 1; }
       - uses: actions/upload-artifact@v4
         with: { name: bundles-linux, path: dist/, retention-days: 3 }
       - name: Start the app once (startup log)
@@ -155,6 +167,8 @@ jobs:
         run: |
           cargo install tauri-driver --locked 2>&1 | tail -3
           export HOME="$RUNNER_TEMP/home" && mkdir -p "$HOME"
+          # the installer has no starter projects; the test's projects come from the one built for tests
+          export WORKSHOP_STARTER="$PWD/build/desktop/starter"
           # one X server for tauri-driver, WebKitWebDriver and the app it launches
           Xvfb :99 -screen 0 1600x1000x24 > /dev/null 2>&1 &
           export DISPLAY=:99
@@ -248,6 +262,8 @@ jobs:
           cargo install --git https://github.com/chippers/msedgedriver-tool 2>&1 | tail -3
           msedgedriver-tool 2>&1 | tail -3
           ls -la msedgedriver.exe
+          # the installer has no starter projects; the test's projects come from the one built for tests
+          export WORKSHOP_STARTER="$(cygpath -w "$PWD/build/desktop/starter")"
           tauri-driver --native-driver "$PWD/msedgedriver.exe" > ci-out/tauri-driver.log 2>&1 &
           sleep 3
           timeout 1200 python tests/desktop_ui.py --app desktop/target/release/scad-workshop.exe \

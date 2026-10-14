@@ -557,7 +557,7 @@ async def main():
             key = flag_id.split(":", 1)[1]
             attn = await pg.evaluate(f"() => window.__workshop.catalog.attention.some((a) => a.kind === 'broken' && a.model === '{key}')")
             note = await pg.evaluate(f"() => window.__workshop.index.get('{flag_id}').broken?.note")
-            check("flagged as broken, with its note, under Needs attention", attn and note == "Lid too tight", note)
+            check("flagged as broken, with its note (counted in Library settings)", attn and note == "Lid too tight", note)
             await pg.click(f'.results [data-item="{del_id}"]')
             await pg.click(".inspector [data-act=delete]")
             await pg.wait_for_selector(f'.results [data-item="{del_id}"]', state="detached")
@@ -698,8 +698,15 @@ async def main():
                 pass
             missing = await pg.evaluate("() => window.__workshop.catalog.attention.some((a) => a.kind === 'missing-folder' && a.source === 'local-scanned')")
             toast2 = await pg.eval_on_selector_all(".toast", "els => els.map((e) => e.textContent).join(' | ')")
-            check("Scan for changes: a file added to a stored copy and a new local/ project are read; a folder gone is listed under Needs attention",
-                  all(seen) and missing and "missing" in toast2, (seen, missing, toast1, toast2))
+            # (0.4.4) no Needs attention: a project's problems are marked in Library settings › Projects, beside its license
+            await pg.wait_for_selector('[data-source="local-scanned"] [data-problem="missing-folder"]', timeout=30000)
+            marked = await pg.locator('[data-source="local-scanned"] [data-problem="missing-folder"]').count()
+            check("Scan for changes: a file added to a stored copy and a new local/ project are read; a folder gone is marked in Library settings",
+                  all(seen) and missing and marked == 1 and "missing" in toast2, (seen, missing, marked, toast1, toast2))
+            lic = await pg.eval_on_selector_all("#ls-project-table td.ls-license", "els => els.map((e) => e.textContent.trim())")
+            nav_attn = await pg.locator(".sidebar .nav-attention").count()
+            check("Library settings lists each project's license (one not cleared is marked), and the menu has no Needs attention",
+                  len(lic) >= 3 and any("Check license" in t or "License unclear" in t for t in lic) and nav_attn == 0, (lic[:6], nav_attn))
             await pg.click('[data-source="local-scanned"] [data-act=delete-project]')
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library

@@ -1,5 +1,5 @@
 // The library in the desktop app: adding projects, project pages (details,
-// documents, files, versions, updates), "Needs attention", thumbnails for newly
+// documents, files, versions, updates), project problems (shown in Library settings), thumbnails for newly
 // read models, and the library section of Settings. On the website none of
 // this shows (there is no library there).
 import { html, useState, useEffect, useMemo } from "../lib/html.js";
@@ -218,22 +218,9 @@ export function SourcePanel({ id }) {
   </section>`;
 }
 
-// ---------------------------------------------------------------- needs attention
-const ATTN_TEXT = { update: "Update ready", missing: "Missing files", settings: "Settings couldn't be read", unread: "Not read", reread: "Read with an older version",
-  "missing-folder": "Folder missing", license: "License", scan: "Note", broken: "Flagged as broken" };
-const attnLink = (a) => (a.kind === "broken" && a.model ? `#/m/${a.model}` : a.kind === "broken" && a.part ? `#/parts/${a.part}` : scopeHash(`source:${a.source}`));
-
-export function AttentionList() {
-  useStore(ui, (s) => s.catalogVersion);
-  const items = ctx.catalog?.attention || [];
-  if (!items.length) return null;
-  const byKind = {};
-  for (const a of items) (byKind[a.kind] ||= []).push(a);
-  return html`<section class="attention-list" aria-label="Projects that need attention">
-    ${Object.entries(byKind).map(([kind, list]) => html`<div class="attn-group"><h3>${ATTN_TEXT[kind] || kind} <span class="muted">${list.length}</span></h3>
-      <ul>${list.slice(0, 40).map((a) => html`<li><a href=${attnLink(a)}>${sourceById(a.source)?.name || a.source}</a>: ${a.message}</li>`)}</ul></div>`)}
-  </section>`;
-}
+// ---------------------------------------------------------------- project problems (Library settings › Projects)
+export const ATTN_TEXT = { update: "Update ready", missing: "Missing files", settings: "Settings couldn't be read", unread: "Not read", reread: "Read with an older version",
+  "missing-folder": "Folder missing", license: "License", libraries: "A library it uses changed", scan: "Note", broken: "Flagged as broken" };
 
 // ---------------------------------------------------------------- thumbnails for new models
 let thumbRunning = false;
@@ -395,7 +382,7 @@ export function MergeConflicts({ result }) {
 /**
  * Scan for changes: projects in the library's local/ folder and linked folders, and the stored
  * copies of added projects, read again where their files changed; projects whose files are gone
- * are listed under Needs attention. Quiet (start-up, the window coming back into focus): a message
+ * are listed in Library settings › Projects. Quiet (start-up, the window coming back into focus): a message
  * only when something changed.
  */
 let scanning = null;
@@ -416,7 +403,7 @@ export async function rescanLocal(quiet = true) {
       const reread = (r.read || []).filter((id) => !(r.added || []).includes(id));
       if (r.added?.length) parts.push(`Added ${listText(names(r.added))}`);
       if (reread.length) parts.push(`Read ${listText(names(reread))} again`);
-      if (r.missing?.length) parts.push(`${listText(names(r.missing))} ${r.missing.length === 1 ? "is" : "are"} missing (see Needs attention)`);
+      if (r.missing?.length) parts.push(`${listText(names(r.missing))} ${r.missing.length === 1 ? "is" : "are"} missing (see Library settings › Projects)`);
       if (parts.length) ctx.toast(`${parts.join(". ")}.`);
       else if (!quiet) ctx.toast("No changes found.");
     } catch (e) {
@@ -455,7 +442,7 @@ export function dailyUpdateCheck() {
   runJob(api("updates_check", {}), "Checking for updates").then(async (r) => {
     if (r.updates?.length) {
       await ctx.reloadCatalog();
-      ctx.toast(`${plural(r.updates.length, "update")} ready to review.`, { label: "Show", run: () => { location.hash = scopeHash("attention"); } });
+      ctx.toast(`${plural(r.updates.length, "update")} ready to review.`, { label: "Show", run: () => { location.hash = "#/library-settings"; } });
     }
   }, () => {});
 }

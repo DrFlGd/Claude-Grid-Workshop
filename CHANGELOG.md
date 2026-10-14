@@ -12,10 +12,9 @@ It's written for whoever picks the work up next, people or agents: start with **
 
 ### What this is
 
-A toolbox for making 3D-printable parts with OpenSCAD, in two forms that share one front end (`web/`):
+A desktop app (Windows, Linux; Tauri 2) for making 3D-printable parts with OpenSCAD: native OpenSCAD, a portable library folder, projects added from GitHub, ZIPs and folders, Components from bundled OpenSCAD libraries. Installers on the [releases page](https://github.com/DrFlGd/SCAD-Workshop/releases). The repository was Claude-Grid-Workshop until 2026-10-13.
 
-- **Website** (light version): static, OpenSCAD as WebAssembly in the browser, on GitHub Pages: https://drflgd.github.io/Claude-Grid-Workshop/
-- **Desktop app** (Windows, Linux; Tauri 2): native OpenSCAD, a portable library folder, projects added from GitHub, ZIPs and folders, Components from bundled OpenSCAD libraries. Installers on the [releases page](https://github.com/DrFlGd/Claude-Grid-Workshop/releases).
+Since 0.4.4 (owner, 2026-10-14): the **website is retired** (no longer deployed; `web/platform.js` and `build_site.py` remain because the desktop build still uses the site build for its WebAssembly engine pieces and the test projects), and the app ships **no starter projects**, only the component libraries. The website-era generators and parts packs (`vendor/`, `catalog/`, `libraries/`) are **test projects**: CI builds them into a starter library (`build/desktop/starter`) and the tests point the app at it (`--starter` for `workshop-cli`, `WORKSHOP_STARTER` for the built app).
 
 The owner ("DrFlGd") tests hands-on, mostly on Windows, and steers by phases. The roadmap and every design decision are in `docs/DESKTOP_PLAN.md` (Phases table; "Still open"; one notes section per finished stage).
 
@@ -53,22 +52,21 @@ The development sandbox has a network allowlist and is reset between sessions (t
 - **Libraries:** `codeload.github.com` is blocked locally (CI downloads tarballs fine), but `git clone` works: clone the five libraries, check out the pinned commits, then `python3 tools/fetch_libraries.py --out build/desktop/libs --from-git <folder of clones>`.
 - **Full local build:** `tools/build_site.py --engine build/engine --out _site --native-engine build/native/squashfs-root/AppRun --cli <workshop-cli>` (about 2 minutes), then `tools/build_desktop.py --site _site --out build/desktop --cli <workshop-cli>`. Local sites have no thumbnails unless you also run `tools/thumbnails.py`, so the website test's thumbnail check fails locally; that's expected.
 - **Acceptance test locally:** clone `vector76/gridfinity_openscad` (full history: it needs old commit `af95c658`), `chrisspen/gears` and `BelfrySCAD/BOSL2` into one folder, run `tests/github_mock.py --repos <folder> --port 8795`, then `tests/desktop_page.py --cli … --ui build/desktop/ui --app-site build/desktop/site --starter build/desktop/starter --engine build/native/squashfs-root --home <tmp> --out <shots> --github-api http://127.0.0.1:8795`. After changing `web/`, copy it into `build/desktop/ui` (`index.html` as `build_desktop.py` writes it: without the Google Fonts lines).
-- **GitHub from the session:** `gh` works through the REST API only (`gh api repos/DrFlGd/Claude-Grid-Workshop/...`); GraphQL commands such as `gh release view` are refused, and editing releases isn't permitted. Pushes to `main` are fine. CI reports land on the `desktop-ci-linux` and `desktop-ci-windows` branches (logs, JSON reports, screenshots) and `ci-screenshots` (website); clone those to read results when job logs aren't downloadable.
+- **GitHub from the session:** `gh` works through the REST API only (`gh api repos/DrFlGd/SCAD-Workshop/...`); GraphQL commands such as `gh release view` are refused, and editing releases isn't permitted. Pushes to `main` are fine. CI reports land on the `desktop-ci-linux` and `desktop-ci-windows` branches (logs, JSON reports, screenshots, and the acceptance test's library as `p2/library.zip`); clone those to read results when job logs aren't downloadable.
 - **Careful with `pkill -f`:** a pattern that matches your own command line kills your shell.
 - **Hosted runners sometimes aren't acquired** ("The job was not acquired by Runner…"): that's GitHub, not the code; re-run (`gh run rerun <id>`).
 
 ### Branches
 
-`main` (everything), `crates-vendor` (vendored Rust crates), `engine-cache` / `engine-cache-native` (pinned OpenSCAD downloads), `desktop-ci-linux` / `desktop-ci-windows` / `ci-screenshots` (CI reports, force-pushed), `archive/server-v1` (the first, server-based website, on hold).
+`main` (everything), `crates-vendor` (vendored Rust crates), `engine-cache` / `engine-cache-native` (pinned OpenSCAD downloads), `desktop-ci-linux` / `desktop-ci-windows` (CI reports, force-pushed), `ci-screenshots` (the retired website's last reports), `archive/server-v1` (the first, server-based website, on hold).
 
 ### Known limitations now
 
 - Many components can't start on their own: about 370 of the 796 open with required settings empty (most are NopSCADlib parts that need a part type the library doesn't list as a choice). BOSL2 modules whose first doc example isn't a plain call start from a later example or wait for values (55 of 201).
-- Components are desktop-only; the website stays the light version.
 - Installers aren't code-signed (Windows SmartScreen asks once), and there's no auto-update: install the new release over the old one.
 - Native OpenSCAD on Windows is slow with projects split into many `use`d files; the app races it against the WebAssembly engine per model (see 0.1 / Phase 1 below).
 - Licenses and authors for Anylid, openGrid Shelf, Just Fit and Minimalist Kitchen are still to be supplied by the owner; Multiboard and the openGrid Connector have no sources yet; Underware's license is contradictory (kept for private use).
-- The repository and website addresses keep the old name (Claude-Grid-Workshop).
+- GitHub Pages still serves the last website build until it's switched off in the repository's Settings › Pages (owner).
 
 ### Requested and waiting (roadmap)
 
@@ -82,6 +80,15 @@ The development sandbox has a network allowlist and is reset between sessions (t
 ---
 
 ## Unreleased
+
+Milestone 1 of the owner's direction of 2026-10-14 (the rename clean-up), with the owner's decisions of the same evening and items UI-1, UI-6 and F-6 of Review 1.
+
+- **No starter projects in the installer** (owner: "we can stop including SCAD generators and models with the build, those were included as initial tests"). A new library starts with Components only; Home says how to add a project when there are no models. A library that already has the starter projects keeps them as ordinary projects. Library settings shows "Bring back starter projects" only when the app has a starter library (tests); `app_info` gains `starter`. CI checks the .deb has no `starter/` and still has `libs/`.
+- **The website is retired** (owner's choice on the decision card): `site.yml` is gone, so nothing deploys to GitHub Pages any more; its vendored-checksum check moved into `desktop.yml`'s site job, which now also runs when `vendor/`, `adapters/`, `libraries/` or `sources/` change. The page at drflgd.github.io stays up until Pages is switched off in the repository's settings.
+- **No Needs attention** (owner, on Review 1's UI-1: "that Needs Attention bar can be removed and just show the license status… in the settings pages"). The menu row, Home's card and the list page are gone. Library settings › Projects has a License column (the license, with "Check license" when it isn't cleared for sharing prints) and marks anything wrong with a project beside its name (Folder missing, Not read, Flagged as broken (n), …; the details on hover). Messages that pointed at Needs attention point at Library settings. The catalog's `attention` list is unchanged (the marks come from it).
+- **The menu follows the page** (Review 1, UI-6): it noticed the page only when it redrew, so Library settings opened from Settings' link or the command palette left Settings lit. It now follows the address. Licenses & credits lights up too. Library settings' jump links include Backups.
+- **The library's README.txt** lists every folder and what's inside a project, and says which folders are rebuildable (Review 1, F-6). A README.txt the app wrote before is replaced; one you changed is left alone.
+- **Rename clean-up:** README, this file and the plan say SCAD-Workshop; the app's releases link points at the new address. The README now describes the desktop app, with the website-era projects as test projects.
 
 - **Roadmap: the owner's direction of 2026-10-14** in `docs/DESKTOP_PLAN.md` ("Owner direction of 2026-10-14"): consistency of imported projects is the main theme (one project description for every source, defaults that render, `workshop.json`), a review of the interface and of the library's file structure after each milestone, skins and other work reused from Model Library, and five milestones in order (rename clean-up, skins, consistent projects, making parts from a generator, the rest of Phase 4). Opening a `.scad` file without adding it is on hold. Documentation only.
 

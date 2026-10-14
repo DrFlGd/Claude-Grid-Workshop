@@ -1,6 +1,6 @@
 # SCAD Workshop: desktop app plan
 
-The project was called Claude Grid Workshop until Phase 1.5. The repository and website addresses keep the old name for now.
+The project was called Claude Grid Workshop until Phase 1.5; the repository was renamed SCAD-Workshop on 2026-10-13. Since 0.4.4 the website is retired and the app ships no starter projects (owner, 2026-10-14; see "Owner direction of 2026-10-14").
 
 Status (2026-10-05):
 
@@ -32,7 +32,7 @@ The website stays as the **light version**: the built-in catalog in the browser,
 | Wrapper or native UI | Wrapper: **Tauri 2**, reusing the existing `web/` front end |
 | Platforms | Windows and Linux (no macOS for now) |
 | Repository | This repo: `desktop/` beside the website |
-| Website | Kept as the light version, sharing the front end |
+| Website | Kept as the light version, sharing the front end (until 0.4.3; retired by the owner on 2026-10-14) |
 
 ## Architecture
 
@@ -590,13 +590,19 @@ Each milestone is a release (0.4.x while Phase 4 runs) and is followed by a revi
 
 | # | Milestone | Done when |
 | --- | --- | --- |
-| 1 | **Rename clean-up.** Links and text that still say Claude-Grid-Workshop (README, CHANGELOG, this plan, the app's releases link) point at SCAD-Workshop; the website's address is the new one; 0.4.3's notes move out of Unreleased. | No old addresses left except where history is described; the website and the app's releases link open |
+| 1 | **Rename clean-up** (0.4.4). Links and text that still say Claude-Grid-Workshop point at SCAD-Workshop; 0.4.3's notes move out of Unreleased. Grown the same evening by the owner's decisions below: no starter projects in the installer, the website retired, no Needs attention; plus Review 1's UI-6 and F-6. | No old addresses left except where history is described; the installer has no `starter/` but has `libs/`; the app's releases link opens |
 | 2 | **Skins from Model Library.** Drafting Sheet, Parts Bin, Layer Line and Classic (today's look), chosen in Settings, on the website and in the app (design below). | Every page looks right in each skin, light, dark and night, in the website test and the app test screenshots |
 | 3 | **Consistent projects** (design below): one project description for every source, defaults that render, a check for every model on import, and the `workshop.json` layout. | The consistency checks below pass for the 19 starter projects and the test projects; an update from GitHub still compares against upstream's own files |
 | 4 | **Make parts from a generator** (item 8): Save as part and Make several…, with recipes. | As in item 8 |
 | 5 | **The rest of Phase 4:** importing STL/3MF/OBJ/STEP and Printables ZIPs (with Model Library's readers where they fit), one item per file name with a format picker, multi-colour and multi-part 3MF, collections, ZIP export. | Phase 4's "done when" in the Phases table |
 
 Items 1, 2 and 9 of the requests of 2026-10-12 (pictures, your own content, several libraries) come after these, unless a review moves them up.
+
+### Decisions later the same evening
+
+- **No starter projects in the build.** "We can stop including SCAD generators and models with the build, those were included as initial tests. The component libraries should still be included and I am open to other foundational generators or components you find to be relevant." The installer stops shipping the starter library; a new library has Components only. The website-era projects stay in the repository as test projects (CI builds a starter library for the tests) until smaller test projects replace them. Suggesting foundational projects to add (a list on Home, added from GitHub so they get update checks) belongs with milestone 3, once a project's models are checked at their defaults when it's added.
+- **The website is retired** (decision card: "Retire website"). Its workflow is removed; Pages is switched off by the owner in the repository's settings. The desktop build still uses the site build for its WebAssembly engine pieces and the test projects.
+- **No Needs attention** (on Review 1's UI-1): "that Needs Attention bar can be removed and just show the license status when looking at the libraries included in the settings pages". Library settings › Projects shows each project's license and marks what's wrong with it; the OpenSCAD libraries table already shows theirs.
 
 ### Consistency: what it means and how it's checked
 
@@ -804,3 +810,7 @@ Reproduced with the project folder the owner sent (`sources/zip-birdhouse-worksh
 - **Also found: the category.** Birdhouse was filed under Labels. `guess_category` matched keywords anywhere in the text, and "sign" (a Labels keyword) is inside "design" in its README. Fixed in 0.4.2: keywords match whole words with the usual endings (s, es, ed, ing); no starter project's category changes.
 - **Also in the folder sent: moved files.** The app read the ZIP with the `.scad` files in `src/` (as its README says, and as the project's derived data records), but in the folder the owner sent they are at the top level and `src/` is empty; `src/` was changed about seven minutes after the project was added, so they look moved by hand. A project's stored copy isn't checked for changes (request 5), so Castle and Engine still point at `src/` and may not render, and the README's `src/` links lead nowhere. Moving them back into `src/`, or pressing Read again, fixes that part; the fix above is still needed for the three missing designs.
 - **Tests (added in 0.4.2).** A Rust test with a small engine-and-front-ends project (an engine with `if (autorun) cube(size);` and two front ends that set `size` and include it, plus one that sets `autorun = false` and calls a module) expecting the three front ends as models and the engine as library code; and a `guess_category` test for "design" and "showcase".
+
+## Review 1 (of 0.4.3, 2026-10-14)
+
+The first periodic review: https://claude.ai/artifact/RzgZVDPVXHLBpnAXgaWYAp (11 interface items, 6 on the library's file structure, 3 on default values), from CI's screenshots of 0.4.3, the acceptance test's library (`p2/library.zip` on `desktop-ci-linux`) and its render reports. Unless the owner leaves items out, all are taken: UI-6 and F-6 in milestone 1 (0.4.4), the interface items in milestone 2 with the skins, the file structure and default items in milestone 3. The owner replaced UI-1's recommendation: Needs attention is removed and license status shown in Library settings (0.4.4). F-1 (starter projects can't check their source for updates) mostly falls away with the starter library; libraries that have the starter projects keep them as `bundled`, and milestone 3 decides whether to turn them into GitHub projects.

@@ -9,7 +9,7 @@ import { Icon } from "./icons.js";
 import { Inspector } from "./inspector.js";
 import { Home } from "./home.js";
 import { LICENSE_TEXT, AGE_TEXT, KINDS, STATUS_TEXT } from "./index-local.js";
-import { SourcePanel, AttentionList, isDesktop, sourceById, readOnly } from "./library.js";
+import { SourcePanel, isDesktop, sourceById, readOnly } from "./library.js";
 import { plural } from "../lib/util.js";
 
 const LAYOUTS = [["grid", "Grid", Icon.grid], ["list", "List", Icon.list], ["table", "Table", Icon.table], ["grouped", "Grouped", Icon.grouped]];
@@ -386,7 +386,6 @@ export function Browser() {
       ${condensing && s.openGroup ? html`<p class="group-crumb"><button type="button" class="link-btn" data-crumb
         onClick=${() => ui.set({ openGroup: null, selection: [], anchor: null, sourceTab: "items" })}>‹ All ${noun}</button> / <b>${s.openGroup}</b></p>` : null}
       ${panelSource ? html`<${SourcePanel} id=${panelSource} key=${panelSource} />` : null}
-      ${s.scope === "attention" && isDesktop() ? html`<${AttentionList} />` : null}
       ${info.note ? html`<p class="browse-note">${info.note}</p>` : null}
       ${sourceHidden ? null : html`<div class="filters">
         ${!info.query.kind ? html`<${FilterMenu} name="kind" label="Kind" values=${res.facets.kind} selected=${s.filters.kind || []}

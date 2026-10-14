@@ -1,7 +1,7 @@
 // Hiding, deleting and flagging (desktop). Items: hide (reversible from "Show
 // hidden" or Library settings), delete (left out of the library, also after the
 // project updates; Library settings can bring it back) and "broken" (a badge, a
-// note, listed under Needs attention). Projects: hide, or delete (to the
+// note, counted in Library settings › Projects). Projects: hide, or delete (to the
 // library's trash folder until the trash is emptied). Everything can be undone.
 import { html, useState } from "../lib/html.js";
 import { ui, pushUndo } from "./state.js";
@@ -52,7 +52,7 @@ export function restoreItems(entries) {
 export function flagItems(items, note) {
   const today = new Date().toISOString().slice(0, 10);
   return setMany(items.map((it) => ({ ...itemTarget(it), patch: { broken: { note: note || "", date: today } } })), `flagging ${what(items)}`,
-    `Flagged ${what(items)} as broken. ${items.length === 1 ? "It's" : "They're"} listed under Needs attention.`);
+    `Flagged ${what(items)} as broken. ${items.length === 1 ? "It's" : "They're"} marked with a badge, and counted in Library settings › Projects.`);
 }
 
 export function unflagItems(items) {
@@ -98,7 +98,7 @@ export function FlagDialog({ spec }) {
     <div class="dialog-head"><h2>Flag ${what(items)} as broken</h2><button type="button" class="ghost" aria-label="Close" onClick=${close}>${Icon.close(16)}</button></div>
     <label class="field-block"><span>What's wrong? <small class="muted">(optional)</small></span>
       <textarea id="flag-note" rows="3" value=${note} onInput=${(e) => setNote(e.target.value)} placeholder="Fails to render at width 5; the lid doesn't fit…" autofocus></textarea></label>
-    <p class="muted">Flagged models get a “broken” badge and are listed under Needs attention until you remove the flag.</p>
+    <p class="muted">Flagged models get a “broken” badge and are counted in Library settings › Projects until you remove the flag.</p>
     <div class="dialog-actions"><button type="button" class="ghost" onClick=${close}>Cancel</button>
       <button type="submit" class="primary" id="flag-save">Flag as broken</button></div>
   </form>`;

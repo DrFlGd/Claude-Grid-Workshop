@@ -1430,7 +1430,7 @@ function showSettings() {
   showPage(body);
 }
 
-const RELEASES_URL = "https://github.com/DrFlGd/Claude-Grid-Workshop/releases";
+const RELEASES_URL = "https://github.com/DrFlGd/SCAD-Workshop/releases";
 
 /** The text pages share #about-body; a Preact page mounted there is unmounted when another page replaces it. */
 let mountedPage = null;

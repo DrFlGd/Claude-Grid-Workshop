@@ -12,6 +12,8 @@
 //!   sources/<id>/thumbs/          thumbnails; rebuildable
 //!   local/<project>/              the user's own projects, edited in place
 //!   collections/                  (Phase 4)
+//!   icons/, thumbs/components/    category pictures; component thumbnails (rebuildable)
+//!   trash/                        deleted projects
 //!   recipes/<id>.json             saved settings
 //! ```
 //!
@@ -27,7 +29,8 @@ pub const FORMAT: u64 = 1;
 
 const SUBDIRS: [&str; 4] = ["sources", "local", "collections", "recipes"];
 
-const README: &str = "SCAD Workshop library\n\
+/// The README.txt written before 0.4.4: replaced when found unchanged.
+const README_0_4_3: &str = "SCAD Workshop library\n\
 \n\
 This folder is a library for the SCAD Workshop desktop app: projects you added,\n\
 your own projects, saved settings and all your edits. Move it, copy it, sync it\n\
@@ -39,6 +42,33 @@ or keep it in git, then use \"Open library...\" in the app to use it anywhere.\n
   local/          your own projects: put .scad or model files in a folder here\n\
   recipes/        saved settings\n\
 \n\
+The app's render cache and search index are kept on each computer, not here.\n";
+
+const README: &str = "SCAD Workshop library\n\
+\n\
+This folder is a library for the SCAD Workshop desktop app: projects you added,\n\
+your own projects, saved settings and all your edits. Move it, copy it, sync it\n\
+or keep it in git, then use \"Open library...\" in the app to use it anywhere.\n\
+\n\
+  library.json    name, favourites, categories and library-wide settings\n\
+  sources/        one folder per project (below)\n\
+  local/          your own projects: put .scad or model files in a folder here\n\
+  recipes/        saved settings, with any code edits\n\
+  collections/    collections (coming)\n\
+  icons/          pictures you chose for categories\n\
+  thumbs/         thumbnails of components (rebuildable)\n\
+  trash/          deleted projects, until you empty the trash\n\
+\n\
+Inside sources/<project>/:\n\
+  source.json     where it came from (GitHub, ZIP, folder), its versions, updates\n\
+  metadata.json   your edits: names, categories, licenses, forms\n\
+  files/<version>/   the project's files exactly as they came, never changed\n\
+  derived/        what the app found when it read them (rebuildable)\n\
+  generated/      copies made so typed-in values become settings (rebuildable)\n\
+  docs/           the README as HTML, PDFs (rebuildable)\n\
+  thumbs/, previews/   pictures (rebuildable)\n\
+\n\
+Rebuildable folders can be deleted: the app makes them again.\n\
 The app's render cache and search index are kept on each computer, not here.\n";
 
 #[derive(Clone, Debug)]
@@ -140,7 +170,11 @@ impl Library {
         }
         let readme = lib.root.join("README.txt");
         let old_readme = std::fs::read_to_string(&readme).ok();
-        if old_readme.as_deref().is_none_or(|t| t.starts_with("SCAD Workshop workspace") || t.starts_with("Claude Grid Workshop workspace")) {
+        // written by the app (a Phase 1 workspace's, or an older version's left as it was): replaced;
+        // one the user changed is left alone
+        if old_readme.as_deref().is_none_or(|t| {
+            t.starts_with("SCAD Workshop workspace") || t.starts_with("Claude Grid Workshop workspace") || t == README_0_4_3
+        }) {
             let _ = std::fs::write(&readme, README);
         }
         Ok((lib, migration))
@@ -611,6 +645,23 @@ mod tests {
         let (lib2, m2) = Library::open(&dir, &prefs).unwrap();
         assert_eq!(m2.recipes, 0);
         assert_eq!(lib2.meta()["id"], lib.meta()["id"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn readme_is_refreshed_unless_changed() {
+        let dir = temp_dir("readme");
+        let prefs = Prefs::new(dir.join("p.json"));
+        Library::open(&dir, &prefs).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("README.txt")).unwrap(), README);
+        // the one 0.4.3 wrote is replaced
+        std::fs::write(dir.join("README.txt"), README_0_4_3).unwrap();
+        Library::open(&dir, &prefs).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("README.txt")).unwrap(), README);
+        // one the user wrote stays
+        std::fs::write(dir.join("README.txt"), "my notes").unwrap();
+        Library::open(&dir, &prefs).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("README.txt")).unwrap(), "my notes");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

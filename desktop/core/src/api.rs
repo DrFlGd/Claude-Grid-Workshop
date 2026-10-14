@@ -450,6 +450,7 @@ impl App {
                     "github_token": self.config().github_token().is_some(),
                     "concurrency": r.as_ref().map(|r| r.concurrency()),
                     "cache_bytes": r.as_ref().map(|r| r.cache_size()),
+                    "starter": self.paths.starter.as_ref().is_some_and(|s| s.join("starter.json").is_file()),
                 }))
             }
             "read" => self.read_file(arg(&args, "path").map_err(e2s)?).map(Reply::Bytes).map_err(e2s),
