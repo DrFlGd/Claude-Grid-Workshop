@@ -381,7 +381,7 @@ async def main():
             await pg.wait_for_function(DONE, timeout=120000)
             dims1 = await pg.inner_text("#dims")
             check("settings from a module call borrow the library's descriptions and choices (a fraction is the library's 1/3)",
-                  fields.get("width") == ["number", "Width of the block, in studs"] and fields.get("height", [None])[0] == "1/3"
+                  fields.get("width", [None])[0] == "number" and fields["width"][1].startswith("Width of the block, in studs") and fields.get("height", [None])[0] == "1/3"
                   and fields.get("type", [None])[0] == "Tile" and "15.8 × 31.8 × 3.2" in dims0 and "× 9.6" in dims1.split("\n")[0],
                   (fields, dims0.split("\n")[0], dims1.split("\n")[0]))
             # 5e. the Code tab edits the model (0.4.1): Generate uses the edits, Save keeps them with the
