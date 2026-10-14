@@ -200,6 +200,8 @@ jobs:
         run: |
           mkdir -p ci-out && cd ci-out
           echo "${GITHUB_SHA}" > COMMIT
+          # GitHub refuses files over 100 MB (the test library's ZIP can be): those stay in the artifacts only
+          find . -type f -size +95M -print -delete > LEFT_OUT.txt
           git init -q && git checkout -q -b desktop-ci-linux
           git -c user.name=ci -c user.email=ci@users.noreply.github.com add -A
           git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "Desktop checks (Linux) for ${GITHUB_SHA::7}"
@@ -274,6 +276,8 @@ jobs:
         run: |
           mkdir -p ci-out && cd ci-out
           echo "${GITHUB_SHA}" > COMMIT
+          # GitHub refuses files over 100 MB (the test library's ZIP can be): those stay in the artifacts only
+          find . -type f -size +95M -print -delete > LEFT_OUT.txt
           git init -q && git checkout -q -b desktop-ci-windows
           git -c user.name=ci -c user.email=ci@users.noreply.github.com add -A
           git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "Desktop checks (Windows) for ${GITHUB_SHA::7}"

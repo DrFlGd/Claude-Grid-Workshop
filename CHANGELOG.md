@@ -92,6 +92,7 @@ Milestone 3, last part (0.4.9): starter projects as GitHub projects, suggested p
 - **A project added from a tag, release or commit asks what to follow** (F-11): newer releases (the default for a version number) or every change on the branch. `origin.track` is `releases` or `branch:<name>`; `origin.added_from` keeps what the link named. The project's page says what it follows.
 - Two models of a project's description can use the same file (Gridfinity Extended's baseplate and connector clips).
 - The acceptance test turns the starter projects into GitHub projects (real GitHub) and adds LEGO.scad from the suggestions, checking every model at its defaults.
+- CI's report branches leave out files over 95 MB (listed in `LEFT_OUT.txt`; the test library's ZIP grew past GitHub's 100 MB limit with the downloaded projects), so the reports are published again.
 
 ## 0.4.8 — 2026-10-14 · Review 2's small items: messages, dialogs, the side viewer's room, Settings, update checks
 
