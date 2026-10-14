@@ -1,0 +1,273 @@
+[
+  {
+    "id": "full-tile-2x2",
+    "status": "match",
+    "best_params": {
+      "Full_or_Lite": "Full",
+      "Board_Width": 2,
+      "Board_Height": 2,
+      "Screw_Mounting": "None",
+      "Chamfers": "Corners"
+    },
+    "size_diff_mm": 0.0,
+    "volume_diff_pct": 0.04,
+    "generator": {
+      "size_mm": [
+        56.0,
+        56.0,
+        6.8
+      ],
+      "volume_mm3": 4429.1,
+      "triangles": 1820
+    },
+    "reference": {
+      "size_mm": [
+        56.0,
+        56.0,
+        6.8
+      ],
+      "volume_mm3": 4430.7,
+      "file": "openGrid/opengrid-2x2.3mf"
+    }
+  },
+  {
+    "id": "full-tile-4x3",
+    "status": "match",
+    "best_params": {
+      "Full_or_Lite": "Full",
+      "Board_Width": 4,
+      "Board_Height": 3,
+      "Screw_Mounting": "None",
+      "Chamfers": "Corners"
+    },
+    "size_diff_mm": 0.0,
+    "volume_diff_pct": 0.03,
+    "generator": {
+      "size_mm": [
+        112.0,
+        84.0,
+        6.8
+      ],
+      "volume_mm3": 13879.1,
+      "triangles": 4896
+    },
+    "reference": {
+      "size_mm": [
+        84.0,
+        112.0,
+        6.8
+      ],
+      "volume_mm3": 13883.0,
+      "file": "openGrid/opengrid-4x3.3mf"
+    }
+  },
+  {
+    "id": "full-tile-6x6",
+    "status": "match",
+    "best_params": {
+      "Full_or_Lite": "Full",
+      "Board_Width": 6,
+      "Board_Height": 6,
+      "Screw_Mounting": "None",
+      "Chamfers": "Corners"
+    },
+    "size_diff_mm": 0.0,
+    "volume_diff_pct": 0.02,
+    "generator": {
+      "size_mm": [
+        168.0,
+        168.0,
+        6.8
+      ],
+      "volume_mm3": 42676.4,
+      "triangles": 12540
+    },
+    "reference": {
+      "size_mm": [
+        168.0,
+        168.0,
+        6.8
+      ],
+      "volume_mm3": 42684.5,
+      "file": "openGrid/opengrid-6x6.3mf"
+    }
+  },
+  {
+    "id": "lite-tile-2x2",
+    "status": "match",
+    "best_params": {
+      "Full_or_Lite": "Lite",
+      "Board_Width": 2,
+      "Board_Height": 2,
+      "Screw_Mounting": "Corners",
+      "Chamfers": "Corners"
+    },
+    "size_diff_mm": 0.0,
+    "volume_diff_pct": 0.02,
+    "generator": {
+      "size_mm": [
+        56.0,
+        56.0,
+        4.0
+      ],
+      "volume_mm3": 2381.0,
+      "triangles": 1640
+    },
+    "reference": {
+      "size_mm": [
+        56.0,
+        56.0,
+        4.0
+      ],
+      "volume_mm3": 2381.4,
+      "file": "openGrid Lite/opengrid-lite-2x2.3mf"
+    }
+  },
+  {
+    "id": "lite-tile-4x3",
+    "status": "match",
+    "best_params": {
+      "Full_or_Lite": "Lite",
+      "Board_Width": 4,
+      "Board_Height": 3,
+      "Screw_Mounting": "Corners",
+      "Chamfers": "Corners"
+    },
+    "size_diff_mm": 0.0,
+    "volume_diff_pct": 0.01,
+    "generator": {
+      "size_mm": [
+        112.0,
+        84.0,
+        4.0
+      ],
+      "volume_mm3": 7438.4,
+      "triangles": 4636
+    },
+    "reference": {
+      "size_mm": [
+        84.0,
+        112.0,
+        4.0
+      ],
+      "volume_mm3": 7438.0,
+      "file": "openGrid Lite/opengrid-lite-4x3.3mf"
+    }
+  },
+  {
+    "id": "snap",
+    "status": "match",
+    "best_params": {
+      "Snap_Type": "Full",
+      "Directional": false,
+      "Count": 1
+    },
+    "size_diff_mm": 0.02,
+    "volume_diff_pct": 0.08,
+    "generator": {
+      "size_mm": [
+        25.58,
+        25.58,
+        6.8
+      ],
+      "volume_mm3": 3713.1,
+      "triangles": 2904
+    },
+    "reference": {
+      "size_mm": [
+        25.6,
+        25.6,
+        6.8
+      ],
+      "volume_mm3": 3715.9,
+      "file": "Snap modeling files/opengrid-bare-snap.3mf"
+    }
+  },
+  {
+    "id": "lite-snap",
+    "status": "differs (expected)",
+    "best_params": {
+      "Snap_Type": "Lite",
+      "Directional": false,
+      "Count": 1
+    },
+    "size_diff_mm": 0.02,
+    "volume_diff_pct": 2.04,
+    "generator": {
+      "size_mm": [
+        25.58,
+        25.58,
+        3.4
+      ],
+      "volume_mm3": 1918.3,
+      "triangles": 2840
+    },
+    "reference": {
+      "size_mm": [
+        25.6,
+        25.6,
+        3.4
+      ],
+      "volume_mm3": 1879.9,
+      "file": "Snap modeling files/opengrid-bare-lite-snap.3mf"
+    }
+  },
+  {
+    "id": "directional-snap-v2.1",
+    "status": "match",
+    "best_params": {
+      "Snap_Type": "Full",
+      "Directional": true,
+      "Count": 1
+    },
+    "size_diff_mm": 0.02,
+    "volume_diff_pct": 0.0,
+    "generator": {
+      "size_mm": [
+        25.98,
+        25.58,
+        6.8
+      ],
+      "volume_mm3": 3766.7,
+      "triangles": 2736
+    },
+    "reference": {
+      "size_mm": [
+        25.6,
+        26.0,
+        6.8
+      ],
+      "volume_mm3": 3766.8,
+      "file": "Snap modeling files/opengrid-bare-directional-snap-v21.3mf"
+    }
+  },
+  {
+    "id": "directional-lite-snap-v2",
+    "status": "match",
+    "best_params": {
+      "Snap_Type": "Lite",
+      "Directional": true,
+      "Count": 1
+    },
+    "size_diff_mm": 0.02,
+    "volume_diff_pct": 1.39,
+    "generator": {
+      "size_mm": [
+        25.98,
+        25.58,
+        3.4
+      ],
+      "volume_mm3": 1937.3,
+      "triangles": 2708
+    },
+    "reference": {
+      "size_mm": [
+        25.6,
+        26.0,
+        3.4
+      ],
+      "volume_mm3": 1910.8,
+      "file": "Snap modeling files/opengrid-bare-directional-lite-snap-v2.3mf"
+    }
+  }
+]
