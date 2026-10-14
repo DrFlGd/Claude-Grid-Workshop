@@ -36,7 +36,7 @@ function Folder({ info, lib, ro }) {
       const r = await runJob(api("library_merge", { path }), "Merging a library");
       await ctx.reloadCatalog();
       if (r.conflicts?.length) ui.set({ dialog: { type: "merge", result: r } });
-      else ctx.toast(`Merged: ${plural(r.copied.length, "new project")}, ${plural(r.combined.length, "project")} combined, ${plural(r.recipes, "saved setting")}.`);
+      else ctx.toast(`Merged: ${plural(r.copied.length, "new project")}, ${plural(r.combined.length, "project")} combined, ${plural(r.recipes, "saved setting")}${r.collections ? `, ${plural(r.collections, "collection")}` : ""}.`);
     } catch (e) { fail(e); }
   };
   return html`<${Section} id="folder" title="Library folder"

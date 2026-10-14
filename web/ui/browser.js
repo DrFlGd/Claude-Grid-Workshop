@@ -10,6 +10,7 @@ import { Inspector } from "./inspector.js";
 import { Home } from "./home.js";
 import { LICENSE_TEXT, AGE_TEXT, KINDS, STATUS_TEXT } from "./index-local.js";
 import { SourcePanel, isDesktop, sourceById, readOnly } from "./library.js";
+import { CollectionPage } from "./collections.js";
 import { plural } from "../lib/util.js";
 
 const LAYOUTS = [["grid", "Grid", Icon.grid], ["list", "List", Icon.list], ["table", "Table", Icon.table], ["grouped", "Grouped", Icon.grouped]];
@@ -319,6 +320,7 @@ export function Browser() {
 
   if (!s.ready) return html`<div class="browse-loading">Loading…</div>`;
   if (s.scope === "home") return html`<${Home} />`;
+  if (s.scope.startsWith("coll:")) return html`<${CollectionPage} id=${s.scope.slice(5)} key=${s.scope} />`;
 
   const info = res.info;
   const setFilter = (k) => (vals) => ui.set({ filters: { ...ui.get().filters, [k]: vals } });

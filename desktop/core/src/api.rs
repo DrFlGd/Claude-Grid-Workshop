@@ -611,6 +611,10 @@ impl App {
                 self.library()?.put_recipe(&args["record"]).map_err(e2s)?;
                 j(Value::Null)
             }
+            // collections (milestone 5): lists of parts and models, by id, with quantities and status
+            "collections_list" => j(json!(self.library()?.collections())),
+            "collection_put" => j(self.library()?.put_collection(&args["collection"]).map_err(e2s)?),
+            "collection_remove" => j(self.library()?.remove_collection(arg(&args, "id").map_err(e2s)?).map_err(e2s)?),
             "settings_remove" => {
                 self.library()?.remove_recipe(arg(&args, "id").map_err(e2s)?).map_err(e2s)?;
                 j(Value::Null)

@@ -265,7 +265,7 @@ body.show-help .field .help { display: block; }
 .actionbar { border-top: 1px solid var(--steel-2); padding: 8px 16px 12px; background: var(--white); display: grid; gap: 8px; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .actions > * { padding: 10px 12px; font-size: 14.5px; }
-.actions .save-part { grid-column: 1 / -1; padding: 6px 12px; font-size: 13.5px; }
+.actions .save-part { padding: 6px 12px; font-size: 13.5px; } /* Save as part… and Add to collection…, side by side */
 .status { font-size: 13px; color: var(--graphite); min-height: 1.45em; display: flex; gap: 8px; align-items: center; }
 .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--steel-2); flex: none; }
 .status.ok::before { background: var(--ok); }
@@ -780,6 +780,27 @@ textarea.grow { resize: none; overflow: hidden; line-height: 1.4; min-height: 0;
 .project-list li + li { border-top: 1px solid var(--steel); }
 .project-list a { font-weight: 600; }
 .nav-add { margin-top: 14px; }
+/* collections in the menu, and a collection's page (milestone 5, 0.4.17) */
+.nav-collections { margin-top: 14px; }
+.nav-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px 4px 30px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--graphite); }
+.nav-head-add { border: 0; background: transparent; color: var(--graphite); padding: 2px; border-radius: var(--radius-s); cursor: pointer; display: inline-flex; }
+.nav-head-add:hover { background: var(--steel); color: var(--ink); }
+.nav-empty { padding: 2px 8px 2px 30px; font-size: 12.5px; }
+.collection-page { padding: 18px 22px 40px; overflow: auto; height: 100%; box-sizing: border-box; }
+.collection-progress { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0 14px; font-size: 13.5px; }
+.collection-bar { flex: 0 1 260px; height: 8px; border-radius: 4px; background: var(--steel-2); overflow: hidden; }
+.collection-bar span { display: block; height: 100%; background: var(--ok); }
+.collection-copies { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.collection-busy { font-size: 13.5px; }
+.collection-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.collection-table th, .collection-table td { text-align: left; vertical-align: middle; padding: 6px 8px; border-bottom: 1px solid var(--steel-2); }
+.collection-table thead th { font-size: 12.5px; color: var(--graphite); font-weight: 600; }
+.collection-table tr.printed .collection-name { text-decoration: line-through; color: var(--graphite); }
+.collection-thumb img, .collection-thumb .thumb-none { width: 48px; height: 36px; object-fit: contain; display: grid; place-items: center; border-radius: var(--radius-s); background: var(--panel); }
+.collection-qty { width: 64px; }
+.collection-notes { width: 100%; min-width: 120px; }
+.collection-rename { display: flex; gap: 8px; }
+.collect-list { display: grid; gap: 6px; margin: 4px 0 10px; max-height: 260px; overflow: auto; }
 .nav-add li { padding-left: 0; }
 .nav-add .nav-link { width: 100%; border: 1px dashed var(--steel-2); background: transparent; font: inherit; font-size: 14px; cursor: pointer; text-align: left; }
 .nav-add .nav-link:hover { border-color: var(--graphite); background: var(--steel); }

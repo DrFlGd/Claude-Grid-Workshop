@@ -1065,3 +1065,27 @@ Built as planned, except:
 - **Not yet checked against a real page:** Print settings (this model is "3D MODEL ONLY"); it's read by its heading as "Label: value" lines. Nor the ZIP as Printables makes it: the PDF is looked for at the top of the project or one folder down. Owner: one or two real downloads, one with print settings, would confirm both.
 - **Where values come from:** detected values can now say which file they came from (`detected.from.<field>` in source.json), shown as "From the Printables PDF"; other detected values still say "the project's files". The description is kept as `detected.description` and shown on About as HTML; it isn't searched yet.
 - **Not done:** checking the page for a newer upload (printables.com is out of reach from the build sessions), and other sites (Thingiverse ZIPs carry README and LICENSE text, which are read already).
+
+
+### 0.4.17 notes
+
+- **What an entry is:** `{ id, ref, name, settings, values, quantity, status, notes, format }`. `ref` is the item's id in the page's index (`part:<pack>/<part>`, `gen:<model key>`, `comp:<key>`), so made parts are parts like any other. A model's `values` are its changes from the defaults when it was added; `settings` names the saved setting when one was chosen and unchanged, for its code edits. `format` null follows Settings › Downloads.
+- **Kept out of the catalog:** collections are read with `collections_list` and written one at a time (`collection_put`, `collection_remove`), so ticking Printed doesn't rebuild the catalog.
+- **Export is done by the page**, like Make several's ZIP: part files are read through the library protocol, models are made by the page's engine (and turned into 3MF by the core when chosen), and `web/zip.js` writes the ZIP. Nothing new in the core but storage.
+- **Not done:** drag from the browser onto a collection, a collection's icon and summary editing (the fields are there), and entries whose project was renamed by a merge (their `ref` goes stale and shows "No longer in the library"). An entry for a project that's removed keeps its name and is left out of the export, with a line in README.txt.
+
+## Review 5 (of 0.4.16, 2026-10-14)
+
+The fifth periodic review, partway through milestone 5: https://claude.ai/artifact/1VgTyDLDce1rtek4ADpt7c (5 interface items, UI-33 to UI-37; 3 on the library's file structure, F-23 to F-25), from CI for 0.4.14 to 0.4.16, screenshots of each new screen in a local test library, the library folder after adding a Printables ZIP, and the code. Collections (0.4.17) was already built and tested, so it ships first; Review 5's items are 0.4.18 and multi-colour 3MF moves to 0.4.19, followed by Review 6.
+
+### 0.4.18 plan (Review 5's items)
+
+- **UI-33 (Download and its picker):** Generate and Download stay one line high, the format picker a narrow part of the Download button; a part's button reads "Download (1 KB)" and the picker names the format.
+- **UI-34 (duplicates):** files found in another project when a project is added are listed in a note on its Items, like near misses, each with the project it's also in, Open the other and Hide this copy; kept in `derived/` so the note survives a restart.
+- **UI-35 (near misses):** Keep apart, remembered in the project's `metadata.json`; that group isn't offered again.
+- **UI-36 (drop dialog):** the second choice has the outlined button style; files that share no name suggest "Dropped files" and the date.
+- **UI-37 (the Printables PDF):** listed as "Printables page (PDF)" with the site details on About.
+- **F-23 (a newer Printables download):** a ZIP whose PDF names a page a project already has (`origin.site.page`) is added as a new version of that project, dated by the page's updated date, and offered as Use this version, as an update is; a version's date comes from the page for the first download too.
+- **F-24 (read again):** Read again reads the site PDF again, as it does the README and license; your edits in `metadata.json` still win.
+- **F-25 (README):** `origin.site` and `detected` are described under `source.json`.
+- **CI:** a newer download of a Printables ZIP becomes a version of the first; Read again fills in details for a ZIP added without them; a near miss kept apart stays dismissed; duplicates listed on the project.

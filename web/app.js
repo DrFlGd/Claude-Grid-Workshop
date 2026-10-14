@@ -17,6 +17,7 @@ import { saveComponentThumb, when, sourceById, rescanLocal, madeFrom } from "./u
 import { ui, recordRecent, setTabs, layoutFor, isDark, setTheme, THEMES, setSkin, SKINS } from "./ui/state.js";
 import { scopeFromPath } from "./ui/context.js";
 import { scopeInfo } from "./ui/sidebar.js";
+import { refreshCollections } from "./ui/collections.js";
 
 // page errors, for the desktop UI test (tests/desktop_ui.py)
 // (not the browser's harmless "ResizeObserver loop completed with undelivered notifications")
@@ -1115,6 +1116,30 @@ async function writePart(opts) {
   }
 }
 
+/** A model made at some settings (a collection's export, 0.4.17): `values` (changes from its defaults) or a
+ * saved setting's id, whose code edits come too. Resolves to the STL blob. */
+async function renderModel(key, { values = null, settings = null } = {}) {
+  const detail = await loadDetail(key);
+  const rec = settings ? await platform.api("settings_get", { id: settings }).catch(() => null) : null;
+  const edits = rec?.edits && Object.keys(rec.edits).length ? editTexts(rec.edits) : null;
+  const full = withChanges(detail, values || rec?.values || {}).values;
+  const job = state.engine.render(edits ? { ...detail, edits } : detail, edits ? changedValues(detail, full) : full);
+  return (await job.promise).blob;
+}
+
+$("#model-collect").addEventListener("click", () => {
+  const m = state.model;
+  if (!m) return;
+  const values = changedValues(m, state.values);
+  const rec = activeSaved();
+  const settings = rec && JSON.stringify(changedValues(m, withChanges(m, rec.values || {}).values)) === JSON.stringify(values) ? rec.id : null;
+  const named = rec && settings ? `${m.name} · ${rec.name}` : Object.keys(values).length ? partName(m, state.values) : m.name;
+  ui.set({ dialog: { type: "collect", entries: [{ ref: `${m.kind === "component" ? "comp" : "gen"}:${m.key}`, name: named, settings, values: Object.keys(values).length ? values : null }] } });
+});
+$("#part-collect").addEventListener("click", () => {
+  if (state.partEntry) ui.set({ dialog: { type: "collect", entries: [state.partEntry] } });
+});
+
 /** A made part's recipe, from its parts link (`#/m/<model>?part=<pack>/<part>`), when it was made from this model. */
 function madeRecipe({ part, again }, key) {
   const [libId, pid] = part.split("/");
@@ -1618,6 +1643,7 @@ async function showPart(lib, item) {
           } catch (e) { toast(String(e.message || e)); }
         } })));
   }
+  state.partEntry = { ref: `part:${lib.id}/${item.id}`, name: item.name };
   const dl = $("#part-downloads");
   const formats = item.files.map((f) => f.format);
   if (formats.length > 1 && new Set(formats).size === formats.length && !item.files.some((f) => f.label)) {
@@ -1963,6 +1989,7 @@ async function reloadCatalog() {
   state.index = new LocalIndex(catalog, libraries);
   setContext({ catalog, libraries, index: state.index });
   ui.set((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+  if (platform.kind === "desktop") refreshCollections(); // (a merged library brings its collections)
   if (ui.get().view === "library" && location.hash.startsWith("#/parts/")) { state.openLib = null; route(); } // (its list too: parts made one or split)
   // the open model's header (name, credits, a broken flag) follows edits
   // (unless another model has been opened meanwhile: its header isn't this one's to draw)
@@ -1980,11 +2007,14 @@ async function reloadCatalog() {
     state.engine = platform.makeEngine(state.catalog);
     $("#engine").textContent = state.engine.label;
     $("#save-part").hidden = platform.kind !== "desktop" || !!catalog.library?.read_only;
+    $("#model-collect").hidden = $("#part-collect").hidden = $("#save-part").hidden;
     state.libraries = libraries;
     for (const l of state.libraries) state.libDetail[l.id] = l;
     state.index = new LocalIndex(state.catalog, state.libraries);
     mountShell({ platform, catalog: state.catalog, libraries: state.libraries, index: state.index, engine: state.engine,
       loadModel, closeModelTab, openTabs, deliver, reloadCatalog, toast, route, refreshModel, currentValues, savePart,
+      // collections (0.4.17): a model made at given settings, and the format Settings › Downloads picks
+      renderModel, preferredFormatOf: (formats) => pickFormat(null, formats),
       // the Code tab's edits (an open model's page)
       codeEdits: editsOf, setCodeEdit, codeStatus, generate: () => { if (ui.get().view === "model") generate(); },
       saveCode: () => { if (ui.get().view === "model") openSaveDialog("save"); } });

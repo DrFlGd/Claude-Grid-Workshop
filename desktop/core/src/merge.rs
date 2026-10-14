@@ -145,6 +145,28 @@ pub fn merge(lib: &Library, other: &Path, _prefs: &Prefs) -> Result<Value> {
             recipes += 1;
         }
     }
+    // collections: new ones by id; one with the same id that differs is kept beside ours, renamed
+    let mut collections = 0;
+    for e in std::fs::read_dir(other.join("collections")).map(|rd| rd.flatten().collect::<Vec<_>>()).unwrap_or_default() {
+        let Some(theirs) = std::fs::read(e.path().join("collection.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { continue };
+        let ours = std::fs::read(lib.root().join("collections").join(e.file_name()).join("collection.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok());
+        match ours {
+            None => {
+                copy_tree(&e.path(), &lib.root().join("collections").join(e.file_name()))?;
+                collections += 1;
+            }
+            Some(o) if o["items"] == theirs["items"] && o["name"] == theirs["name"] => {}
+            Some(_) => {
+                let mut c = theirs.clone();
+                if let Some(o) = c.as_object_mut() {
+                    o.remove("id");
+                }
+                c["name"] = json!(format!("{} (merged)", theirs["name"].as_str().unwrap_or("Collection")));
+                lib.put_collection(&c)?;
+                collections += 1;
+            }
+        }
+    }
     // favourites, library-wide metadata and categories
     let mut mine = lib.meta();
     let mut favs = mine["favourites"].as_array().cloned().unwrap_or_default();
@@ -171,7 +193,7 @@ pub fn merge(lib: &Library, other: &Path, _prefs: &Prefs) -> Result<Value> {
     }
     mine = lib.update_meta(patch)?;
     let _ = mine;
-    Ok(json!({ "copied": copied, "combined": combined, "recipes": recipes, "conflicts": conflicts }))
+    Ok(json!({ "copied": copied, "combined": combined, "recipes": recipes, "collections": collections, "conflicts": conflicts }))
 }
 
 /// Apply the user's picks for merge conflicts: [{source, section, key, field, value}].

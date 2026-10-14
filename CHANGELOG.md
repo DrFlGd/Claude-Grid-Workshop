@@ -83,6 +83,18 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+Milestone 5, fourth part (0.4.17): collections.
+
+- **Collections** in the left menu: lists of parts and models kept for one use (an RC car, a workshop wall), with **New collection** (the + beside the heading, or the command palette). They're lists, not copies: one part can be in several, and the library keeps them in `collections/<id>/collection.json`.
+- **Add to collection…** in the inspector (for one or several parts and models), on a part's page and on a model's page. A model keeps the settings it has then (and a saved setting's code edits, when one is chosen and unchanged). The same thing with the same settings is counted again instead of listed twice.
+- **A collection's page** lists its items with a thumbnail, the format to use (a part's own formats; STL or 3MF for a model), the quantity, a **Printed** tick and notes, with "1 of 5 printed" and a bar. Rename and Delete are under ⋯; deleting or removing an item can be undone from the message.
+- **Export as ZIP…**: each item in its format, a file per copy or one file with the count in its name (chosen on the page), models made at their settings first, plus `parts.csv` (item, quantity, printed, format, files, project, authors, license, notes) and `README.txt` with each item's credits and license. Cancel stops it.
+- Merging libraries brings their collections too; the library's README describes `collections/`.
+- CI: the acceptance test makes a collection of a part, a made part and a model with changed settings, sets a quantity and a printed tick, and exports it.
+- Review 5 (of 0.4.16) is in docs/DESKTOP_PLAN.md with its items planned for 0.4.18; multi-colour 3MF moves to 0.4.19.
+
+## 0.4.16 — 2026-10-14 · Milestone 5, third part: a Printables download's details read from the page's PDF
+
 Milestone 5, third part (0.4.16): Printables downloads.
 
 - **A Printables download fills in its project's details.** Add a Printables ZIP (Add project › ZIP, or drop it on the window) and the PDF of the model's page inside it is read: the project gets the model's name, its creator (linked to their profile), license, tags, summary and the page's address, with the published and updated dates and Printables' category as fields, and any print settings as fields too. Edit details says each came "from the Printables PDF"; the project's About tab shows who made it, when, and the page's description; the header reads "ZIP file from Printables". A PDF that can't be read changes nothing: the project is added as any ZIP is.

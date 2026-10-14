@@ -14,7 +14,7 @@
 //!   sources/<id>/workshop.json    the description the app uses (models, names, forms); rebuildable
 //!   sources/<id>/description.json the app's own description of a project it knows from GitHub (F-1)
 //!   local/<project>/              the user's own projects, edited in place
-//!   collections/                  (Phase 4)
+//!   collections/<id>/collection.json  a collection: items by id (not copies), quantities, status, notes
 //!   icons/, thumbs/components/    category pictures; component thumbnails (rebuildable)
 //!   trash/                        deleted projects
 //!   recipes/<id>.json             saved settings
@@ -315,7 +315,8 @@ const README_0_4_12: &str = concat!(
     "The app's render cache and search index are kept on each computer, not here.\n",
 );
 
-const README: &str = concat!(
+/// The README.txt written by 0.4.13 to 0.4.16: replaced when found unchanged.
+const README_0_4_16: &str = concat!(
     "SCAD Workshop library\n",
     "\n",
     "This folder is a library for the SCAD Workshop desktop app: projects you added,\n",
@@ -327,6 +328,66 @@ const README: &str = concat!(
     "  local/          your own projects: put .scad or model files in a folder here\n",
     "  recipes/        saved settings, with any code edits\n",
     "  collections/    collections (coming)\n",
+    "  icons/          pictures you chose for categories\n",
+    "  thumbs/         thumbnails of components (rebuildable)\n",
+    "  trash/          deleted projects, until you empty the trash\n",
+    "\n",
+    "Inside sources/<project>/:\n",
+    "  source.json     where it came from and its versions; \"version\" is the one in\n",
+    "                  use. origin.type says where from: github (checked for updates),\n",
+    "                  zip, folder (copied in), linked (a folder elsewhere, below),\n",
+    "                  local (local/<name>/), app (a starter project from an earlier\n",
+    "                  app) or pinned (your pinned components)\n",
+    "  metadata.json   your edits: names, categories, licenses, forms\n",
+    "  files/<version>/   the project's files exactly as they came, never changed. It\n",
+    "                  can hold several versions: on the project's page, Versions >\n",
+    "                  Remove versions not in use deletes the others\n",
+    "  derived/        what the app found when it read them (rebuildable)\n",
+    "  generated/      copies made so typed-in values become settings (rebuildable)\n",
+    "  docs/           the README as HTML, PDFs (rebuildable)\n",
+    "  thumbs/         pictures of its models and parts (rebuildable)\n",
+    "  examples/<fingerprint>/   parts made from a folder of examples, kept by the\n",
+    "                  files each example uses (rebuildable)\n",
+    "  previews/       models the app made for its parts (rebuildable)\n",
+    "  checks.json     whether each model renders at its defaults (rebuildable)\n",
+    "  workshop.json   what the app read the project as: its models and their\n",
+    "                  names and forms. It reports; it doesn't decide (rebuildable)\n",
+    "  description.json   the app's description of a project it knows from GitHub (a\n",
+    "                  starter project from an earlier app, Gridfinity Rebuilt...):\n",
+    "                  names and forms for the files it lists, and the files it leaves\n",
+    "                  out; any other file that draws something is a model too. Used\n",
+    "                  when the project has no workshop.json of its own. Keep it\n",
+    "\n",
+    "Your own projects (local/<name>/) are read where they are: their sources/ folder\n",
+    "has no files/. Linked projects (origin \"linked\") are read from their own folder\n",
+    "outside the library: they don't move with it and aren't in its backups.\n",
+    "sources/pinned/pins/ holds the components you pinned as models: keep it, it\n",
+    "isn't rebuildable.\n",
+    "\n",
+    "local/Made parts/<model>/ holds the parts you made from models (Save as part,\n",
+    "Make several), in a folder per model (\"<model> (<project>)\" when two models\n",
+    "share a name). Beside each part, <name>.recipe.json says how it was made: the\n",
+    "model, its changed settings and code edits, and the fingerprint of the files\n",
+    "the model used. Make again and Open with these settings read it: keep it, it\n",
+    "isn't rebuildable.\n",
+    "\n",
+    "Rebuildable folders can be deleted: the app makes them again.\n",
+    "The app's render cache and search index are kept on each computer, not here.\n",
+);
+
+const README: &str = concat!(
+    "SCAD Workshop library\n",
+    "\n",
+    "This folder is a library for the SCAD Workshop desktop app: projects you added,\n",
+    "your own projects, saved settings and all your edits. Move it, copy it, sync it\n",
+    "or keep it in git, then use \"Open library...\" in the app to use it anywhere.\n",
+    "\n",
+    "  library.json    name, favourites, categories and library-wide settings\n",
+    "  sources/        one folder per project (below)\n",
+    "  local/          your own projects: put .scad or model files in a folder here\n",
+    "  recipes/        saved settings, with any code edits\n",
+    "  collections/    lists of parts and models (by name, not copies) with quantities\n",
+    "                  and what is printed: collections/<id>/collection.json\n",
     "  icons/          pictures you chose for categories\n",
     "  thumbs/         thumbnails of components (rebuildable)\n",
     "  trash/          deleted projects, until you empty the trash\n",
@@ -476,7 +537,7 @@ impl Library {
         // written by the app (a Phase 1 workspace's, or an older version's left as it was): replaced;
         // one the user changed is left alone
         if old_readme.as_deref().is_none_or(|t| {
-            t.starts_with("SCAD Workshop workspace") || t.starts_with("Claude Grid Workshop workspace") || [README_0_4_3, README_0_4_4, README_0_4_6, README_0_4_7, README_0_4_8, README_0_4_9, README_0_4_10, README_0_4_12].contains(&t)
+            t.starts_with("SCAD Workshop workspace") || t.starts_with("Claude Grid Workshop workspace") || [README_0_4_3, README_0_4_4, README_0_4_6, README_0_4_7, README_0_4_8, README_0_4_9, README_0_4_10, README_0_4_12, README_0_4_16].contains(&t)
         }) {
             let _ = std::fs::write(&readme, README);
         }
@@ -652,6 +713,67 @@ impl Library {
             std::fs::remove_file(p)?;
         }
         Ok(())
+    }
+
+    // ------------------------------------------------------------ collections (milestone 5)
+
+    fn collections_dir(&self) -> PathBuf {
+        self.root.join("collections")
+    }
+
+    /// Every collection (collections/<id>/collection.json), by name.
+    pub fn collections(&self) -> Vec<Value> {
+        let mut out: Vec<Value> = std::fs::read_dir(self.collections_dir())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| serde_json::from_slice::<Value>(&std::fs::read(e.path().join("collection.json")).ok()?).ok())
+            .filter(|c| c["id"].is_string())
+            .collect();
+        out.sort_by_key(|c| c["name"].as_str().unwrap_or_default().to_lowercase());
+        out
+    }
+
+    /// Store a collection; a new one (no id) gets one from its name. Returns it as stored.
+    pub fn put_collection(&self, c: &Value) -> Result<Value> {
+        self.writable()?;
+        let mut c = c.as_object().cloned().context("a collection is an object")?;
+        let name = c.get("name").and_then(Value::as_str).map(str::trim).unwrap_or("").to_string();
+        if name.is_empty() {
+            bail!("A collection needs a name.");
+        }
+        let id = match c.get("id").and_then(Value::as_str) {
+            Some(id) => id.to_string(),
+            None => {
+                let base = Some(slug(&name)).filter(|s| !s.is_empty()).unwrap_or_else(|| "collection".into());
+                let mut id = base.clone();
+                let mut n = 2;
+                while self.collections_dir().join(&id).exists() {
+                    id = format!("{base}-{n}");
+                    n += 1;
+                }
+                c.insert("created".into(), json!(now()));
+                id
+            }
+        };
+        valid_id(&id)?;
+        c.insert("id".into(), json!(id));
+        c.insert("name".into(), json!(name));
+        c.entry("items").or_insert(json!([]));
+        c.insert("updated".into(), json!(now()));
+        let c = Value::Object(c);
+        write_json(&self.collections_dir().join(&id).join("collection.json"), &c)?;
+        Ok(c)
+    }
+
+    /// Remove a collection (its items stay where they are). Returns what it was, for undo.
+    pub fn remove_collection(&self, id: &str) -> Result<Value> {
+        self.writable()?;
+        valid_id(id)?;
+        let dir = self.collections_dir().join(id);
+        let was: Value = serde_json::from_slice(&std::fs::read(dir.join("collection.json")).with_context(|| format!("no collection {id}"))?)?;
+        std::fs::remove_dir_all(&dir)?;
+        Ok(was)
     }
 
     // ------------------------------------------------------------ sources
@@ -951,6 +1073,28 @@ mod tests {
     }
 
     #[test]
+    fn collections_are_kept_by_id() {
+        let dir = temp_dir("collections");
+        let prefs = Prefs::new(dir.join("p.json"));
+        let (lib, _) = Library::open(&dir, &prefs).unwrap();
+        assert!(lib.put_collection(&json!({ "name": "  " })).is_err());
+        let a = lib.put_collection(&json!({ "name": "RC car", "items": [{ "ref": "part:x/wheel", "quantity": 4 }] })).unwrap();
+        let b = lib.put_collection(&json!({ "name": "RC car!" })).unwrap();
+        assert_eq!((a["id"].as_str(), b["id"].as_str()), (Some("rc-car"), Some("rc-car-2")));
+        assert!(dir.join("collections/rc-car/collection.json").is_file());
+        let mut a2 = a.clone();
+        a2["name"] = json!("Buggy");
+        lib.put_collection(&a2).unwrap();
+        let names: Vec<String> = lib.collections().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect();
+        assert_eq!(names, ["Buggy", "RC car!"]);
+        assert_eq!(lib.collections()[0]["items"][0]["quantity"], json!(4));
+        let was = lib.remove_collection("rc-car").unwrap();
+        assert_eq!(was["name"], json!("Buggy"));
+        assert_eq!(lib.collections().len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn slugs() {
         assert_eq!(slug("BelfrySCAD/BOSL2"), "belfryscad-bosl2");
         assert_eq!(slug("  My  Project!! "), "my-project");
@@ -992,6 +1136,9 @@ mod tests {
         Library::open(&dir, &prefs).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("README.txt")).unwrap(), README);
         std::fs::write(dir.join("README.txt"), README_0_4_12).unwrap();
+        Library::open(&dir, &prefs).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("README.txt")).unwrap(), README);
+        std::fs::write(dir.join("README.txt"), README_0_4_16).unwrap();
         Library::open(&dir, &prefs).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("README.txt")).unwrap(), README);
         assert!(README.contains("recipe.json"), "the README describes made parts' recipes (F-22)");

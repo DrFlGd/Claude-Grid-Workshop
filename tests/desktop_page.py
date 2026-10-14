@@ -1351,6 +1351,67 @@ async def main():
             check("a ZIP whose PDF can't be read is still added, with its details as for any ZIP",
                   dm.get("name") == "Damaged" and dm.get("site") is None and ((dm.get("meta") or {}).get("license") or {}).get("spdx") in (None, "NOASSERTION"), dm)
 
+            # 13l. (0.4.17) a collection: a part (from the inspector), a made part and a model with changed
+            # settings (from their pages); quantities and printed; exported as one ZIP with a parts list
+            coll_rows, coll_names, coll_csv, coll_saved, printed_text = [], [], "", None, ""
+            try:
+                await pg.goto(B + "#/")
+                await pg.click("#new-collection")
+                await pg.fill("#collect-name", "Test bench")
+                await pg.click("#collect-save")
+                await pg.wait_for_selector(".nav-collections [data-scope='coll:test-bench']", timeout=10000)
+                await pg.goto(B + "#/browse/parts")
+                await pg.evaluate("() => import('/ui/state.js').then((m) => m.ui.set({ selection: ['part:folder-drop-test/latch'], inspector: true }))")
+                await pg.click("[data-act=collect]")
+                await pg.click("[data-collection=test-bench]")
+                await pg.click("#collect-save")
+                made = await pg.evaluate("() => window.__workshop.index.items.find((i) => i.kind === 'part' && i.madeFrom)?.href")
+                await pg.goto(B + made)
+                await pg.wait_for_selector("#part-collect:not([hidden])", timeout=20000)
+                await pg.click("#part-collect")
+                await pg.click("[data-collection=test-bench]")
+                await pg.click("#collect-save")
+                await pg.goto(B + "#/m/local-bevel/bevel-gear")
+                await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear'", timeout=60000)
+                await pg.evaluate("() => { const i = document.querySelector('#params input[type=number]'); i.value = String(Number(i.value) + 2); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); }")
+                await pg.click("#model-collect")
+                await pg.click("[data-collection=test-bench]")
+                await pg.click("#collect-save")
+                await pg.goto(B + "#/browse/coll/test-bench")
+                await pg.wait_for_function("() => document.querySelectorAll('#collection-items tbody tr').length === 3", timeout=20000)
+                await pg.fill("#collection-items tbody tr:first-child [data-qty]", "3")
+                await pg.press("#collection-items tbody tr:first-child [data-qty]", "Tab")
+                await pg.check("#collection-items tbody tr:nth-child(2) [data-printed]")
+                await pg.wait_for_function("() => document.querySelector('#collection-printed')?.textContent === '1 of 5 printed'", timeout=10000)
+                printed_text = await pg.inner_text("#collection-printed")
+                coll_rows = await pg.evaluate("() => [...document.querySelectorAll('#collection-items tbody tr')].map((r) => r.dataset.ref)")
+                await pg.screenshot(path=str(out / "m5-05-collection.png"))
+                for z in saved_stl.glob("Test bench*.zip"):
+                    z.unlink()
+                await pg.click("#collection-export")
+                for _ in range(600):
+                    found = sorted(saved_stl.glob("Test bench*.zip"))
+                    if found:
+                        coll_saved = found[0]
+                        break
+                    await pg.wait_for_timeout(500)
+                if coll_saved:
+                    await pg.wait_for_timeout(500)
+                    zf = zipfile.ZipFile(coll_saved)
+                    coll_names = zf.namelist()
+                    coll_csv = zf.read("parts.csv").decode()
+            except Exception as e:
+                print("collections:", e)
+            stored = json.loads((library / "collections/test-bench/collection.json").read_text()) if (library / "collections/test-bench/collection.json").is_file() else {}
+            check("a collection keeps a part, a made part and a model with its settings, by id, with quantities and what's printed",
+                  len(coll_rows) == 3 and coll_rows[0] == "part:folder-drop-test/latch" and coll_rows[2] == "gen:local-bevel/bevel-gear"
+                  and printed_text == "1 of 5 printed" and [i.get("quantity") for i in stored.get("items", [])] == [3, 1, 1]
+                  and bool((stored.get("items") or [{}] * 3)[2].get("values")), (coll_rows, printed_text, stored.get("items")))
+            stls = [n for n in coll_names if n.lower().endswith((".stl", ".3mf"))]
+            check("Export as ZIP: a file per copy (models made at their settings), and parts.csv with each item's quantity and license",
+                  len(stls) == 5 and "parts.csv" in coll_names and "README.txt" in coll_names and "Latch,3," in coll_csv and "Bevel" in coll_csv,
+                  (coll_names, coll_csv[:300]))
+
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"
             backup.parent.mkdir(parents=True, exist_ok=True)

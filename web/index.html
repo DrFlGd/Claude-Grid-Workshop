@@ -67,6 +67,7 @@
           <button type="button" id="generate" class="primary">Generate</button>
           <span class="download-pick"><a id="download" class="button secondary is-disabled" aria-disabled="true" href="#" download="model.stl">Download STL</a><select id="download-format" class="format-pick" aria-label="Format" title="The format to download" hidden><option value="stl">STL</option><option value="3mf">3MF</option></select></span>
           <button type="button" id="save-part" class="ghost save-part" hidden title="Keep what you made in the Parts Library, with how it was made">Save as part…</button>
+          <button type="button" id="model-collect" class="ghost save-part" hidden title="Add the model, with the settings it has now, to one of your collections">Add to collection…</button>
         </div>
       </div>
     </aside>
@@ -116,6 +117,7 @@
       <div class="actionbar">
         <div id="part-status" class="part-status"></div>
         <div id="part-downloads" class="downloads"></div>
+        <button type="button" id="part-collect" class="ghost" hidden title="Add this part to one of your collections">Add to collection…</button>
       </div>
     </aside>
   </main>

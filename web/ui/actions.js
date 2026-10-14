@@ -11,6 +11,7 @@ import { api, sourceById } from "./library.js";
 import { itemTarget, undoNow } from "./metaedit.js";
 import { plural } from "../lib/util.js";
 import { CategoryPicker } from "./catpick.js";
+import { entryOf } from "./collections.js";
 
 const what = (items) => (items.length === 1 ? `“${items[0].name}”` : plural(items.length, "item"));
 
@@ -137,7 +138,10 @@ export function ItemActions({ items }) {
   if (!items.length) return null;
   const allHidden = items.every((i) => i.hidden);
   const allBroken = items.every((i) => i.broken);
+  const collectable = items.filter((i) => i.kind === "part" || i.kind === "generator");
   return html`<div class="insp-actions item-actions">
+    ${collectable.length ? html`<button type="button" class="ghost" data-act="collect" title="Add to one of your collections (a list of parts and models for one use)"
+      onClick=${() => ui.set({ dialog: { type: "collect", entries: collectable.map(entryOf) } })}>${Icon.stack(15)} Add to collection…</button>` : null}
     <button type="button" class="ghost" data-act="hide" onClick=${() => hideItems(items, !allHidden)}
       title=${allHidden ? "List it again" : "Keep it out of browsing and search (Show hidden brings it back)"}>${Icon.eye(15)} ${allHidden ? "Unhide" : "Hide"}</button>
     <button type="button" class="ghost" data-act="flag" onClick=${() => (allBroken ? unflagItems(items) : ui.set({ dialog: { type: "flag", items: items.map((i) => i.id) } }))}

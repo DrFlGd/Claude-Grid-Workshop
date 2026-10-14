@@ -31,6 +31,8 @@ function commands() {
   ];
   if (platform.kind === "desktop") {
     if (!catalog.library?.read_only) list.push({ label: "Add a project", hint: "GitHub, ZIP or folder", run: () => ui.set({ dialog: { type: "add-project" } }) });
+    if (!catalog.library?.read_only) list.push({ label: "New collection", hint: "parts and models for one use", run: () => ui.set({ dialog: { type: "collect", entries: [] } }) });
+    for (const c of ui.get().collections || []) list.push({ label: `Collection: ${c.name}`, run: () => { location.hash = `#/browse/coll/${c.id}`; } });
     list.push({ label: "Open Library settings", hint: "projects, libraries, categories, trash", run: go("#/library-settings") });
     list.push({ label: "Open the library folder", run: () => platform.workspace.open() });
     list.push({ label: "Clear the render cache", run: () => platform.workspace.clearCache() });
