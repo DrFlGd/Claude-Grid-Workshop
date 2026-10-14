@@ -1299,6 +1299,55 @@ async def main():
             check("files whose names differ by a version mark are offered as one part, made one, and split again",
                   near_before == ["3mf", "stl"] and near_after == ["3mf+stl"] and near_split == ["3mf", "stl"], (near_before, near_after, near_split))
 
+            # 13k. (0.4.16) a Printables download: its page PDF fills in the project's details; a PDF that
+            # can't be read leaves them as for any ZIP
+            pz = home / "printables"
+            pz.mkdir(exist_ok=True)
+            page_pdf = Path(__file__).resolve().parent.parent / "libraries/opengrid-official/printables-model-page.pdf"
+            model_files.write_stl(pz / "connector.stl")
+            with zipfile.ZipFile(pz / "opengrid.zip", "w") as z:
+                z.write(pz / "connector.stl", "files/opengrid-connector-test.stl")
+                z.write(page_pdf, "opengrid-walldesk-mounting-framework-and-ecosystem.pdf")
+            with zipfile.ZipFile(pz / "damaged.zip", "w") as z:
+                z.write(pz / "connector.stl", "files/bracket.stl")
+                z.writestr("bracket.pdf", b"%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n" + os.urandom(2000))
+            await pg.goto(B + "#/")
+            for zp in ("opengrid.zip", "damaged.zip"):
+                await pg.evaluate("(p) => import('/ui/library.js').then((m) => m.addProject({ kind: 'zip', path: p }, 'a Printables download'))", str(pz / zp))
+            srcs = await pg.evaluate("() => window.__workshop.catalog.sources.filter((s) => s.origin?.type === 'zip' && /opengrid|damaged/.test(s.origin.file)).map((s) => ({ id: s.id, file: s.origin.file, name: s.name, site: s.origin.site || null, meta: s.meta, from: s.from }))")
+            og = next((x for x in srcs if x["file"] == "opengrid.zip"), {})
+            dm = next((x for x in srcs if x["file"] == "damaged.zip"), {})
+            ogm = og.get("meta") or {}
+            check("a Printables download's PDF gives the project its name, creator, license, tags, page, dates and summary, each marked as from the PDF",
+                  og.get("name") == "openGrid - Wall/Desk mounting framework and ecosystem"
+                  and [a.get("name") for a in ogm.get("authors") or []] == ["David D"]
+                  and (ogm.get("license") or {}).get("spdx") == "CC-BY-4.0"
+                  and "opengrid" in (ogm.get("tags") or [])
+                  and ogm.get("origin", "").startswith("https://www.printables.com/model/1214361")
+                  and (ogm.get("fields") or {}).get("Published") == "2025-10-20"
+                  and ogm.get("summary") == "This is openGrid, the open wall/desk mounting framework."
+                  and (og.get("from") or {}).get("license") == "detected:Printables PDF",
+                  {k: og.get(k) for k in ("name", "site", "from")} | {"meta": {k: ogm.get(k) for k in ("authors", "license", "tags", "origin", "fields", "summary")}})
+            about = ""
+            try:
+                await pg.goto(B + f"#/browse/source/{og['id']}")
+                await pg.wait_for_selector(".source-panel", timeout=20000)
+                await pg.click("[data-source-tab=about]")
+                await pg.wait_for_selector("#site-details .site-description li", timeout=20000)
+                about = await pg.inner_text("#site-details")
+                await pg.screenshot(path=str(out / "m5-04-printables.png"))
+                await pg.click("#source-more summary")
+                await pg.click("[data-act=edit]")
+                await pg.wait_for_selector(".meta-editor .meta-from", timeout=20000)
+                about += "\n" + " | ".join(await pg.evaluate("() => [...document.querySelectorAll('.meta-editor .meta-from')].map((e) => e.textContent)"))
+                await pg.keyboard.press("Escape")
+            except Exception as e:
+                print("printables page:", e)
+            check("the project's About tab shows who made it, when, and the page's description; Edit details says the values are from the Printables PDF",
+                  "by David D" in about and "published Oct 20, 2025" in about and "Version history" in about and "From the Printables PDF" in about, about[:400])
+            check("a ZIP whose PDF can't be read is still added, with its details as for any ZIP",
+                  dm.get("name") == "Damaged" and dm.get("site") is None and ((dm.get("meta") or {}).get("license") or {}).get("spdx") in (None, "NOASSERTION"), dm)
+
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"
             backup.parent.mkdir(parents=True, exist_ok=True)

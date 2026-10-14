@@ -83,6 +83,14 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+Milestone 5, third part (0.4.16): Printables downloads.
+
+- **A Printables download fills in its project's details.** Add a Printables ZIP (Add project › ZIP, or drop it on the window) and the PDF of the model's page inside it is read: the project gets the model's name, its creator (linked to their profile), license, tags, summary and the page's address, with the published and updated dates and Printables' category as fields, and any print settings as fields too. Edit details says each came "from the Printables PDF"; the project's About tab shows who made it, when, and the page's description; the header reads "ZIP file from Printables". A PDF that can't be read changes nothing: the project is added as any ZIP is.
+- The PDF reader is the app's own (`desktop/core/src/pdf.rs`, no new library): it finds objects by scanning the file, unpacks object streams and Flate streams, maps text through each font's ToUnicode map, and rebuilds lines from where the text sits. Sections are found by Printables' headings, tags are the white text on its chips, and the license comes from its creativecommons.org link, else its wording.
+- CI: unit tests read openGrid's Printables page PDF (`libraries/opengrid-official/`) and a hand-made PDF (a standard font, nothing compressed, coordinates from the bottom); the acceptance test adds a Printables-style ZIP and one whose PDF is damaged.
+
+## 0.4.15 — 2026-10-14 · Milestone 5, second part: one download with a format picker, a model's render as 3MF, near misses made one part
+
 - Milestone 5 planned in docs/DESKTOP_PLAN.md, "Ready-made models and collections design": previews from 3MF and OBJ and dropping files on the window (0.4.14), one download with a format picker (0.4.15), Printables ZIPs (0.4.16, then Review 5), collections with ZIP export (0.4.17), multi-colour and multi-part 3MF (0.4.18, then Review 6), reusing Model Library's mesh reader, duplicate check and drop handling.
 
 Milestone 5, second part (0.4.15): one download with a format picker.

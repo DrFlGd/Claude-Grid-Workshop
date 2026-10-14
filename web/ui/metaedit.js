@@ -15,7 +15,7 @@ import { CategoryPicker } from "./catpick.js";
 const LICENSES = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "GPL-2.0", "GPL-3.0", "LGPL-2.1", "LGPL-3.0", "MPL-2.0", "CC0-1.0",
   "CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0", "CC-BY-NC-SA-4.0", "CC-BY-ND-4.0", "CC-BY-NC-ND-4.0", "Unlicense", "NOASSERTION"];
 const FROM_TEXT = { item: "this item", project: "the project", detected: "the project's files", library: "library defaults" };
-const fromText = (f) => (!f ? "" : f.startsWith("folder:") ? `folder ${f.slice(7)}` : FROM_TEXT[f] || f);
+const fromText = (f) => (!f ? "" : f.startsWith("folder:") ? `folder ${f.slice(7)}` : f.startsWith("detected:") ? `the ${f.slice(9)}` : FROM_TEXT[f] || f);
 const choices = () => ctx.catalog.category_choices || [];
 
 /** Field values as the form shows them (text). */

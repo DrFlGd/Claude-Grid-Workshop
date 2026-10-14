@@ -289,7 +289,7 @@ export function SourcePanel({ id }) {
     <div class="source-head">
       ${src.icon ? html`<img class="source-icon" src=${src.icon} alt="" />` : null}
       <div>
-        <p class="source-kind">${kindText(src)}${src.role === "library" ? " · library" : ""}${src.version_date && !made ? ` · version of ${when(src.version_date)}` : ""}</p>
+        <p class="source-kind">${kindText(src)}${origin.site?.name === "printables" ? " from Printables" : ""}${src.role === "library" ? " · library" : ""}${src.version_date && !made ? ` · version of ${when(src.version_date)}` : ""}</p>
         ${made ? html`<p class="source-sub">Parts you've made from models. Each keeps the license of the project it was made from.</p>` : html`<p class="source-sub">${[
           url ? html`<a href=${url} target="_blank" rel="noopener">${url.replace(/^https?:\/\//, "")}</a>`
             : origin.path || origin.file ? html`<span title=${origin.path || origin.file}>${(origin.path || origin.file).split(/[\\/]/).filter(Boolean).slice(-2).join("/")}</span>` : null,
@@ -345,6 +345,7 @@ export function SourcePanel({ id }) {
       aria-selected=${tab === t ? "true" : "false"} onClick=${() => setTab(t)} data-source-tab=${t}>${l}</button>`)}</div>
     ${tab === "about" ? html`<div class="readme">
       ${src.meta?.summary ? html`<p>${src.meta.summary}</p>` : null}
+      ${origin.site ? html`<${SiteDetails} src=${src} info=${info} />` : null}
       <p class="muted">The project's README and other documents open beside the page (the tabs on the right).</p>
       <div class="button-row source-docs"><${SideButtons} refObj=${{ source: id }} small=${false} /></div>
       ${info?.license_text ? html`<details><summary>License text</summary><pre class="license-text">${info.license_text}</pre></details>` : null}</div>` : null}
@@ -363,6 +364,22 @@ export function SourcePanel({ id }) {
         setTab("versions"); await ctx.reloadCatalog();
       })}>Remove versions not in use</button>` : null}`}</div>` : null}
   </section>`;
+}
+
+/** What a model site's page said (a Printables download's PDF, 0.4.16): who made it, when, and its description. */
+function SiteDetails({ src, info }) {
+  const f = src.meta?.fields || {};
+  const by = (src.meta?.authors || []).map((a) => a.url ? html`<a href=${a.url} target="_blank" rel="noopener">${a.name}</a>` : a.name);
+  const facts = [
+    by.length ? html`<span>by ${by.flatMap((x, i) => (i ? [", ", x] : [x]))}</span>` : null,
+    f.Published ? `published ${when(f.Published)}` : null,
+    f.Updated && f.Updated !== f.Published ? `updated ${when(f.Updated)}` : null,
+    f["Printables category"] ? `in ${f["Printables category"]}` : null,
+  ].filter(Boolean);
+  return html`<div class="site-details" id="site-details">
+    <p class="muted">From the model's page on Printables${facts.length ? ": " : "."}${facts.flatMap((x, i) => (i ? [" · ", x] : [x]))}</p>
+    ${info?.site_description ? html`<div class="site-description" dangerouslySetInnerHTML=${{ __html: info.site_description }}></div>` : null}
+  </div>`;
 }
 
 // ---------------------------------------------------------------- project problems (Library settings › Projects)

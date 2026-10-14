@@ -808,6 +808,10 @@ textarea.grow { resize: none; overflow: hidden; line-height: 1.4; min-height: 0;
 .readme table { border-collapse: collapse; font-size: 13px; }
 .readme td, .readme th { border: 1px solid var(--steel-2); padding: 4px 8px; }
 .readme blockquote { margin: 0; padding: 4px 12px; border-left: 3px solid var(--steel-2); color: var(--graphite); }
+.site-details { margin: 0 0 14px; }
+.site-description { max-height: 420px; overflow: auto; padding: 2px 14px; border-left: 3px solid var(--steel-2); } /* a Printables page's description (0.4.16) */
+.site-description p { margin: 0 0 10px; }
+.site-description ul { padding-left: 20px; margin: 0 0 10px; }
 .license-text { white-space: pre-wrap; font-size: 12px; max-height: 320px; overflow: auto; }
 .file-list ul, .versions ul { list-style: none; padding: 0; margin: 0; font-size: 13px; max-width: 820px; }
 .file-list li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--steel); }

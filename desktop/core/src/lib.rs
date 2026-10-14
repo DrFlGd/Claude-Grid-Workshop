@@ -10,6 +10,7 @@
 //! - [`sources`]: adding projects (GitHub, ZIP, folders); [`scan`], [`project`]: reading them
 //! - [`catalog`]: the page's catalog from the library; [`merge`]: merging libraries
 //! - [`docs`]: projects' reference documents (README as HTML, PDF, text)
+//! - [`pdf`]: text from PDFs (the details in a Printables download)
 //! - [`api`]: the commands the page calls
 
 pub mod api;
@@ -23,6 +24,7 @@ pub mod ingest;
 pub mod library;
 pub mod merge;
 pub mod mesh;
+pub mod pdf;
 pub mod meta;
 pub mod project;
 pub mod scan;

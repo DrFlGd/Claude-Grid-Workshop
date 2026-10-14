@@ -878,6 +878,8 @@ impl App {
                 j(json!({
                     "source": src, "entry": entry, "metadata": lib.metadata(id), "readme": readme, "license_text": license_text,
                     "files": files, "derived": derived,
+                    // the description on a model site's page (a Printables PDF's), as HTML
+                    "site_description": src["detected"]["description"].as_str().map(|d| crate::docs::markdown_html(d, crate::docs::Rebase { img: None, link: None, drop: true })),
                     "folder": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().map(|p| p.display().to_string()),
                     "folder_rel": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().and_then(|p| folder_rel(&lib, id, &src, &p)),
                 }))

@@ -346,6 +346,96 @@ fn detected(name: &str, summary: &str, license: Option<String>, authors: Value, 
     })
 }
 
+/// A model site's page PDF among a project's files (at the top, or one folder down): what it says,
+/// and the PDF's path in the project. Printables only, so far (0.4.16).
+pub fn site_details(root: &Path) -> Option<(crate::pdf::Details, String)> {
+    let pdfs = |dir: &Path| -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path())
+            .filter(|p| p.is_file() && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf"))).collect();
+        v.sort();
+        v
+    };
+    let mut found = pdfs(root);
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(root).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    dirs.sort();
+    for d in dirs {
+        found.extend(pdfs(&d));
+    }
+    found.into_iter().take(12).find_map(|p| {
+        if std::fs::metadata(&p).ok()?.len() > 64 << 20 {
+            return None;
+        }
+        let d = crate::pdf::printables(&crate::pdf::read(&std::fs::read(&p).ok()?).ok()?)?;
+        let rel = p.strip_prefix(root).ok()?.to_string_lossy().replace('\\', "/");
+        Some((d, rel))
+    })
+}
+
+/// Fill a new project's details from its page PDF when it has one: name, summary, license,
+/// creator, tags, page address, dates and print settings, each marked as from the PDF.
+fn with_site_details(mut src: Value, root: &Path) -> Value {
+    let Some((d, rel)) = site_details(root) else { return src };
+    let label = json!("Printables PDF");
+    let det = &mut src["detected"];
+    let mut from = serde_json::Map::new();
+    let mut set = |det: &mut Value, k: &str, v: Value| {
+        det[k] = v;
+        from.insert(k.into(), label.clone());
+    };
+    if !d.title.trim().is_empty() {
+        set(det, "name", json!(d.title.trim()));
+    }
+    if !d.summary.is_empty() {
+        set(det, "summary", json!(d.summary));
+    }
+    if d.license.is_some() || !d.license_text.is_empty() {
+        let spdx = d.license.clone().unwrap_or_else(|| "NOASSERTION".into());
+        let mut l = crate::meta::license_value(&spdx);
+        if spdx.starts_with("LicenseRef-") {
+            l["public_use"] = json!("review"); // Printables' own license: personal use
+        }
+        if !d.license_text.is_empty() {
+            l["notes"] = json!(d.license_text);
+        }
+        set(det, "license", l);
+    }
+    if let Some(a) = &d.author {
+        set(det, "authors", json!([{ "name": a, "url": d.author_url }]));
+    }
+    if !d.tags.is_empty() {
+        set(det, "tags", json!(d.tags));
+    }
+    if let Some(u) = &d.url {
+        set(det, "origin", json!(u));
+    }
+    let words = format!("{} {} {} {}", d.title, d.summary, d.tags.join(" "), d.category.clone().unwrap_or_default());
+    let cat = scan::guess_category(&words);
+    if cat != "other" {
+        set(det, "category", json!(cat));
+    }
+    let mut fields = serde_json::Map::new();
+    for (k, v) in [("Published", &d.published), ("Updated", &d.updated)] {
+        if let Some(v) = v {
+            fields.insert(k.into(), json!(v));
+        }
+    }
+    if let Some(c) = &d.category {
+        fields.insert("Printables category".into(), json!(c));
+    }
+    for (k, v) in &d.print_settings {
+        fields.insert(k.clone(), json!(v));
+    }
+    if !fields.is_empty() {
+        set(det, "fields", Value::Object(fields));
+    }
+    if !d.description.is_empty() {
+        det["description"] = json!(d.description);
+    }
+    det["from"] = Value::Object(from);
+    src["origin"]["site"] = json!({ "name": "printables", "page": d.url, "pdf": rel });
+    src
+}
+
 /// Add a project: download or copy its files into a new version folder and
 /// write source.json. (Reading its models is a separate step, which needs OpenSCAD.)
 pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -> Result<Value> {
@@ -423,6 +513,7 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
                 "detected": detected(&scan::humanize(&stem), &scan::readme_text(&root).map(|t| scan::readme_summary(&t)).unwrap_or_default(),
                     scan::survey_license(&root), json!([]), json!([]), None),
             });
+            let src = with_site_details(src, &root);
             lib.save_source(&src)?;
             Ok(src)
         }
@@ -461,6 +552,7 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
                 "detected": detected(&scan::humanize(&stem), &scan::readme_text(&root).map(|t| scan::readme_summary(&t)).unwrap_or_default(),
                     scan::survey_license(&root), json!([]), json!([]), None),
             });
+            let src = with_site_details(src, &root);
             lib.save_source(&src)?;
             Ok(src)
         }
@@ -486,6 +578,7 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
                 "detected": detected(&scan::humanize(&stem), &scan::readme_text(&root).map(|t| scan::readme_summary(&t)).unwrap_or_default(),
                     scan::survey_license(&root), json!([]), json!([]), None),
             });
+            let src = with_site_details(src, &root);
             lib.save_source(&src)?;
             Ok(src)
         }

@@ -107,6 +107,11 @@ pub fn folder_chain<'a>(meta: &'a Value, folder: &str) -> Vec<(String, &'a Map<S
 pub fn resolve(l: &Layers) -> (Map<String, Value>, Map<String, Value>) {
     let mut values = Map::new();
     let mut from = Map::new();
+    // a detected value says which file it came from when it knows ("detected:Printables PDF")
+    let detected = |m: &Map<String, Value>, field: &str| match m.get("from").and_then(|f| f.get(field)).and_then(Value::as_str) {
+        Some(f) => json!(format!("detected:{f}")),
+        None => from_label("detected"),
+    };
     let pick = |field: &str, inherited: bool| -> Option<(Value, Value)> {
         if let Some(v) = l.item.and_then(|m| m.get(field)).filter(|v| !v.is_null()) {
             return Some((v.clone(), from_label("item")));
@@ -122,11 +127,11 @@ pub fn resolve(l: &Layers) -> (Map<String, Value>, Map<String, Value>) {
             }
         }
         if let Some(v) = l.detected_item.get(field).filter(|v| !v.is_null() && !is_empty_value(v)) {
-            return Some((v.clone(), from_label("detected")));
+            return Some((v.clone(), detected(l.detected_item, field)));
         }
         if inherited {
             if let Some(v) = l.detected_project.get(field).filter(|v| !v.is_null() && !is_empty_value(v)) {
-                return Some((v.clone(), from_label("detected")));
+                return Some((v.clone(), detected(l.detected_project, field)));
             }
             if let Some(v) = l.library.and_then(|m| m.get(field)).filter(|v| !v.is_null()) {
                 return Some((v.clone(), from_label("library")));
@@ -169,8 +174,8 @@ pub fn resolve(l: &Layers) -> (Map<String, Value>, Map<String, Value>) {
                 .map(|v| (v, json!("item")))
                 .or_else(|| l.folders.iter().find_map(|(p, m)| get(Some(m)).map(|v| (v, json!(format!("folder:{p}"))))))
                 .or_else(|| get(l.project).map(|v| (v, json!("project"))))
-                .or_else(|| get(Some(l.detected_item)).map(|v| (v, json!("detected"))))
-                .or_else(|| get(Some(l.detected_project)).map(|v| (v, json!("detected"))))
+                .or_else(|| get(Some(l.detected_item)).map(|v| (v, detected(l.detected_item, "fields"))))
+                .or_else(|| get(Some(l.detected_project)).map(|v| (v, detected(l.detected_project, "fields"))))
                 .or_else(|| get(l.library).map(|v| (v, json!("library"))));
             if let Some((v, src)) = found {
                 fields.insert(k.clone(), v);
