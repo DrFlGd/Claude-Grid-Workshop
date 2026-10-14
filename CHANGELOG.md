@@ -92,6 +92,7 @@ Milestone 5, first part (0.4.14): ready-made parts look and come in like generat
 - **Files already in the library are named** when a project is added ("gear copy.stl is in Made parts already"), found by size and then SHA-256. They're added anyway.
 - CI: the acceptance test drops a folder's worth of files (STL, a two-colour 3MF, OBJ, STEP, a 3MF with a picture, a copy of a made part) and one file onto a project of your own, with screenshots.
 - Fix (CI's first run of 0.4.14): after **Add to <project>** finished copying, the app opened that project's page even when you'd moved to another page meanwhile, which is what pulled the acceptance test off Library settings before Restore. It now opens the project only if you're still where you dropped the files, and the test waits for the copy's message.
+- Fix (CI's second run of 0.4.14, 72 of 72 checks but two page errors): a 3MF without a picture of its own made the thumbnail maker's request fail, which the browser logs. The app now answers with nothing, and the page uses a picture only when there is one.
 
 ## 0.4.13 — 2026-10-14 · Review 4: the Made parts shelf, example parts, your own licenses, changes counted by the files a model uses
 

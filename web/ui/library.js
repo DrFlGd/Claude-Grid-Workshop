@@ -488,8 +488,9 @@ export async function makeThumbnails({ components = false, source = null, unchec
         } else {
           // a 3MF's own picture (the one its slicer saved), when it has one (milestone 5)
           const pic = /^mesh\/.*\.3mf$/i.test(it.preview) ? await ctx.platform.fetch(it.preview.replace(/^mesh\//, "picture/")) : null;
-          if (pic?.ok) {
-            const data = await pictureThumb(await pic.blob());
+          const picBlob = pic?.ok ? await pic.blob() : null;
+          if (picBlob?.size) {
+            const data = await pictureThumb(picBlob);
             await api("thumb_put", { source: it.sourceId || it.projectId, name: `part-${it.key.split("/")[1]}`, data });
             made++;
             continue;

@@ -1472,10 +1472,11 @@ impl App {
             let m = crate::mesh::read_mesh(&name, &data).with_context(|| format!("couldn't read the shapes in {name}"))?;
             return Ok(crate::mesh::to_stl_coloured(&m.tris, m.colours.as_deref()));
         }
-        // the picture a slicer saved in a 3MF, for its thumbnail
+        // the picture a slicer saved in a 3MF, for its thumbnail; nothing (not an error) when it has
+        // none, so the page asks without the browser logging a failed request
         if let Some(rel) = path.strip_prefix("picture/library/") {
             let data = self.library_file(rel).with_context(|| format!("couldn't read {}", percent_decode(rel)))?;
-            return crate::mesh::picture_3mf(&data).ok_or_else(|| anyhow!("no picture in {}", percent_decode(rel)));
+            return Ok(crate::mesh::picture_3mf(&data).unwrap_or_default());
         }
         self.site.read(path)
     }
