@@ -228,9 +228,10 @@ async def main():
 
             # 3. a project of your own that includes the library (<BOSL2/...>)
             (library / "local/bevel").mkdir(parents=True, exist_ok=True)
-            (library / "local/bevel/bevel_gear.scad").write_text(
+            bevel_src = (
                 "include <BOSL2/std.scad>\ninclude <BOSL2/gears.scad>\n\n// Number of teeth\nteeth = 20; // [8:60]\n"
                 "// Tooth size (module)\nmod = 2; // [0.5:0.5:5]\n\nbevel_gear(mod=mod, teeth=teeth, mate_teeth=teeth, face_width=10);\n")
+            (library / "local/bevel/bevel_gear.scad").write_text(bevel_src)
             # and one in LEGO.scad's style: Customizer variables passed to the module by the library's own
             # call, and an example whose values (a fraction among them) are typed into its call
             (library / "local/bricks/examples").mkdir(parents=True, exist_ok=True)
@@ -984,6 +985,12 @@ async def main():
                            model_ids(i) == ids_before[i], len(list((library / f"sources/{i}/thumbs").glob("*.webp"))) >= thumbs_before[i]]   # (more: made meanwhile)
             print("the app's old copies:", old_copy)
             print("after converting:", toast)
+            if conv["gridfinity-extended"][0] != "github":   # (diagnosis: what the conversion said, and what's in the project)
+                jobs = await pg.evaluate("() => window.__workshop.platform.api('jobs', {})")
+                print("conversion job:", [j.get("result") or j.get("error") for j in jobs if j.get("label") == "Getting projects from GitHub"])
+                ge = library / "sources/gridfinity-extended"
+                print("gridfinity-extended:", sorted(p.name for p in ge.iterdir()), sorted(p.name for p in (ge / "files").iterdir()) if (ge / "files").is_dir() else None,
+                      sorted(p.name for p in (ge / "derived").iterdir()) if (ge / "derived").is_dir() else None)
             edit_keys = list(json.loads((library / "recipes/f1-edit.json").read_text())["edits"])
             others = {json.loads((library / f"sources/{i}/source.json").read_text())["kind"] for i in ("hsw", "gridflock", "anylid")}
             await pg.goto(B + "#/m/gridfinity-basket/basket")
@@ -1029,7 +1036,12 @@ async def main():
             # 13g. (0.4.11, milestone 4) Save as part keeps what's made in the Parts Library (local/Made parts/<model>/)
             # with a recipe; its page opens the model with those settings or makes it again, and says when
             # the model's project has changed since
-            # (LEGO.scad's 180 examples are still being checked in the background, so the page can be slow)
+            # (the bevel gear's project was deleted in 11: made again; LEGO.scad's 180 examples are still
+            # being checked in the background, so the page can be slow)
+            (library / "local/bevel").mkdir(parents=True, exist_ok=True)
+            (library / "local/bevel/bevel_gear.scad").write_text(bevel_src)
+            await pg.evaluate("import('/ui/library.js').then(async (m) => { await m.rescanLocal(false); await m.rescanLocal(false); })")
+            await pg.wait_for_function("() => window.__workshop?.index.get('gen:local-bevel/bevel-gear')", timeout=180000)
             await pg.goto(B + "#/m/local-bevel/bevel-gear")
             try:
                 await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear'", timeout=300000)

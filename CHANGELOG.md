@@ -97,6 +97,7 @@ Save as part:
 - **Parts in your own projects** (`local/` and linked folders) show their previews, thumbnails and downloads; they were looked for in a copy only added projects have.
 - **The ⋯ menu stays open when the library is read again** while you're on the same model (a pin, a thumbnail); it closed under you, which also failed the acceptance test's Edit form step.
 - CI: the acceptance test gives the bevel gear's page up to 5 minutes to open while LEGO.scad's examples are checked in the background, counts thumbnails made meanwhile as kept, and logs the message after converting starter projects.
+- CI: the Save as part test makes its bevel gear project again first (the test deletes it earlier, in Library settings' trash check), and the starter conversion check logs what the conversion said when Gridfinity Extended stays as it was.
 
 ## 0.4.10 — 2026-10-14 · Review 3: the 3D view beside the side viewer, Copy settings, messages in the status bar, one credit pattern, older projects catch up
 
