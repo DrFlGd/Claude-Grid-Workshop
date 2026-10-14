@@ -189,7 +189,9 @@ async function loadDetail(key) {
     throw Object.assign(new Error(`${key} isn't in the library`), { status: 404 });
   }
   if (!details.has(key)) {
-    const d = await getJSON(`data/models/${key.replace("/", "--")}.json`);
+    // (on the desktop, asked for in a way that answers "not there" without a failed request)
+    const d = platform.kind === "desktop" ? await platform.api("model_get", { key }) : await getJSON(`data/models/${key.replace("/", "--")}.json`);
+    if (!d) throw Object.assign(new Error(`${key} isn't in the library`), { status: 404 });
     applyProfile(d);
     details.set(key, d);
   }

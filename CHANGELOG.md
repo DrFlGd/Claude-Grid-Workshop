@@ -92,6 +92,7 @@ Milestone 5, fourth part (0.4.17): collections.
 - Merging libraries brings their collections too; the library's README describes `collections/`.
 - CI: the acceptance test makes a collection of a part, a made part and a model with changed settings, sets a quantity and a printed tick, and exports it.
 - Review 5 (of 0.4.16) is in docs/DESKTOP_PLAN.md with its items planned for 0.4.18; multi-colour 3MF moves to 0.4.19.
+- Fix (CI's first run of 0.4.17, and the unexplained call in 0.4.16's): a model whose project was being read again could be asked for while it was briefly missing, which failed a request. The page now asks for a model's details with `model_get`, which answers "not there" without failing.
 
 ## 0.4.16 — 2026-10-14 · Milestone 5, third part: a Printables download's details read from the page's PDF
 

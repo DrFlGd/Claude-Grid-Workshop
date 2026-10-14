@@ -888,6 +888,9 @@ impl App {
                     "folder_rel": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().and_then(|p| folder_rel(&lib, id, &src, &p)),
                 }))
             }
+            // a model's details, or null when it isn't in the library (an open tab whose project is being read
+            // again): not an error, so a stale list doesn't log a failed request
+            "model_get" => j(self.catalog()?.models.get(arg(&args, "key").map_err(e2s)?).cloned().unwrap_or(Value::Null)),
             "docs_list" => {
                 // a project's ({ source }) or an app library's ({ library }) documents, for the side viewer
                 let t = self.doc_target(&args).map_err(e2s)?;
