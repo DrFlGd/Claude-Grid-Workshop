@@ -98,6 +98,7 @@ Review 3's items (https://claude.ai/artifact/NU5qAAphTyG7ioqDRnZT4S), all but F-
 - **Starter projects that are on GitHub record their repository and commit** (F-17) in `origin`, and Check for updates says when GitHub has something newer, read only. HSW, GridFlock, Rugged Box and openGrid say why they can't be updated in place.
 - **The library's README keeps its indentation** (F-18), names the seven kinds of origin, and says linked projects aren't in the library or its backups and what `description.json` decides.
 - The acceptance test waits for LEGO.scad's main model to be checked at its defaults, not all 182 of its examples (the slowest step: one 0.4.9 build failed without publishing its report, probably there).
+- CI fix: the acceptance test expects the component page to name your BOSL2 (the test adds its own), reads the Drafting Sheet's capitalised messages without minding case, and waits for a library switch's own message before counting projects to read again (it lists them when it fails). The library's README keeps "Remove versions not in use" on one line.
 
 ## 0.4.9 — 2026-10-14 · Starter projects from GitHub, suggested projects, one head for model pages, pins that know their library copy, projects that follow releases
 

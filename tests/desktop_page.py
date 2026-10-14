@@ -288,7 +288,7 @@ async def main():
             head = [await pg.inner_text("#model-title"), await pg.inner_text("#model-project")]
             mate = [await pg.inner_text("label[for='p-mate_teeth']"), await pg.get_attribute("label[for='p-mate_teeth']", "title") or ""]
             check("component page: its own name with its library under it; settings named like a model's, the code name on hover",
-                  head[0] == "Bevel gear" and head[1] == "BOSL2 · bevel_gear() · the app's copy"
+                  head[0] == "Bevel gear" and head[1] == "BOSL2 · bevel_gear() · your copy"
                   and mate[0] == "Mate teeth" and "In the code: mate_teeth" in mate[1], (head, mate))
             await pg.fill("#p-teeth", "24")
             await pg.fill("#p-circ_pitch", "")
@@ -345,13 +345,24 @@ async def main():
             await pg.goto(B + "#/library-settings")
             await pg.click('#ls-libraries [data-library="BOSL2"][data-provider="bundled"] [data-act=prefer]')
             await pg.wait_for_selector('#ls-libraries [data-library="BOSL2"][data-provider="bundled"][data-active]', timeout=300000)
+            # (the row can show the switch before its projects are read again, when something else reloads the
+            # catalog first: wait for the switch's own message)
+            try:
+                await pg.wait_for_function("() => (document.querySelector('#toast')?.textContent || '').includes('comes with the app is used now')", timeout=120000)
+            except Exception:
+                pass
             switched = await pg.evaluate("""() => [window.__workshop.catalog.components.find((c) => c.key === '@bosl2/bevel_gear')?.provider,
-                window.__workshop.catalog.attention.filter((a) => a.kind === 'libraries').length]""")
+                window.__workshop.catalog.attention.filter((a) => a.kind === 'libraries').map((a) => a.message)]""")
+            switched[1] = switched[1] or 0   # (the messages, when there are any)
             # (0.4.9) the pin made with your BOSL2 records that copy, and is marked while the app's is used
             pin_from = json.loads((library / "sources/pinned/pins/bevel-gear-24t.json").read_text()).get("from", {})
             pin_marked = await pg.evaluate("() => (window.__workshop.catalog.sources.find((s) => s.id === 'pinned')?.problems || []).some((p) => p.kind === 'pin_library')")
             await pg.click('#ls-libraries [data-library="BOSL2"][data-provider="project"] [data-act=prefer]')
             await pg.wait_for_selector('#ls-libraries [data-library="BOSL2"][data-provider="project"][data-active]', timeout=300000)
+            try:
+                await pg.wait_for_function("() => (document.querySelector('#toast')?.textContent || '').includes('your copy is used now')", timeout=120000)
+            except Exception:
+                pass
             back = await pg.evaluate("() => window.__workshop.catalog.components.find((c) => c.key === '@bosl2/bevel_gear')?.provider")
             prefer = json.loads((library / "library.json").read_text()).get("prefer_bundled")
             pin_back = await pg.evaluate("() => (window.__workshop.catalog.sources.find((s) => s.id === 'pinned')?.problems || []).some((p) => p.kind === 'pin_library')")
@@ -852,7 +863,7 @@ async def main():
             except Exception:
                 pass
             toast = await pg.inner_text("#toast")
-            check("Check defaults (project ⋯ menu) renders every model again and says how many failed", "1 model of 2" in toast, toast)
+            check("Check defaults (project ⋯ menu) renders every model again and says how many failed", "1 model of 2" in toast.lower(), toast)  # (the Drafting Sheet's status bar is in capitals)
             # 13c. (0.4.7) one project description: workshop.json beside every project's files; Save as project
             # file writes one into your own project's folder; a project's own workshop.json says what its models are
             await pg.click("#source-more summary")
