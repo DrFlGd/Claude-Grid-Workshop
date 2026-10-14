@@ -8,7 +8,7 @@ import { editsKey } from "./lib/edits.js";
 import { $, el, humanize, fmt, same, bytes, plural, safeHTML, compileCondition, STATUS_TEXT, spdx, FORMAT_LABEL } from "./lib/util.js";
 import { LocalIndex } from "./ui/index-local.js";
 import { mountShell } from "./ui/shell.js";
-import { sideModelButtons, openSide } from "./ui/sideview.js";
+import { sideModelButtons, openSide, SideButtons } from "./ui/sideview.js";
 import { setContext } from "./ui/context.js";
 import { html, render } from "./lib/html.js";
 import { LibrarySettingsPage } from "./ui/libsettings.js";
@@ -59,7 +59,7 @@ function route() {
   else if (p) openLibrary(p[1], p[2]);
   else if (path === "about" || path.startsWith("licenses")) showLicenses(path.split("/")[1]);
   else if (path === "settings") showSettings();
-  else if (path === "library-settings") showLibrarySettings();
+  else if (path === "library-settings" || path.startsWith("library-settings/")) showLibrarySettings(path.split("/")[1]);
   else if (path === "search") showBrowse("search", params.get("q") || "");
   else if (path.startsWith("browse")) showBrowse(scopeFromPath(path), params.get("q") || "");
   else showBrowse("home", "");
@@ -73,7 +73,8 @@ function showView(name) {
   if (name === "model" && stage.parentElement.id !== "view-model") $("#view-model").append(stage);
   if (name === "library" && stage.parentElement.id !== "view-library") $("#view-library").append(stage);
   if ((name === "model" || name === "library") && !state.viewer) {
-    state.viewer = new Viewer($("#viewer"));
+    state.viewer = new Viewer($("#viewer"), { coverFrom: ".side-panel" });
+    window.addEventListener("gw-side-over", () => requestAnimationFrame(() => state.viewer.resize()));
     state.viewer.setColor(savedColor);
     state.viewer.setTheme(isDark());
     window.addEventListener("gw-theme", () => state.viewer.setTheme(isDark()));
@@ -200,21 +201,26 @@ function renderModelHeader(detail) {
   document.title = `${detail.name}, ${detail.family_name} | SCAD Workshop`;
   // the model's own name, as on its card and tab, with its project (or library) on the line under it
   $("#model-title").textContent = detail.name;
-  const from = detail.kind === "component" ? detail.component?.library || detail.family_name : detail.family_name;
+  const c = detail.component;
+  const from = c ? c.library || detail.family_name : detail.family_name;
+  // a component's module and which copy of its library, beside the library's name (UI-25)
+  const copy = c ? (c.provider === "project" ? "your copy" : "the app's copy") : "";
   $("#model-project").replaceChildren(detail.source_id
     ? el("a", { href: `#/browse/source/${encodeURIComponent(detail.source_id)}`, text: from, title: "The project it's from" })
-    : from || "");
+    : from || "", ...(c ? [" · ", el("code", { text: `${c.module}()` }), ` · ${copy}`] : []));
   $("#model-summary").textContent = detail.summary;
   // one credit line on every page: By … · Source · License · Docs
   const link = (href, text, out = true) => el("a", { href, text, ...(out ? { target: "_blank", rel: "noopener" } : {}) });
   const credit = [];
   if (detail.authors?.length) credit.push(["By ", ...detail.authors.flatMap((a, i) => [
     i ? (i === detail.authors.length - 1 ? " and " : ", ") : "", a.url ? link(a.url, a.name) : a.name])]);
-  const c = detail.component;
-  if (c) credit.push([el("code", { text: `${c.module}()` }), c.provider === "project" ? " from your copy" : ""]);
   if (detail.source?.repository) credit.push([link(detail.source.repository, "Source")]);
-  const spdx = detail.license?.spdx;
-  credit.push([c ? `License ${spdx || "not stated"}` : link(`#/licenses/${detail.family}`, spdx && spdx !== "NOASSERTION" ? `License ${spdx}` : "License details", false)]);
+  // always "License <name>" (or "not stated"), linked, and "Check" when it needs checking before sharing prints
+  const lic = detail.license || {};
+  const licId = lic.spdx && lic.spdx !== "NOASSERTION" ? lic.spdx : null;
+  const licHref = c ? `#/licenses/components-${encodeURIComponent(c.library)}` : `#/licenses/${detail.family}`;
+  credit.push([link(licHref, `License ${licId || "not stated"}`, false),
+    ...(lic.public_use && lic.public_use !== "ok" ? [" · ", el("a", { href: licHref, class: "credit-check", id: "credit-check", text: "Check", title: STATUS_TEXT[lic.public_use] || "Check the license" })] : [])]);
   if (detail.links?.docs) credit.push([link(detail.links.docs, "Docs")]);
   if (detail.pinned_from) credit.push(["Pinned from ", link(`#/m/${detail.pinned_from}`, "its component", false)]);
   $("#model-credit").replaceChildren(...credit.flatMap((part, i) => [i ? " · " : "", ...part]).filter((x) => x !== ""));
@@ -225,21 +231,27 @@ function renderModelHeader(detail) {
   holder.append(...notesNodes);
   const alerts = [...holder.querySelectorAll("[class^=alert]")];
   alerts.forEach((a) => a.remove());
+  // every notice that applies, stacked (Review 3, UI-26): red for broken or failed, the note style for heads-ups
+  const notices = [];
   // flagged as broken in the library (desktop)
   const broken = detail.meta?.broken;
-  if (broken) alerts.unshift(el("div", { class: "alert-broken", role: "note" }, `Flagged as broken${broken.date ? ` on ${when(broken.date)}` : ""}${broken.note ? `: ${broken.note}` : "."} `,
+  if (broken) notices.push(el("div", { class: "alert-broken", role: "note" }, `Flagged as broken${broken.date ? ` on ${when(broken.date)}` : ""}${broken.note ? `: ${broken.note}` : "."} `,
     el("button", { type: "button", class: "link-btn", text: "Remove the flag", onclick: async () => {
       const it = state.index.get(`gen:${detail.key}`);
       if (it) await unflagItems([it]);
     } })));
+  // rendered at its defaults when the project was added (desktop), and failed
+  if (detail.check?.ok === false) notices.push(el("div", { class: "alert-broken", role: "note", id: "default-check" },
+    `Didn't render at its default settings when it was checked${detail.check.message ? `: ${detail.check.message.replace(/[^.!?]$/, "$&.")}` : "."} Changing the settings may help; Check defaults in the project's ⋯ menu tries again.`));
   // a pinned component whose library is another copy or version now (F-9)
-  else if (detail.pin_changed) alerts.unshift(el("div", { class: "alert-broken", role: "note", id: "pin-changed" }, `${detail.pin_changed.message} `,
+  if (detail.pin_changed) notices.push(el("div", { class: "alert-note", role: "note", id: "pin-changed" }, `${detail.pin_changed.message} `,
     el("button", { type: "button", class: "link-btn", text: "Keep it with this copy", onclick: async () => {
       try { await platform.api("pin_accept", { key: detail.key }); await reloadCatalog(); refreshModel(detail.key); } catch (e) { toast(String(e.message || e)); }
-    } })));
-  // rendered at its defaults when the project was added (desktop), and failed
-  else if (detail.check?.ok === false) alerts.unshift(el("div", { class: "alert-broken", role: "note", id: "default-check" },
-    `Didn't render at its default settings when it was checked${detail.check.message ? `: ${detail.check.message.replace(/[^.!?]$/, "$&.")}` : "."} Changing the settings may help; Check defaults in the project's ⋯ menu tries again.`));
+    } }), " · ", el("a", { href: "#/library-settings/libraries", text: "Choose which copy is used (Library settings)" })));
+  // defaults the form's own limits don't allow (D-3)
+  if (detail.limits?.length) notices.push(el("div", { class: "alert-note", role: "note", id: "limits-note" },
+    `Its defaults are outside the form's limits: ${detail.limits.join("; ")}. The form keeps them as they are until you change them.`));
+  alerts.unshift(...notices);
   $("#model-alerts").replaceChildren(...alerts);
   const hasNotes = !!holder.textContent.trim();
   // every page has a one-line summary under its name: a component (or a model without one) takes its notes' first sentence
@@ -649,7 +661,7 @@ function settingsBar(presets) {
   const pick = el("select", { id: "settings-pick", "aria-label": "Start from defaults, a preset or your saved settings",
     onchange: (e) => chooseSettings(e.target.value) });
   const more = el("details", { class: "menu", id: "settings-more" },
-    el("summary", { class: "ghost", "aria-label": "More settings actions", title: "More", text: "⋯" }),
+    el("summary", { class: "ghost", "aria-label": "Saved settings: rename, delete, export, import", title: "Saved settings: rename, delete, export for OpenSCAD, import", text: "⋯" }),
     el("div", { class: "menu-panel", role: "menu" },
       el("button", { type: "button", role: "menuitem", id: "settings-rename", text: "Rename…", onclick: () => { closeMenu(); openSaveDialog("rename"); } }),
       el("button", { type: "button", role: "menuitem", id: "settings-delete", text: "Delete", onclick: () => { closeMenu(); deleteSaved(); } }),
@@ -658,8 +670,12 @@ function settingsBar(presets) {
       el("button", { type: "button", role: "menuitem", id: "settings-import-btn", text: "Import OpenSCAD file…", onclick: () => { closeMenu(); $("#settings-import").click(); } })));
   const bar = el("div", { class: "preset-bar" },
     el("label", { for: "settings-pick", class: "visually-hidden", text: "Start from" }), pick,
-    el("button", { type: "button", class: "ghost", id: "settings-save", text: "Save", title: "Save these settings in this browser", onclick: () => openSaveDialog("save") }),
-    el("button", { type: "button", class: "ghost", id: "settings-share", text: "Share", title: "Copy a link that opens this model with these settings", onclick: shareSettings }),
+    el("button", { type: "button", class: "ghost", id: "settings-save", text: "Save",
+      title: platform.kind === "desktop" ? "Save these settings in the library" : "Save these settings in this browser", onclick: () => openSaveDialog("save") }),
+    // the app's own address opens nowhere else, so the app copies the settings themselves (UI-22)
+    platform.kind === "desktop"
+      ? el("button", { type: "button", class: "ghost", id: "settings-share", text: "Copy settings", title: "Copy these settings as an OpenSCAD Customizer set; paste them on a model page to use them", onclick: copySettings })
+      : el("button", { type: "button", class: "ghost", id: "settings-share", text: "Share", title: "Copy a link that opens this model with these settings", onclick: shareSettings }),
     more);
   const note = el("p", { id: "settings-note", class: "settings-note", role: "status", hidden: true });
   const codeNote = el("p", { id: "code-note", class: "settings-note code-note", hidden: true });
@@ -829,6 +845,38 @@ async function shareSettings() {
   else prompt("Copy this link:", url);
   document.body.dataset.shareLink = url; // for tests
 }
+
+/** The settings as an OpenSCAD Customizer file's text, which OpenSCAD reads and a paste here takes back. */
+async function copySettings() {
+  if (!state.model) return;
+  const n = Object.keys(changedValues(state.model, state.values)).length;
+  const name = activeSaved()?.name || state.model.name || state.model.key;
+  const text = toOpenSCAD(state.model, [{ name, values: state.values }]);
+  let copied = false;
+  try { await navigator.clipboard.writeText(text); copied = true; } catch { /* not allowed here */ }
+  document.body.dataset.copiedSettings = text; // for tests
+  if (copied) note(n ? `Copied ${plural(n, "changed setting")} as an OpenSCAD Customizer set. Paste on this model's page to use them, or into a .json file for OpenSCAD.`
+    : "Copied the defaults as an OpenSCAD Customizer set. Paste on this model's page to use them, or into a .json file for OpenSCAD.", "ok");
+  else note("Couldn't copy to the clipboard here. Use ⋯ › Export for OpenSCAD instead.", "warn");
+}
+
+// a Customizer set pasted on a model page (not into a box) fills in the form
+document.addEventListener("paste", (e) => {
+  if (ui.get().view !== "model" || !state.model || e.target.closest?.("input, textarea, select, [contenteditable], .cm-editor")) return;
+  const text = e.clipboardData?.getData("text/plain") || "";
+  if (!/"parameterSets"/.test(text)) return;
+  let sets;
+  try { sets = fromOpenSCAD(state.model, text); } catch (err) { note(err.message, "warn"); return; }
+  if (!sets.length) return;
+  e.preventDefault();
+  const s = sets[0];
+  setAllValues(withChanges(state.model, s.changes).values);
+  saved.active = null;
+  renderSettingsPick();
+  generate();
+  const n = Object.keys(s.changes).length;
+  note(`Pasted “${s.name}”: ${plural(n, "setting")} changed from the defaults.${s.skipped ? ` ${plural(s.skipped, "value")} didn't match this model and ${s.skipped === 1 ? "was" : "were"} skipped.` : ""}`, s.skipped ? "warn" : "ok");
+});
 
 async function readShare(code) {
   try {
@@ -1228,6 +1276,11 @@ async function openLibrary(libId, itemId) {
     const spdx = lib.license?.spdx;
     parts.push(el("a", { href: `#/licenses/${lib.id}`, text: spdx && spdx !== "NOASSERTION" ? `License ${spdx}` : "License details" }));
     credit.append(...parts.flatMap((x, i) => (i ? [" · ", x] : [x])));
+    // the pack's project documents (its README), as on model pages, and in the side viewer's tabs (UI-25)
+    const sourceId = lib.source_id || state.libraries.find((l) => l.id === libId)?.source_id || null;
+    const partRef = sourceId ? { source: sourceId } : null;
+    ui.set({ partRef });
+    render(partRef ? html`<${SideButtons} refObj=${partRef} />` : null, $("#lib-extra"));
     $("#part-search").value = "";
     buildPartList(lib);
   }
@@ -1329,6 +1382,9 @@ function showLicenses(focus) {
     table(fams.map((f) => row(f.id, f.name, (f.models || []).join(", "), (f.authors || []).map((a) => a.name).join(", "), f.license, f.source))),
     el("h2", { text: "Parts Library" }),
     table(state.libraries.map((l) => row(l.id, l.name, `${l.item_count} parts`, (l.authors || []).map((a) => a.name).join(", "), l.license, l.source_url))),
+    ...(c?.component_libraries?.length ? [el("h2", { text: "Components" }),
+      table(c.component_libraries.filter((l) => l.active).map((l) => row(`components-${l.name}`, l.name, l.provider === "project" ? "Your copy" : "Comes with the app",
+        (l.authors || []).join(", "), { spdx: l.license || "NOASSERTION", public_use: l.license ? "ok" : "review" }, l.repo ? `https://github.com/${l.repo}` : null)))] : []),
     el("h2", { text: "This site" }),
     el("ul", {},
       el("li", {}, platform.kind === "desktop" ? `OpenSCAD ${c?.engine || ""} (native, plus the WebAssembly build on Windows) makes every part on this computer. GNU GPL version 2 or later: ` : `OpenSCAD ${c?.engine || ""} (WebAssembly build) makes every part in your browser. GNU GPL version 2 or later: `,
@@ -1370,10 +1426,12 @@ FILAMENTS.forEach(([name, hex]) => {
 let toastTimer = null;
 function toast(text, action) {
   const t = $("#toast");
-  t.replaceChildren(...[el("span", { text }), action ? el("button", { type: "button", class: "ghost light", text: action.label, onclick: () => { t.hidden = true; action.run(); } }) : null].filter(Boolean));
+  const hide = () => { t.hidden = true; document.body.classList.remove("toasting"); };
+  t.replaceChildren(...[el("span", { text }), action ? el("button", { type: "button", class: "ghost", text: action.label, onclick: () => { hide(); action.run(); } }) : null].filter(Boolean));
   t.hidden = false;
+  document.body.classList.add("toasting"); // the status bar's counts give way while it shows
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 8000);
+  toastTimer = setTimeout(hide, 8000);
 }
 
 /**
@@ -1507,8 +1565,14 @@ function showPage(children) {
   $("#about-body").replaceChildren(...children.filter((c) => c != null && c !== false));
 }
 
-function showLibrarySettings() {
+function showLibrarySettings(section) {
   if (platform.kind !== "desktop") { location.hash = "#/settings"; return; }
+  // #/library-settings/<section> opens at that section, once it's drawn
+  if (section) {
+    let tries = 0;
+    const go = () => { const s = document.getElementById(`ls-${section}`); if (s) s.scrollIntoView(); else if (tries++ < 40) setTimeout(go, 100); };
+    setTimeout(go, 0);
+  }
   showView("about");
   document.title = "Library settings | SCAD Workshop";
   $("#about-title").textContent = "Library settings";

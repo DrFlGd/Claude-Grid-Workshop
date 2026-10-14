@@ -288,7 +288,8 @@ async def main():
             head = [await pg.inner_text("#model-title"), await pg.inner_text("#model-project")]
             mate = [await pg.inner_text("label[for='p-mate_teeth']"), await pg.get_attribute("label[for='p-mate_teeth']", "title") or ""]
             check("component page: its own name with its library under it; settings named like a model's, the code name on hover",
-                  head == ["Bevel gear", "BOSL2"] and mate[0] == "Mate teeth" and "In the code: mate_teeth" in mate[1], (head, mate))
+                  head[0] == "Bevel gear" and head[1] == "BOSL2 · bevel_gear() · the app's copy"
+                  and mate[0] == "Mate teeth" and "In the code: mate_teeth" in mate[1], (head, mate))
             await pg.fill("#p-teeth", "24")
             await pg.fill("#p-circ_pitch", "")
             await pg.fill("#p-mod", "2")
@@ -952,18 +953,25 @@ async def main():
             await pg.goto(B + "#/library-settings")
             await pg.wait_for_selector("#starter-convert")
             offer = await pg.inner_text("#starter-convert")
+            # (0.4.10, F-13) models of projects from before the app checked new ones are offered a check at their defaults
+            unchecked = await pg.inner_text("#unchecked-offer") if await pg.locator("#unchecked-offer").count() else ""
             await pg.click("#starter-convert button")
             try:
                 await pg.wait_for_function("() => !document.querySelector('#starter-convert')", timeout=900000)
             except Exception:
                 pass
             toast = await pg.locator("#toast").text_content() or ""
-            conv = {}
+            conv, old_copy = {}, {}
             for i in on_github:
                 sj = json.loads((library / f"sources/{i}/source.json").read_text())
                 d = library / f"sources/{i}/derived/{sj['version']}.json"
+                # (0.4.10, F-16) the app's old copy is removed when upstream's files are the same, else it says what it was
+                was = sj.get("origin", {}).get("converted", {}).get("version", "")
+                old_v = [v for v in sj.get("versions", []) if v.get("id") == was]
+                old_copy[i] = "removed" if not old_v and not (library / f"sources/{i}/files/{was}").exists() else (old_v[0].get("message", "") if old_v else "?")
                 conv[i] = [sj["kind"], sj.get("origin", {}).get("track", "")[:7], json.loads(d.read_text()).get("described_by") if d.is_file() else None,
                            model_ids(i) == ids_before[i], len(list((library / f"sources/{i}/thumbs").glob("*.webp"))) == thumbs_before[i]]
+            print("the app's old copies:", old_copy)
             edit_keys = list(json.loads((library / "recipes/f1-edit.json").read_text())["edits"])
             others = {json.loads((library / f"sources/{i}/source.json").read_text())["kind"] for i in ("hsw", "gridflock", "anylid")}
             await pg.goto(B + "#/m/gridfinity-basket/basket")
@@ -974,8 +982,10 @@ async def main():
             dims = await pg.inner_text(".hud-dims")
             await pg.screenshot(path=str(out / "p6-03-from-github.png"))
             check("starter projects on GitHub become GitHub projects at the same commit (same models, edits moved to upstream's paths, thumbnails kept); the others stay as they are",
-                  "Gridfinity Rebuilt" in offer and all(v == ["github", "branch:", "description.json", True, True] for v in conv.values())
-                  and edit_keys == ["/gridfinityBasket.scad"] and others == {"bundled"} and "mm" in dims, (conv, edit_keys, others, dims, toast))
+                  "Gridfinity Rebuilt" in offer and "checked at their default settings" in unchecked
+                  and all(v == "removed" or v.startswith("The app's copy of") for v in old_copy.values())
+                  and all(v == ["github", "branch:", "description.json", True, True] for v in conv.values())
+                  and edit_keys == ["/gridfinityBasket.scad"] and others == {"bundled"} and "mm" in dims, (conv, old_copy, edit_keys, others, dims, toast, unchecked[:120]))
 
             # 13f. (0.4.9) suggested projects (catalog/suggested.json) under Add project, less the ones already
             # in the library; adding one is the ordinary Add from GitHub, and its models are checked at their defaults
@@ -984,6 +994,7 @@ async def main():
             await pg.wait_for_selector("#add-suggested")
             chips = await pg.eval_on_selector_all("#add-suggested [data-suggested]", "els => els.map((e) => e.dataset.suggested)")
             await pg.click('#add-suggested [data-suggested="LEGO.scad"]')
+            facts = await pg.text_content("#add-suggested-facts")   # (0.4.10, UI-23) what adding it brings
             await pg.click("#add-go")
             await pg.wait_for_function("() => location.hash.includes('/source/')", timeout=180000)
             lego = (await pg.evaluate("location.hash")).split("/source/")[1]
@@ -1000,7 +1011,8 @@ async def main():
             failing = {m: v.get("message", "")[:120] for m, v in lego_checks.items() if not v.get("ok")}
             print("LEGO.scad at its defaults:", len(lego_models), "models,", len(failing), "failing", failing)
             check("suggested projects under Add project leave out the ones already added; adding one reads it and checks every model at its defaults",
-                  chips == ["LEGO.scad"] and "lego" in lego_models and lego_checks.get("lego", {}).get("ok"), (chips, len(lego_models), failing))
+                  chips == ["LEGO.scad"] and "182 models" in facts and "License MIT" in facts
+                  and "lego" in lego_models and lego_checks.get("lego", {}).get("ok"), (chips, facts, len(lego_models), failing))
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"

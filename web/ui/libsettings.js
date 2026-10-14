@@ -9,7 +9,7 @@ import { ui, pushUndo } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 import { CategoryPicker } from "./catpick.js";
-import { api, runJob, kindText, rescanLocal, when, makeThumbnails, listText, ATTN_TEXT } from "./library.js";
+import { api, runJob, kindText, rescanLocal, when, makeThumbnails, uncheckedModels, listText, ATTN_TEXT } from "./library.js";
 import { LICENSE_TEXT } from "./index-local.js";
 import { hideItems, hideProject, deleteProject, restoreItems } from "./actions.js";
 import { undoNow } from "./metaedit.js";
@@ -110,6 +110,29 @@ function Problems({ id }) {
     title=${msgs.filter(Boolean).join("\n")}>${ATTN_TEXT[kind] || kind}${msgs.length > 1 ? ` (${msgs.length})` : ""}</span>`);
 }
 
+/** Models never rendered at their defaults (projects from before 0.4.6, starter projects): one offer to check
+ * them all, keeping their thumbnails (Review 3, F-13). A long job, so it's asked for rather than started. */
+function Unchecked({ ro }) {
+  useStore(ui, (s) => s.catalogVersion);
+  const [busy, setBusy] = useState(false);
+  const these = uncheckedModels();
+  if (!these.length) return null;
+  const projects = new Set(these.map((i) => i.sourceId)).size;
+  const go = async () => {
+    setBusy(true);
+    try {
+      const r = await makeThumbnails({ unchecked: true });
+      if (r) ctx.toast(r.failed ? `${plural(r.failed, "model")} of ${these.length} didn't render at ${r.failed === 1 ? "its" : "their"} defaults; they're marked below.` : `All ${plural(these.length, "model")} render at their defaults.`);
+    } catch (e) { fail(e); }
+    setBusy(false);
+  };
+  return html`<div class="ls-offer" id="unchecked-offer">
+    <p>${`${plural(these.length, "model")} in ${plural(projects, "project")} ${these.length === 1 ? "hasn't" : "haven't"} been checked at ${these.length === 1 ? "its" : "their"} default settings: `
+      + `${projects === 1 ? "its project was" : "their projects were"} added before the app checked new projects. Checking renders each once in the background and marks any that don't render; thumbnails are kept.`}</p>
+    <button type="button" class="ghost" disabled=${ro || busy} onClick=${go} id="check-unchecked">${busy ? "Checking…" : "Check them"}</button>
+  </div>`;
+}
+
 /** Starter projects (from apps before 0.4.4) that are on GitHub: one offer to get them from there (F-1). */
 function FromGitHub({ ro, sources }) {
   const [busy, setBusy] = useState(false);
@@ -147,6 +170,7 @@ function Projects({ ro }) {
       ${ctx.platform.info?.starter ? html`<button type="button" class="ghost" disabled=${ro} onClick=${async () => { const r = await api("source_restore_starter"); await ctx.reloadCatalog(); ctx.toast(r.installed.length ? `Brought back ${plural(r.installed.length, "project")}.` : "All the starter projects are there."); }}>Bring back starter projects</button>` : null}
     </div>
     <${FromGitHub} ro=${ro} sources=${sources} />
+    <${Unchecked} ro=${ro} />
     <p class="muted">Your own projects go in the library's <code>local/</code> folder (one folder each). The app looks for changed files when it starts and when its window comes back into focus; Scan for changes looks now.</p>
     <table class="table-view ls-table" id="ls-project-table"><thead><tr><th>Project</th><th>From</th><th>License</th><th class="num">Items</th><th></th></tr></thead><tbody>
       ${sources.map((s) => html`<tr key=${s.id} data-source=${s.id} data-hidden=${s.hidden ? "" : null}>

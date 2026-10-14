@@ -2118,7 +2118,15 @@ pub fn effective(bundled: &[ComponentLibrary], projects: &[ComponentLibrary], pr
         if out.iter().any(|o| key(&o.info.name) == k) {
             continue; // two projects for one library: the first (by id) wins
         }
-        out.push(p.clone());
+        let mut p = p.clone();
+        // the same library from the same repository credits the same people, whichever copy (Review 3, UI-25)
+        if let Some(b) = bundled.iter().find(|b| key(&b.info.name) == k) {
+            let same_repo = matches!((&p.info.repo, &b.info.repo), (Some(a), Some(b)) if a.eq_ignore_ascii_case(b));
+            if same_repo && !b.info.authors.is_empty() {
+                p.info.authors = b.info.authors.clone();
+            }
+        }
+        out.push(p);
     }
     for b in bundled {
         if !out.iter().any(|o| key(&o.info.name) == key(&b.info.name)) {

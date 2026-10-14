@@ -324,6 +324,24 @@ pub fn convert_params(raw: &Value) -> (Vec<Value>, Vec<String>) {
     (params, groups)
 }
 
+/// The same step rule for settings read by an app before 0.4.6 (Review 3, F-13): a plain number whose
+/// step of 1 doesn't fit its fractional default steps by its last decimal. Returns whether any changed.
+pub fn fit_plain_steps(params: &mut [Value]) -> bool {
+    let mut changed = false;
+    for p in params.iter_mut() {
+        if p["type"] != "number" || !p["min"].is_null() || !p["max"].is_null() || p["options"].is_array() {
+            continue;
+        }
+        if let (Some(d), Some(s)) = (p["default"].as_f64(), p["step"].as_f64()) {
+            if s == 1.0 && d.fract() != 0.0 {
+                p["step"] = int_if_whole(&json!(decimal_step(d)));
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
 /// The step of a number's last decimal: 1.5 -> 0.1, 0.25 -> 0.01.
 pub fn decimal_step(v: f64) -> f64 {
     let s = format!("{v}");
@@ -703,6 +721,18 @@ pub fn setting_terms(params: &[Value]) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn old_plain_steps_fit_their_defaults() {
+        let mut ps = vec![
+            json!({ "name": "Width_Units", "type": "number", "default": 1.5, "step": 1 }),
+            json!({ "name": "Count", "type": "number", "default": 3, "step": 1 }),
+            json!({ "name": "Size", "type": "number", "default": 2.5, "min": 0, "max": 10, "step": 1 }),
+        ];
+        assert!(fit_plain_steps(&mut ps));
+        assert_eq!((ps[0]["step"].as_f64(), ps[1]["step"].as_f64(), ps[2]["step"].as_f64()), (Some(0.1), Some(1.0), Some(1.0)));
+        assert!(limit_problems(&ps[..2]).is_empty());
+    }
     use super::*;
 
     #[test]

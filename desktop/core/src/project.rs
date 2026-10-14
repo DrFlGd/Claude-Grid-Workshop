@@ -45,6 +45,54 @@ pub fn models_differ(src: &Value, derived: &Value, root: &Path) -> bool {
     had != now
 }
 
+/// What milestone 3 added to reading a project, for a project read before it (starter projects
+/// included, which aren't read again): the description beside its files (`workshop.json`, 0.4.7),
+/// and its defaults checked against the form's limits (D-3), from what was read (Review 3, F-13).
+fn fill_in(lib: &Library, id: &str, src: &Value) {
+    let version = src["version"].as_str().unwrap_or("");
+    // a starter project whose copy is from GitHub records where and which commit (F-17)
+    if src["kind"] == "bundled" && src["origin"]["commit"].is_null() {
+        if let Some((repository, commit, why)) = crate::sources::starter_upstream(id) {
+            let mut s = src.clone();
+            s["origin"]["repository"] = json!(repository);
+            s["origin"]["commit"] = json!(commit);
+            if !why.is_empty() {
+                s["origin"]["not_updatable"] = json!(why);
+            }
+            let _ = lib.save_source(&s);
+        }
+    }
+    let Some(mut derived) = lib.derived(id, version) else { return };
+    if let Ok(dir) = lib.source_dir(id) {
+        if !dir.join("workshop.json").is_file() && derived["family"]["models"].is_array() {
+            let _ = crate::config::write_json(&dir.join("workshop.json"), &describe(&derived["family"], id, version));
+        }
+    }
+    if derived["limits_checked"] == true {
+        return;
+    }
+    let mut problems: Vec<Value> = derived["problems"].as_array().into_iter().flatten().filter(|p| p["kind"] != "limits").cloned().collect();
+    // read before 0.4.6: its plain numbers get the step reading gives them now, so a default like 1.5
+    // isn't reported as off its step of 1
+    for m in derived["models"].as_array_mut().into_iter().flatten() {
+        if let Some(ps) = m["parameters"].as_array_mut() {
+            ingest::fit_plain_steps(ps);
+        }
+    }
+    for m in derived["models"].as_array().into_iter().flatten() {
+        let off = ingest::limit_problems(m["parameters"].as_array().map(Vec::as_slice).unwrap_or(&[]));
+        if !off.is_empty() {
+            let mid = m["id"].as_str().unwrap_or("");
+            let key = m["key"].as_str().map(String::from).unwrap_or_else(|| format!("{id}/{mid}"));
+            let entry = m["entry"].as_str().unwrap_or(mid).trim_start_matches('/').to_string();
+            problems.push(json!({ "kind": "limits", "model": key, "settings": off, "message": format!("{entry}: {}", off.join("; ")) }));
+        }
+    }
+    derived["problems"] = json!(problems);
+    derived["limits_checked"] = json!(true);
+    let _ = lib.save_derived(id, version, &derived);
+}
+
 /// What [`scan_changes`] found.
 #[derive(Debug, Default)]
 pub struct Changes {
@@ -66,6 +114,9 @@ pub fn scan_changes(lib: &Library, skip: &[String]) -> Changes {
     for id in lib.source_ids() {
         let Ok(src) = lib.source(&id) else { continue };
         let kind = src["kind"].as_str().unwrap_or("");
+        if kind != "pinned" && !skip.contains(&id) && lib.read_only().is_none() {
+            fill_in(lib, &id, &src);
+        }
         if kind == "bundled" || kind == "pinned" || skip.contains(&id) {
             continue;
         }
@@ -244,7 +295,10 @@ pub async fn ingest(
     // or, for a starter project turned into a GitHub project, the app's description of it (F-1)
     let (own, own_name) = match read_workshop_json(&root) {
         Some(w) => (Some(w), "workshop.json"),
-        None => (read_workshop_json_at(&lib.source_dir(&id)?.join("description.json")), "The app's description"),
+        None => {
+            crate::sources::refresh_description(lib, src);
+            (read_workshop_json_at(&lib.source_dir(&id)?.join("description.json")), "The app's description")
+        }
     };
     let mut own_problems = vec![];
     let listed: Option<Vec<String>> = own.as_ref().and_then(|w| w["models"].as_array()).map(|ms| {
@@ -266,6 +320,17 @@ pub async fn ingest(
         (None, None)
     } else {
         (own, listed)
+    };
+    // the app's description names the files it lists; any other model file, bar those it leaves out on
+    // purpose, is read as usual, so a file upstream adds becomes a model (F-14). A project's own
+    // workshop.json is the whole list.
+    let overlay = own_name != "workshop.json" && own.as_ref().is_some_and(|w| w["left_out"].is_array());
+    let listed = match (listed, overlay) {
+        (Some(mut l), true) => {
+            l.extend(found.entries.iter().filter(|e| !l.contains(e) && !crate::sources::left_out(own.as_ref().unwrap(), e)).cloned().collect::<Vec<_>>());
+            Some(l)
+        }
+        (l, _) => l,
     };
     let entries: Vec<String> = if role == "library" { vec![] } else { listed.clone().unwrap_or_else(|| found.entries.clone()) };
     let words = format!(
@@ -528,6 +593,7 @@ pub async fn ingest(
         "files_stat": scan::quick_fingerprint(&root),
         "files_fp": scan::fingerprint(&root),
         "described_by": if own.is_none() { "reading" } else if own_name == "workshop.json" { "workshop.json" } else { "description.json" },
+        "limits_checked": true,
     });
     lib.save_derived(&id, version, &derived)?;
     // every version records its file count and contents (F-2); the description beside the files (F-5)
@@ -579,9 +645,10 @@ pub fn describe(fam: &Value, id: &str, version: &str) -> Value {
         .flatten()
         .map(|m| {
             let mut o = Map::new();
-            for k in ["id", "name", "entrypoint", "notes", "ui", "hidden", "fixed", "defaults", "extra_params", "part_parameter", "presets", "browser"] {
-                if let Some(v) = m.get(k).filter(worth) {
-                    o.insert(k.into(), v.clone());
+            // every key a description can give a model, so the file says all the app reads it with (F-14)
+            for (k, v) in m.as_object().into_iter().flatten() {
+                if !["status", "settings_from"].contains(&k.as_str()) && worth(&v) {
+                    o.insert(k.clone(), v.clone());
                 }
             }
             Value::Object(o)

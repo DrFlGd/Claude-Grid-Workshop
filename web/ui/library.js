@@ -25,13 +25,13 @@ export async function runJob(startPromise, label, { stoppable = false } = {}) {
   // a job that can stop gets Cancel in the status bar (the app stops it at the next file)
   const done = addJob(label, stoppable ? () => api("job_cancel", { id: job }).catch(() => {}) : undefined);
   try {
-    return await ctx.platform.library.waitJob(job, (stage) => done.update(`${label}: ${stage}`));
+    return await ctx.platform.library.waitJob(job, (stage) => done.update(`${label} · ${stage}`));
   } finally {
     done();
   }
 }
 
-const KIND_TEXT = { github: "GitHub", zip: "ZIP file", folder: "Folder (copied)", linked: "Linked folder", local: "Your project (local/)", bundled: "Comes with the app" };
+const KIND_TEXT = { github: "GitHub", zip: "ZIP file", folder: "Folder (copied)", linked: "Linked folder", local: "Your project (local/)", bundled: "From an earlier app", pinned: "Pinned components" };
 export const kindText = (s) => KIND_TEXT[s?.kind] || s?.kind || "";
 
 // ---------------------------------------------------------------- adding a project
@@ -68,6 +68,7 @@ export function AddProject() {
   const ref = tab === "github" ? (url.match(/github\.com\/[^/]+\/[^/]+\/(?:(?:tree|blob|commit)|releases\/tag)\/([^/?#]+)/) || [])[1] : null;
   const versionLike = !!ref && /^v?\d+(\.\d+)+/i.test(ref);
   const [followPick, setFollow] = useState(null);
+  const [picked, setPicked] = useState(null);
   const follow = followPick || (versionLike || /\/releases\/tag\//.test(url) ? "releases" : "branch");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -101,8 +102,9 @@ export function AddProject() {
         <input type="url" id="add-url" value=${url} onInput=${(e) => setUrl(e.target.value)} placeholder="https://github.com/owner/repository" autofocus />
         <small class="muted">A branch, tag, release or commit (/tree/…, /releases/tag/…, /commit/…) and a subfolder work too. The app downloads that version as plain files (no git needed) and checks for updates later.</small></label>
       ${suggested.length ? html`<div class="field-block add-suggested" id="add-suggested"><span>Suggested</span>
-        <div class="chips">${suggested.map((p) => html`<button type="button" class="chip" title=${p.summary} data-suggested=${p.name}
-          onClick=${() => { setUrl(p.url); setFollow(null); }}>${p.name}</button>`)}</div></div>` : null}
+        <div class="chips">${suggested.map((p) => html`<button type="button" class="chip" title=${`${p.summary} ${suggestionFacts(p)}`} data-suggested=${p.name}
+          onClick=${() => { setUrl(p.url); setFollow(null); setPicked(p); }}>${p.name}</button>`)}</div>
+        ${picked && url === picked.url ? html`<small class="muted" id="add-suggested-facts">${picked.summary} ${suggestionFacts(picked)}</small>` : null}</div>` : null}
       ${ref ? html`<fieldset class="field-block add-follow" id="add-follow"><legend>Updates</legend>
         <label class="check"><input type="radio" name="follow" value="releases" checked=${follow === "releases"} onChange=${() => setFollow("releases")} />
           Newer releases: stay on ${ref.length > 20 ? "this version" : ref} until a newer release comes out</label>
@@ -144,7 +146,7 @@ function UpdateBanner({ src }) {
     } catch (e) { ctx.toast(String(e.message || e)); } finally { setBusy(false); }
   };
   return html`<div class="update-banner" role="region" aria-label="Update">
-    <p><b>Update ready</b>${latest.date ? ` from ${when(latest.date)}` : ""}${latest.message ? `: ${latest.message}` : ""}</p>
+    <p><b>Update ready</b>${latest.date ? `: the version of ${when(latest.date)}` : ""}${latest.message ? ` (“${latest.message.split("\n")[0].replace(/[.\s]+$/, "")}”)` : ""}</p>
     ${latest.commits?.length ? html`<details><summary>${plural(latest.commits.length, "change")} upstream</summary>
       <ul class="commit-list">${latest.commits.map((c) => html`<li><code>${c.sha}</code> ${c.message} <span class="muted">${c.author || ""} ${when(c.date)}</span></li>`)}</ul></details>` : null}
     <ul class="change-list">
@@ -199,7 +201,7 @@ export function SourcePanel({ id }) {
             : origin.path || origin.file ? html`<span title=${origin.path || origin.file}>${(origin.path || origin.file).split(/[\\/]/).filter(Boolean).slice(-2).join("/")}</span>` : null,
           src.meta?.license?.spdx ? (src.meta.license.spdx === "NOASSERTION" ? "License not stated" : src.meta.license.spdx) : null,
           // what its updates follow (F-11)
-          src.kind === "github" && origin.track ? html`<span data-follows=${origin.track}>${origin.track === "releases" ? "follows new releases" : `follows ${String(origin.track).replace(/^branch:/, "")}`}</span>` : null,
+          src.kind === "github" && origin.track ? html`<span data-follows=${origin.track}>${origin.track === "releases" ? "updates: new releases" : `updates: changes on its ${String(origin.track).replace(/^branch:/, "") || "default"} branch`}</span>` : null,
         ].filter(Boolean).flatMap((x, i) => (i ? [" · ", x] : [x]))}</p>
       </div>
       <div class="source-actions">
@@ -237,7 +239,10 @@ export function SourcePanel({ id }) {
       </div>
     </div>
     <${UpdateBanner} src=${src} />
-    ${src.update?.error ? html`<p class="lic-summary">Couldn't check for updates${src.update.error_date ? ` on ${when(src.update.error_date)}` : ""}: ${src.update.error}</p>` : null}
+    ${src.kind === "bundled" && src.update?.state === "upstream" ? html`<p class="lic-summary" id="upstream-newer">A newer version is on GitHub, from ${when(src.update.latest?.date)}${src.update.latest?.ahead_by ? ` (${plural(src.update.latest.ahead_by, "change")} since the app's copy)` : ""}.
+      ${origin.not_updatable ? html` This copy can't be updated in place because ${origin.not_updatable}: <a href=${origin.repository} target="_blank" rel="noopener">add it from GitHub</a> to follow it.`
+        : html` <a href="#/library-settings/projects">Get it from GitHub</a> (Library settings) to follow it.`}</p>` : null}
+    ${src.update?.error ? html`<p class="lic-summary" title=${src.update.error}>Couldn't check for updates${src.update.error_date ? ` on ${when(src.update.error_date)}` : ""}: ${updateErrorText(src.update.error)}</p>` : null}
     ${problems.length ? html`<details class="problems"><summary>${plural(problems.length, "problem")} with this project</summary>
       <ul>${problems.map((p) => html`<li>${p.message}</li>`)}</ul></details>` : null}
     <div class="seg tabs-seg source-tabs" role="tablist">${tabs.map(([t, l]) => html`<button type="button" role="tab" class=${`seg-btn${tab === t ? " on" : ""}`}
@@ -331,6 +336,15 @@ export async function saveComponentThumb(key, blob) {
   } finally { URL.revokeObjectURL(url); }
 }
 
+/** An update check's error in a few words; the whole text is on hover. */
+function updateErrorText(e) {
+  const s = String(e || "");
+  if (/rate limit|403/i.test(s)) return "GitHub's limit for checks was reached. Add a GitHub token in Library settings, or try later.";
+  if (/404|not found/i.test(s)) return "the repository wasn't found on GitHub (renamed, moved or made private?).";
+  if (/tls|certificate|dns|connect|timed? ?out|network|resolve/i.test(s)) return "couldn't reach GitHub.";
+  return s.length > 140 ? `${s.slice(0, 137)}…` : s;
+}
+
 /** OpenSCAD's message for a render that failed, cut to its first error line. */
 function renderMessage(e) {
   const s = String(e?.message || e || "").trim();
@@ -344,22 +358,28 @@ function renderMessage(e) {
  * isn't tried again until its project or the engine changes, or { source } asks for every model
  * of that project to be checked again (Check defaults). With { components: true }, makes the
  * components' thumbnails instead. */
-export async function makeThumbnails({ components = false, source = null } = {}) {
+/** Models with no check at their defaults for the version in use (projects from before 0.4.6, starter projects), F-13. */
+export function uncheckedModels() {
+  return ctx.index.items.filter((i) => i.kind === "generator" && i.sourceId && !i.check && !i.hidden && sourceById(i.sourceId)?.kind !== "pinned");
+}
+
+export async function makeThumbnails({ components = false, source = null, unchecked = false } = {}) {
   if (!isDesktop() || readOnly()) return;
   // asked while thumbnails are being made (a project added meanwhile): go round again after
-  if (thumbRunning) { if (!components && !source) thumbAgain = true; return; }
+  if (thumbRunning) { if (!components && !source && !unchecked) thumbAgain = true; return; }
   if (components) return componentThumbnails();
-  const todo = source
+  const checking = !!(source || unchecked);
+  const todo = unchecked ? uncheckedModels() : source
     ? ctx.index.items.filter((i) => i.kind === "generator" && i.sourceId === source)
     : ctx.index.items.filter((i) => (!i.thumb || i.check?.outdated) && (i.kind === "generator" || i.preview) && sourceById(i.sourceId || i.projectId)?.kind !== "bundled"
       && !(i.check?.ok === false && !i.check.stale));
   if (!todo.length) return;
   thumbRunning = true;
-  const done = addJob(`${source ? "Checking defaults" : "Making thumbnails"} (0 of ${todo.length})`);
+  const done = addJob(`${checking ? "Checking defaults" : "Making thumbnails"} · 0 of ${todo.length}`);
   let made = 0, failed = 0;
   try {
     for (const [n, it] of todo.entries()) {
-      done.update(`${source ? "Checking defaults" : "Making thumbnails"} (${n + 1} of ${todo.length})`);
+      done.update(`${checking ? "Checking defaults" : "Making thumbnails"} · ${n + 1} of ${todo.length}`);
       if (!ctx.index.get(it.id)) continue; // deleted meanwhile
       try {
         let blob;
@@ -375,7 +395,7 @@ export async function makeThumbnails({ components = false, source = null } = {})
             throw e;
           }
           await check(true);
-          if (it.thumb && source) { made++; continue; } // checking only
+          if (it.thumb && checking) { made++; continue; } // checking only: its thumbnail is kept
         } else {
           blob = await (await ctx.platform.fetch(it.preview)).blob();
         }
@@ -404,7 +424,7 @@ async function componentThumbnails() {
   if (!todo.length) return 0;
   thumbRunning = true;
   let cancelled = false;
-  const done = addJob(`Making component previews (0 of ${todo.length})`, () => { cancelled = true; });
+  const done = addJob(`Making component previews · 0 of ${todo.length}`, () => { cancelled = true; });
   let made = 0;
   try {
     // a few at a time: the native engine runs several renders at once
@@ -412,7 +432,7 @@ async function componentThumbnails() {
     const worker = async () => {
       while (queue.length && !cancelled) {
         const it = queue.shift();
-        done.update(`Making component previews (${todo.length - queue.length} of ${todo.length})`);
+        done.update(`Making component previews · ${todo.length - queue.length} of ${todo.length}`);
         try {
           const { detail, values } = await ctx.loadModel(it.key);
           const blob = (await ctx.engine.render(detail, values, () => {}).promise).blob;
@@ -493,6 +513,12 @@ export async function rescanLocal(quiet = true) {
 }
 
 /** "A", "A and B", "A, B and 3 more" */
+/** What adding a suggested project brings: "19 models · License CC-BY-NC-SA-3.0, personal use only". */
+export function suggestionFacts(p) {
+  const nc = /(^|-)NC(-|$)/i.test(p.license || "");
+  return [p.models, p.license ? `License ${p.license}${nc ? ", personal use only" : ""}` : "License not stated"].filter(Boolean).join(" · ");
+}
+
 export function listText(names) {
   if (names.length <= 2) return names.join(" and ");
   if (names.length <= 4) return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;

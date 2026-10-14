@@ -123,6 +123,9 @@ function Elapsed({ since }) {
   return html`<span class="unit">${Math.round((Date.now() - since) / 1000)} s</span>`;
 }
 
+// "Checking for updates · Checking Gridfinity openscad…" reads without its trailing dots; the time follows a "·"
+const jobText = (label) => String(label || "").replace(/\s*(…|\.\.\.)\s*$/, "").replace(/(…|\.\.\.)(?= ·)/g, "");
+
 export function StatusBar() {
   const s = useStore(ui, (st) => ({ jobs: st.jobs, ready: st.ready }));
   const [open, setOpen] = useState(false);
@@ -135,10 +138,10 @@ export function StatusBar() {
     <span>${plural(gens, "parametric model")}${comps ? ` · ${plural(comps, "component")}` : ""} · ${plural(shown.length - gens - comps, "part")}${ctx.index.hiddenCount ? ` · ${ctx.index.hiddenCount} hidden` : ""}</span>
     <span class="status-jobs">
       ${latest ? html`<button type="button" class="status-job" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>
-        <span class="dot busy"></span>${latest.label}… <${Elapsed} since=${latest.started} />${s.jobs.length > 1 ? ` · ${s.jobs.length} running` : ""}</button>`
+        <span class="dot busy"></span>${jobText(latest.label)} · <${Elapsed} since=${latest.started} />${s.jobs.length > 1 ? ` · ${s.jobs.length} running` : ""}</button>`
         : html`<span class="status-idle"><span class="dot"></span>Ready</span>`}
       ${open && s.jobs.length ? html`<div class="jobs-panel" role="dialog" aria-label="Background work">
-        ${s.jobs.map((j) => html`<div class="job" key=${j.id}><span>${j.label}</span><span class="muted"><${Elapsed} since=${j.started} /></span>
+        ${s.jobs.map((j) => html`<div class="job" key=${j.id}><span>${jobText(j.label)}</span><span class="muted"><${Elapsed} since=${j.started} /></span>
           ${j.cancel ? html`<button type="button" class="ghost" onClick=${() => j.cancel()}>Cancel</button>` : null}</div>`)}
       </div>` : null}
     </span>

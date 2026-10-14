@@ -235,6 +235,12 @@ try:
         if "bevel_gear(" not in code:
             failures.append(f"side viewer code: {code[:120]}")
         shot("04c-side-viewer")
+        # (0.4.10, UI-21) the side tabs' labels run down, in every web view: each tab is taller than it is wide
+        tabs_wh = d.execute_script("return [...document.querySelectorAll('.side-tab')].map(b => [b.dataset.sideTab, Math.round(b.getBoundingClientRect().width), Math.round(b.getBoundingClientRect().height)])")
+        report["side_tabs"] = tabs_wh
+        print("side tabs:", tabs_wh, flush=True)
+        if not tabs_wh or any(h <= w * 1.5 for _, w, h in tabs_wh):
+            failures.append(f"side tabs aren't upright: {tabs_wh}")
         d.execute_script("document.querySelector('.side-close')?.click()")
     open_model("@threads-scad/MetricBolt")
     d.execute_script("location.hash = '#/library-settings'")

@@ -265,6 +265,11 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             if let Some(icon) = vals.get("icon").and_then(Value::as_str) {
                 detail["thumb"] = json!(icon_url(icon, &id, &file_url));
             }
+            // defaults outside their limits (D-3), shown on the model's page too (Review 3, UI-26)
+            let limits: Vec<Value> = problems.iter().filter(|p| p["kind"] == "limits" && p["model"] == key.as_str()).flat_map(|p| p["settings"].as_array().cloned().unwrap_or_default()).collect();
+            if !limits.is_empty() {
+                detail["limits"] = json!(limits);
+            }
             if let Some(c) = checks.get(&mid) {
                 detail["check"] = json!({ "ok": c["ok"], "message": c["message"], "stale": check_engine != engine });
             } else if outdated {
@@ -603,7 +608,7 @@ fn pinned_derived(lib: &Library, id: &str, models: &HashMap<String, Value>) -> V
                 .collect();
             let library = base["component"]["library"].as_str().unwrap_or("its library");
             let desc = |c: &Value| copy_text(c.as_str().unwrap_or(""));
-            let mut message = format!("Pinned from {}; it now uses {}.", desc(&pin["from"]["copy"]).replace("{}", library), desc(&now).replace("{}, ", ""));
+            let mut message = format!("Pinned with {}; {} is used now.", desc(&pin["from"]["copy"]).replace("{}", library), desc(&now).replace("{}", library));
             if !gone.is_empty() {
                 message.push_str(&format!(" Settings it kept that aren't there now: {}.", gone.join(", ")));
             }

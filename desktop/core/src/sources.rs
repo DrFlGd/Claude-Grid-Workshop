@@ -741,6 +741,69 @@ const STARTER_ON_GITHUB: [(&str, &str); 6] = [
     ("underware", include_str!("../../../catalog/families/underware.json")),
 ];
 
+/// Files that draw something in these projects but that the app's description leaves out on purpose
+/// (helpers, demos, combined copies): a name, or a folder ending in "/". Any other file the description
+/// doesn't list (one upstream adds later) is read as a model (Review 3, F-14). Checked against the
+/// app's old copies in vendor/ by `starter_projects_on_github`.
+const LEFT_OUT: [(&str, &[&str]); 3] = [
+    ("gridfinity-basket", &["animate.scad"]),
+    ("gridfinity-extended", &["combined/", "demos/", "modules/", "gridfinity_baseplate_flsun_q5.scad", "gridfinity_silverware_legacy.scad", "stanley_basic_cup.scad"]),
+    ("gridfinity-rebuilt", &["src/", "gridfinity-rebuilt-lite.scad"]),
+];
+
+/// The version of the app's descriptions (description.json): 2 (0.4.10) lists what it leaves out, and
+/// files it neither lists nor leaves out are models. One written by an older app is replaced.
+pub const DESCRIPTION_VERSION: u64 = 2;
+
+/// Whether a description's `left_out` covers a file.
+pub fn left_out(description: &Value, entry: &str) -> bool {
+    description["left_out"].as_array().into_iter().flatten().filter_map(Value::as_str).any(|p| if p.ends_with('/') { entry.starts_with(p) } else { entry == p })
+}
+
+/// Starter projects that are on GitHub but can't come from there as the app has them, and why (F-17):
+/// they record the repository and commit their copy is from, and an update check says when GitHub
+/// has something newer.
+const BUNDLED_ON_GITHUB: [(&str, &str, &str); 4] = [
+    ("hsw", include_str!("../../../catalog/families/hsw.json"), "its first model is a file from an older commit"),
+    ("gridflock", include_str!("../../../catalog/families/gridflock.json"), "it needs git submodules and a generated file that GitHub's download leaves out"),
+    ("gridfinity-rugged-box", include_str!("../../../catalog/families/gridfinity-rugged-box.json"), "it needs git submodules that GitHub's download leaves out"),
+    ("opengrid", include_str!("../../../catalog/families/opengrid.json"), "its snap uses the app's own adapter"),
+];
+
+/// Where a starter project's copy came from on GitHub: (repository, commit, why it can't be updated
+/// in place, or "" when it can come from GitHub instead).
+pub fn starter_upstream(id: &str) -> Option<(String, String, &'static str)> {
+    if let Some(s) = starter_on_github(id) {
+        return Some((s.repository, s.commit, ""));
+    }
+    let (_, text, why) = BUNDLED_ON_GITHUB.iter().find(|(i, _, _)| *i == id)?;
+    let fam: Value = serde_json::from_str(text).ok()?;
+    let (repo, commit) = (fam["source"]["repository"].as_str()?, fam["source"]["commit"].as_str()?);
+    repo.starts_with("https://github.com/").then(|| (repo.to_string(), commit.to_string(), *why))
+}
+
+/// For a starter project whose copy is from GitHub: the newest commit on its default branch, when it
+/// isn't the copy's (read only: nothing is downloaded), F-17.
+pub fn upstream_newer(src: &Value, token: Option<String>) -> Result<Option<Value>> {
+    let (Some(url), Some(commit)) = (src["origin"]["repository"].as_str(), src["origin"]["commit"].as_str()) else { return Ok(None) };
+    let u = parse_github_url(url)?;
+    let gh = GitHub::new(token);
+    let what = format!("{}/{}", u.owner, u.repo);
+    let repo = gh.get_json(&format!("/repos/{}/{}", u.owner, u.repo), &what)?;
+    let branch = repo["default_branch"].as_str().unwrap_or("main");
+    let latest = gh.get_json(&format!("/repos/{}/{}/commits/{branch}", u.owner, u.repo), &format!("{branch} in {what}"))?;
+    let sha = latest["sha"].as_str().context("GitHub returned no commit id")?;
+    if sha == commit {
+        return Ok(None);
+    }
+    let compare = gh.get_json(&format!("/repos/{}/{}/compare/{commit}...{sha}", u.owner, u.repo), &format!("changes in {what}")).unwrap_or(json!({}));
+    Ok(Some(json!({
+        "commit": sha, "date": latest["commit"]["committer"]["date"],
+        "message": latest["commit"]["message"].as_str().unwrap_or("").lines().next().unwrap_or(""),
+        "ahead_by": compare["ahead_by"], "branch": branch,
+    })))
+}
+
 /// Where a starter project comes from on GitHub, and the description the app reads it with.
 pub struct StarterOnGitHub {
     pub repository: String,
@@ -772,13 +835,40 @@ pub fn starter_on_github(id: &str) -> Option<StarterOnGitHub> {
         models.push(Value::Object(o));
     }
     d.insert("models".into(), json!(models));
-    d.insert("made_by".into(), json!(format!("SCAD Workshop, from the family manifest of the app's copy (catalog/families/{id}.json)")));
+    let skip: &[&str] = LEFT_OUT.iter().find(|(i, _)| *i == id).map(|(_, l)| *l).unwrap_or(&[]);
+    d.insert("left_out".into(), json!(skip));
+    d.insert("description_version".into(), json!(DESCRIPTION_VERSION));
+    d.insert("app_version".into(), json!(env!("CARGO_PKG_VERSION")));
+    d.insert("made_by".into(), json!(format!("SCAD Workshop {}, from the family manifest of the app's copy (catalog/families/{id}.json)", env!("CARGO_PKG_VERSION"))));
     Some(StarterOnGitHub {
         repository: s["repository"].as_str()?.to_string(),
         commit: s["commit"].as_str()?.to_string(),
         vendor_path,
         description: Value::Object(d),
     })
+}
+
+/// The app's description of a project, if it has one: a converted starter project's by its id, a
+/// project added from a repository the app knows by its owner and name.
+pub fn known_description(src: &Value) -> Option<Value> {
+    let id = src["id"].as_str().unwrap_or("");
+    let by_repo = || src["origin"]["subdir"].as_str().unwrap_or("").is_empty().then(|| known_on_github(src["origin"]["owner"].as_str()?, src["origin"]["repo"].as_str()?)).flatten();
+    (src["kind"] == "github").then(|| starter_on_github(id).or_else(by_repo)).flatten().map(|s| s.description)
+}
+
+/// Replace a project's description.json written by an older app with the current one (F-14). Returns
+/// whether it did.
+pub fn refresh_description(lib: &Library, src: &Value) -> bool {
+    let Some(id) = src["id"].as_str() else { return false };
+    let Ok(path) = lib.source_dir(id).map(|d| d.join("description.json")) else { return false };
+    let Some(old) = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { return false };
+    if old["description_version"].as_u64().unwrap_or(1) >= DESCRIPTION_VERSION || lib.read_only().is_some() {
+        return false;
+    }
+    match known_description(src) {
+        Some(d) => crate::config::write_json(&path, &d).is_ok(),
+        None => false,
+    }
 }
 
 /// The app's description of a GitHub repository it had a starter project from.
@@ -831,6 +921,11 @@ pub fn convert_starter(lib: &Library, id: &str, token: Option<String>) -> Result
     src["version_date"] = json!(r.commit_date);
     src["previous_version"] = old["version"].clone();
     let mut versions = old["versions"].as_array().cloned().unwrap_or_default();
+    // the app's copy says what it was (F-16): the same upstream commit, before it came from GitHub
+    for v in versions.iter_mut().filter(|v| v["id"] == old["version"]) {
+        v["commit"] = json!(conv.commit);
+        v["message"] = json!(format!("The app's copy of {}, before it came from GitHub", &conv.commit[..7.min(conv.commit.len())]));
+    }
     versions.push(json!({ "id": version, "commit": r.commit_sha, "date": r.commit_date, "message": r.commit_message, "added": now, "files": n }));
     src["versions"] = json!(versions);
     src["detected"]["origin"] = json!(html);
@@ -839,6 +934,40 @@ pub fn convert_starter(lib: &Library, id: &str, token: Option<String>) -> Result
     }
     lib.save_source(&src)?;
     Ok(old)
+}
+
+/// After a starter project came from GitHub: remove the app's old copy when every file in it is the
+/// same in the new version, so the library doesn't keep the same files twice (F-16). Returns whether it did.
+pub fn drop_same_old_copy(lib: &Library, id: &str, vendor_path: &str) -> Result<bool> {
+    let src = lib.source(id)?;
+    let Some(old) = src["origin"]["converted"]["version"].as_str().map(String::from) else { return Ok(false) };
+    let Some(new) = src["version"].as_str().filter(|v| *v != old).map(String::from) else { return Ok(false) };
+    let files = lib.source_dir(id)?.join("files");
+    let (old_root, new_root) = (files.join(&old).join(vendor_path), files.join(&new));
+    if !old_root.is_dir() || !new_root.is_dir() {
+        return Ok(false);
+    }
+    let same = crate::scan::list_files(&old_root).iter().all(|f| {
+        let a = std::fs::read(old_root.join(&f.rel));
+        a.is_ok() && a.ok() == std::fs::read(new_root.join(&f.rel)).ok()
+    });
+    if !same {
+        return Ok(false);
+    }
+    let dir = lib.source_dir(id)?;
+    std::fs::remove_dir_all(files.join(&old))?;
+    let _ = std::fs::remove_file(dir.join("derived").join(format!("{old}.json")));
+    let _ = std::fs::remove_dir_all(dir.join("docs").join(&old));
+    let _ = std::fs::remove_dir_all(dir.join("generated").join(&old));
+    let mut src = src;
+    if let Some(vs) = src["versions"].as_array_mut() {
+        vs.retain(|v| v["id"] != old.as_str());
+    }
+    if src["previous_version"] == old.as_str() {
+        src["previous_version"] = Value::Null;
+    }
+    lib.save_source(&src)?;
+    Ok(true)
 }
 
 /// Put a starter project back as it was when turning it into a GitHub project didn't work.
@@ -903,6 +1032,20 @@ mod tests {
             }
         }
         assert!(starter_on_github("hsw").is_none());
+        // (F-14) in the app's old copies, every file that draws something is listed or left out on purpose,
+        // so only files upstream adds later become models
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        for (id, _) in STARTER_ON_GITHUB {
+            let s = starter_on_github(id).unwrap();
+            let root = repo.join(&s.vendor_path);
+            if !root.is_dir() {
+                continue;
+            }
+            let listed: Vec<&str> = s.description["models"].as_array().unwrap().iter().filter_map(|m| m["entrypoint"].as_str()).collect();
+            let unlisted: Vec<String> = crate::scan::survey(&root).entries.into_iter().filter(|e| !listed.contains(&e.as_str()) && !left_out(&s.description, e)).collect();
+            assert!(unlisted.is_empty(), "{id}: neither listed nor left out: {unlisted:?}");
+            assert_eq!(s.description["description_version"], DESCRIPTION_VERSION);
+        }
         assert_eq!(known_on_github("Kennetek", "gridfinity-rebuilt-openscad").map(|s| s.vendor_path), Some("vendor/gridfinity-rebuilt".to_string()));
     }
 

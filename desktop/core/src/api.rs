@@ -375,6 +375,25 @@ impl App {
         let ids: Vec<String> = lib.source_ids().into_iter().filter(|id| only.as_deref().is_none_or(|o| o == id)).collect();
         for id in ids {
             let src = lib.source(&id)?;
+            // a starter project from GitHub: only whether there's something newer there (F-17)
+            if src["kind"] == "bundled" && src["origin"]["commit"].is_string() {
+                let name = src["detected"]["name"].as_str().unwrap_or(&id).to_string();
+                self.job_stage(job, format!("Checking {name}…"));
+                let (s2, t) = (src.clone(), token.clone());
+                if let Ok(Ok(newer)) = tokio::task::spawn_blocking(move || sources::upstream_newer(&s2, t)).await {
+                    let mut src = lib.source(&id)?;
+                    let u = match newer {
+                        Some(latest) => json!({ "state": "upstream", "latest": latest }),
+                        None => json!({ "state": "current" }),
+                    };
+                    if src["update"]["state"] != u["state"] || src["update"]["latest"]["commit"] != u["latest"]["commit"] {
+                        src["update"] = u;
+                        src["update"]["checked"] = json!(library::now());
+                        lib.save_source(&src)?;
+                    }
+                }
+                continue;
+            }
             if src["kind"] != "github" {
                 continue;
             }
@@ -970,6 +989,7 @@ impl App {
                             Ok(()) => {
                                 if let Some(c) = sources::starter_on_github(&id) {
                                     sources::rebase_recipe_edits(&lib, &id, &c.vendor_path)?;
+                                    let _ = sources::drop_same_old_copy(&lib, &id, &c.vendor_path);
                                 }
                                 converted.push(json!({ "id": id, "name": name }));
                             }

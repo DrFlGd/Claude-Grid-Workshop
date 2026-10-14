@@ -6,7 +6,7 @@ import { ui } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { plural } from "../lib/util.js";
 import { Icon } from "./icons.js";
-import { addProject } from "./library.js";
+import { addProject, suggestionFacts } from "./library.js";
 
 const ago = (t) => {
   const m = Math.round((Date.now() - t) / 60000);
@@ -67,7 +67,7 @@ export function Home() {
         ? "Add a project from a GitHub link, a ZIP file or a folder, or put your own .scad files in a folder inside the library's local/ folder." : ""}</p>
         ${suggested.length ? html`<div class="home-suggested" id="home-suggested"><h3>Projects to start with</h3>
           <p class="muted">Each comes from GitHub, so the app can check it for updates.</p>
-          <ul>${suggested.map((p) => html`<li key=${p.url}><span><b>${p.name}</b><span class="muted">${p.summary}</span></span>
+          <ul>${suggested.map((p) => html`<li key=${p.url}><span><b>${p.name}</b><span class="muted">${p.summary}</span><span class="muted small">${suggestionFacts(p)}</span></span>
             <button type="button" class="ghost small" data-suggested=${p.name}
               onClick=${() => addProject({ kind: "github", url: p.url }, p.name)}>${Icon.plus(14)} Add</button></li>`)}</ul></div>` : null}`}</section>
     ${comps ? html`<section data-home="components"><h2>Components</h2>

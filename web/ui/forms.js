@@ -10,6 +10,7 @@ import { CategoryPicker } from "./catpick.js";
 import { Icon } from "./icons.js";
 import { api } from "./library.js";
 import { itemTarget } from "./metaedit.js";
+import { humanize } from "../lib/util.js";
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const close = () => ui.set({ dialog: null });
@@ -192,7 +193,7 @@ export function FormEditor({ spec }) {
           <div class="fe-head">
             <label class="check" title="Show this setting"><input type="checkbox" checked=${r.show} onChange=${(e) => set(p.name, "show", e.target.checked)} data-form=${`${p.name}.show`} /></label>
             <button type="button" class="fe-name" onClick=${() => setOpen(isOpen ? null : p.name)} aria-expanded=${isOpen ? "true" : "false"}>
-              <b>${r.label || p.label || p.name}</b> <code>${p.name}</code> <span class="muted">${p.group}</span>${changed ? html` <span class="badge-mini">edited</span>` : null}</button>
+              <b>${r.label || (p.label && p.label !== p.name ? p.label : humanize(p.name))}</b> <code>${p.name}</code> <span class="muted">${p.group}</span>${changed ? html` <span class="badge-mini">edited</span>` : null}</button>
           </div>
           ${isOpen ? html`<div class="fe-body">
             <label><span>Label</span>${input(p.name, "label", { placeholder: p.label || p.name })}</label>
@@ -215,7 +216,7 @@ export function FormEditor({ spec }) {
     </div>
     <section class="fe-presets"><h3>Presets</h3>
       ${presets.length ? html`<ul>${presets.map((ps, i) => html`<li key=${i}>${ps.label} <span class="muted">${Object.keys(ps.values).length} values</span>
-        <button type="button" class="link-btn" onClick=${() => setState({ ...state, presets: presets.filter((_, j) => j !== i) })}>Remove</button></li>`)}</ul>` : html`<p class="muted">None. Presets appear under “Start from” on the model's page.</p>`}
+        <button type="button" class="link-btn" onClick=${() => setState({ ...state, presets: presets.filter((_, j) => j !== i) })}>Remove</button></li>`)}</ul>` : html`<p class="muted">None. Presets appear in the Defaults list above the model's form.</p>`}
       ${ctx.currentValues?.(detail.key) ? html`<div class="fe-add-preset"><input placeholder="Name for the current settings" value=${presetName} onInput=${(e) => setPresetName(e.target.value)} id="fe-preset-name" />
         <button type="button" class="ghost" onClick=${addPreset} disabled=${!presetName.trim()} id="fe-preset-add">Add as a preset</button></div>` : null}
     </section>

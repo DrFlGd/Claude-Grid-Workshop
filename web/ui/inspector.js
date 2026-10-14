@@ -146,7 +146,7 @@ export function Inspector() {
       ${it.settings != null ? html`<dt>Settings</dt><dd>${it.settings}</dd>` : null}
       ${it.dims ? html`<dt>Size</dt><dd>${it.dims.map((d) => Math.round(d * 10) / 10).join(" × ")} mm</dd>` : null}
       ${it.tags.length ? html`<dt>Tags</dt><dd>${it.tags.join(", ")}</dd>` : null}
-      ${it.updated ? html`<dt>Updated</dt><dd>${when(it.updated)} <span class="muted">${it.updatedFrom === "supplied" ? "(files supplied)" : it.updatedFrom === "upstream" ? "(pinned upstream version)" : ""}</span></dd>` : null}
+      ${it.updated ? html`<dt>Updated</dt><dd>${when(it.updated)} <span class="muted">${it.updatedFrom === "supplied" ? "(files supplied)" : it.updatedFrom === "upstream" ? "(version in use)" : ""}</span></dd>` : null}
       ${Object.entries(it.fields || {}).map(([k, v]) => html`<dt>${k}</dt><dd>${String(v)}</dd>`)}
     </dl>
     ${it.kind === "generator" ? html`<${SavedSettings} item=${it} />` : null}

@@ -123,11 +123,15 @@ a { color: inherit; }
 /* ---- toast (save results) ---------------------------------------------- */
 /* messages take the left of the status bar, over its counts, so they never cover a page's own
    controls (Review 2, UI-12); a long one grows upwards */
+/* (0.4.10, UI-24) drawn as part of the bar, in its font and colours (each skin styles both), with the
+   counts underneath hidden while it shows, rather than a black box with cut-off words beside it */
 .toast { position: fixed; left: 0; bottom: 0; z-index: 50; display: flex; gap: 12px; align-items: center;
-  background: var(--ink); color: var(--white); padding: 3px 14px; min-height: 27px; border-top-right-radius: var(--radius-s);
-  font-size: 13px; line-height: 1.35; max-width: min(720px, calc(100vw - 260px)); box-shadow: 0 -2px 10px rgba(0,0,0,.18); }
+  background: var(--panel); color: var(--ink); padding: 3px 14px 3px 11px; min-height: 27px; box-sizing: border-box;
+  border-top: 1px solid var(--steel-2); border-right: 1px solid var(--steel-2); border-left: 3px solid var(--tool);
+  font-size: 12.5px; font-weight: 600; line-height: 1.35; max-width: min(720px, calc(100vw - 260px)); }
 .toast span { overflow-wrap: anywhere; }
-.toast .ghost.light { padding: 1px 10px; font-size: 12.5px; }
+.toast .ghost { padding: 0 10px; min-height: 20px; font-size: 12px; color: inherit; background: transparent; border-color: color-mix(in srgb, currentColor 45%, transparent); }
+body.toasting .statusbar-inner > span:first-child { visibility: hidden; }
 @media (max-width: 700px) { .toast { max-width: 100vw; } }
 
 /* ---- settings page -------------------------------------------------------- */
@@ -203,6 +207,9 @@ input:invalid, .field.has-error input { border-color: var(--danger); }
 .model-project a:hover { color: var(--ink); text-decoration: underline; }
 .credit { font-size: 13px; color: var(--graphite); }
 .credit a { color: var(--ink); }
+.lib-extra { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.lib-extra:empty { display: none; }
+.credit .credit-check { color: var(--warn-ink); font-weight: 650; }
 .rail-tools { display: flex; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--steel-2); }
 .rail-tools .ghost[aria-pressed="true"] { background: var(--ink); color: var(--white); border-color: var(--ink); }
 .rail-tools .search { flex: 1; }
@@ -832,6 +839,7 @@ textarea.grow { resize: none; overflow: hidden; line-height: 1.4; min-height: 0;
 .insp-flag svg { vertical-align: -2px; margin-right: 4px; }
 .item-actions { flex-wrap: wrap; }
 .item-actions .ghost { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 5px 9px; }
+.model-alerts .alert-note { display: block; padding: 7px 10px; border-radius: var(--radius-s); border: 1px solid var(--steel-2); background: var(--panel); color: var(--ink); margin: 8px 0 0; font-size: 12.5px; }
 .model-alerts .alert-broken { display: block; padding: 7px 10px; border-radius: var(--radius-s); border: 1px solid var(--danger); color: var(--danger); margin: 8px 0 0; font-size: 12.5px; }
 .meta-from { color: var(--graphite); font-size: 12px; }
 .meta-from .link-btn { font-size: 12px; }
@@ -919,9 +927,10 @@ textarea.grow { resize: none; overflow: hidden; line-height: 1.4; min-height: 0;
 .sideview { position: absolute; top: 0; bottom: 0; right: 0; display: flex; }
 .sideview.open { box-shadow: -14px 0 32px rgba(10, 14, 18, .22); }
 .side-tabs { width: 34px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 0; background: var(--panel); border-left: 1px solid var(--steel-2); overflow-x: hidden; overflow-y: auto; }
-.side-tab { writing-mode: vertical-rl; display: flex; align-items: center; gap: 7px; width: 34px; padding: 12px 0; border: 0; border-left: 3px solid transparent; background: transparent;
+/* the label inside is turned, not the button: the Linux app's web view ignores writing-mode on a button (UI-21) */
+.side-tab { display: flex; flex-direction: column; align-items: center; gap: 7px; width: 34px; padding: 12px 0; border: 0; border-left: 3px solid transparent; background: transparent;
   color: var(--graphite); font: inherit; font-size: 12.5px; font-weight: 650; letter-spacing: .02em; cursor: pointer; white-space: nowrap; }
-.side-tab span { max-height: 150px; overflow: hidden; text-overflow: ellipsis; }
+.side-tab span { writing-mode: vertical-rl; max-height: 150px; overflow: hidden; text-overflow: ellipsis; }
 .side-tab svg { flex: none; }
 .side-tab:hover { color: var(--ink); background: var(--steel); }
 .side-tab.on { color: var(--ink); background: var(--white); border-left-color: var(--tool); }
@@ -1130,7 +1139,7 @@ svg g[data-sk] { display: none; }
 :root[data-skin="drafting"] :is(.card-sub, .kbd, .browse-count, .filter-n, .ql-dims, .hud-dims .mm, .hud-dims .units, .catpick-count) { font-family: var(--font-mono); }
 :root[data-skin="drafting"] .hud-dims .mm { font-size: 19px; font-weight: 600; letter-spacing: 0; }
 /* the status bar is the drawing's title block */
-:root[data-skin="drafting"] .statusbar { border-top: 1px solid var(--ink); background: var(--white); font-family: var(--font-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
+:root[data-skin="drafting"] :is(.statusbar, .toast) { border-top: 1px solid var(--ink); background: var(--white); font-family: var(--font-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
 :root[data-skin="drafting"] .statusbar-inner { padding: 0; gap: 0; align-items: stretch; }
 :root[data-skin="drafting"] .statusbar-inner > * { display: flex; align-items: center; padding: 3px 12px; border-right: 1px solid var(--steel-2); }
 :root[data-skin="drafting"] .statusbar .status-jobs { border-right: 0; border-left: 1px solid var(--steel-2); }
@@ -1231,7 +1240,7 @@ svg g[data-sk] { display: none; }
 :root[data-skin="partsbin"] .card-sub { font-size: 13px; } /* the condensed face reads small at 12 px */
 :root[data-skin="partsbin"] :is(.badge, .chip, .chip-btn, .badge-mini, .profile-tag) { border-radius: 2px; }
 /* the status bar is a strip of tape */
-:root[data-skin="partsbin"] .statusbar { background: var(--tape); color: var(--tape-ink); border-top: 0; font-family: var(--font-mono); font-size: 13.5px; }
+:root[data-skin="partsbin"] :is(.statusbar, .toast) { background: var(--tape); color: var(--tape-ink); border-top: 0; font-family: var(--font-mono); font-size: 13.5px; }
 :root[data-skin="partsbin"] .statusbar .muted { color: inherit; opacity: .75; }
 
 /* Layer Line: the print bed and the filament. */
@@ -1328,8 +1337,8 @@ svg g[data-sk] { display: none; }
 :root[data-skin="layerline"] .catpanel-list .nav-row[data-depth="0"] .nav-count:not(:empty)::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--spool); }
 :root[data-skin="layerline"] .home-tiles > .tile { border-left: 4px solid var(--spool, var(--steel-2)); }
 /* numbers in a face with a plain zero: Atkinson Hyperlegible slashes it, which reads as the diameter mark parts use */
-:root[data-skin="layerline"] :is(.field input, .hud-dims, .nav-count, .card-sub, .browse-count, .ql-dims, .filter-n, .catpick-count) { font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; }
-:root[data-skin="layerline"] .statusbar { background: var(--panel); }
+:root[data-skin="layerline"] :is(.field input, .hud-dims, .nav-count, .card-sub, .browse-count, .ql-dims, .filter-n, .catpick-count, .engine, .status, .statusbar-inner > span:first-child) { font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; }
+:root[data-skin="layerline"] :is(.statusbar, .toast) { background: var(--panel); }
 /* "Parametric Models [87]" in Overpass needs a little more room than Archivo */
 @media (min-width: 901px) { :root[data-skin="drafting"] .sidebar { width: 226px; } }
 
@@ -1339,4 +1348,5 @@ svg g[data-sk] { display: none; }
 .home-suggested ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
 .home-suggested li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--steel); border-radius: var(--radius-s); }
 .home-suggested li > span { display: flex; flex-direction: column; min-width: 0; }
+.home-suggested li > span .small { font-size: 12px; }
 .add-suggested .chips { margin-top: 4px; }

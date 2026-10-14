@@ -6,8 +6,14 @@ import { STLLoader } from "./vendor/three/STLLoader.js";
 const GRID = 42; // mm, one Gridfinity unit
 
 export class Viewer {
-  constructor(canvas) {
+  constructor(canvas, { coverFrom = null } = {}) {
     this.canvas = canvas;
+    // an element that can lie over the right of the view (the side viewer's panel):
+    // the model is framed in the part left uncovered
+    this.coverFrom = coverFrom;
+    this.cover = 0;
+    this.lastView = "iso";
+    this.moved = false;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.scene = new THREE.Scene();
@@ -50,6 +56,8 @@ export class Viewer {
     this.redraw = () => { if (!this._raf) this._raf = requestAnimationFrame(tick); };
     this.controls.addEventListener("change", this.redraw);
     this.controls.addEventListener("start", this.redraw);
+    // once the camera is moved by hand, a resize keeps it where it is
+    this.controls.addEventListener("start", () => { this.moved = true; });
 
     this._resize = () => this.resize();
     new ResizeObserver(this._resize).observe(canvas.parentElement);
@@ -61,8 +69,19 @@ export class Viewer {
     const w = el.clientWidth, h = el.clientHeight;
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
+    let cover = 0;
+    const panel = this.coverFrom && document.querySelector(this.coverFrom);
+    if (panel) {
+      const a = this.canvas.getBoundingClientRect(), b = panel.getBoundingClientRect();
+      if (b.width && b.top < a.bottom && b.bottom > a.top) cover = Math.max(0, Math.min(a.right - b.left, w - 120));
+    }
+    this.cover = cover;
+    // the picture is the right-hand part of a wider one centred on the uncovered part
+    this.camera.aspect = (w + cover) / h;
+    if (cover) this.camera.setViewOffset(w + cover, h, cover, 0, w, h);
+    else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
+    if (this.mesh && !this.moved) this.view(this.lastView);
     this.redraw();
   }
 
@@ -156,7 +175,14 @@ export class Viewer {
     const size = bb.getSize(new THREE.Vector3());
     const center = bb.getCenter(new THREE.Vector3());
     const radius = Math.max(size.length() / 2, 20);
-    const dist = radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.3;
+    // fit to the narrower of the view's height and the uncovered width
+    const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const el = this.canvas.parentElement;
+    const seen = Math.max(1, (el?.clientWidth || 1) - this.cover), tall = Math.max(1, el?.clientHeight || 1);
+    const hHalf = Math.atan(Math.tan(vHalf) * seen / tall);
+    const dist = radius / Math.sin(Math.min(vHalf, hHalf)) * 1.3;
+    this.lastView = name in { iso: 1, top: 1, front: 1 } ? name : "iso";
+    this.moved = false;
     const dirs = {
       iso: new THREE.Vector3(0.62, -0.95, 0.75),
       top: new THREE.Vector3(0, -0.0001, 1),

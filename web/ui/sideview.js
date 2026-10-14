@@ -100,6 +100,8 @@ function useTarget(s) {
     }
     if (s.scope.startsWith("source:")) return { ref: { source: s.scope.slice(7) } };
   }
+  // a part page: its pack's project
+  if (s.view === "library" && s.partRef) return { ref: s.partRef };
   return null;
 }
 
@@ -447,7 +449,7 @@ function DocView({ refObj, doc, info, onOpenCode }) {
 
 export function SideView() {
   const s = useStore(ui, (st) => ({ ready: st.ready, view: st.view, activeTab: st.activeTab, selection: st.selection, scope: st.scope,
-    side: st.side || {}, sideFile: st.sideFile, v: st.catalogVersion }));
+    side: st.side || {}, sideFile: st.sideFile, v: st.catalogVersion, partRef: st.partRef }));
   const target = useTarget(s);
   const [detail, setDetail] = useState(null);
   const [ref, setRef] = useState(null);
@@ -486,6 +488,7 @@ export function SideView() {
   const over = target && tabs.length && s.side.open ? Math.max(MIN_W, s.side.width || 560) : 0;
   useEffect(() => {
     document.documentElement.style.setProperty("--side-over", over ? `min(${over}px, calc(100vw - 90px))` : "0px");
+    window.dispatchEvent(new CustomEvent("gw-side-over"));
   }, [over]);
   if (!target || !tabs.length) return null;
   const want = s.side.tab === "doc" ? docs[0]?.id : s.side.tab;
