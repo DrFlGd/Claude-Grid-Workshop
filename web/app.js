@@ -13,7 +13,7 @@ import { setContext } from "./ui/context.js";
 import { html, render } from "./lib/html.js";
 import { LibrarySettingsPage } from "./ui/libsettings.js";
 import { unflagItems } from "./ui/actions.js";
-import { saveComponentThumb } from "./ui/library.js";
+import { saveComponentThumb, when, sourceById } from "./ui/library.js";
 import { ui, recordRecent, setTabs, layoutFor, isDark, setTheme, THEMES, setSkin, SKINS } from "./ui/state.js";
 import { scopeFromPath } from "./ui/context.js";
 import { scopeInfo } from "./ui/sidebar.js";
@@ -229,7 +229,7 @@ function renderModelHeader(detail) {
   alerts.forEach((a) => a.remove());
   // flagged as broken in the library (desktop)
   const broken = detail.meta?.broken;
-  if (broken) alerts.unshift(el("div", { class: "alert-broken", role: "note" }, `Flagged as broken${broken.date ? ` on ${broken.date}` : ""}${broken.note ? `: ${broken.note}` : "."} `,
+  if (broken) alerts.unshift(el("div", { class: "alert-broken", role: "note" }, `Flagged as broken${broken.date ? ` on ${when(broken.date)}` : ""}${broken.note ? `: ${broken.note}` : "."} `,
     el("button", { type: "button", class: "link-btn", text: "Remove the flag", onclick: async () => {
       const it = state.index.get(`gen:${detail.key}`);
       if (it) await unflagItems([it]);
@@ -721,7 +721,7 @@ function chooseSettings(value) {
     setAllValues(values);
     setEdits(key, editTexts(rec.edits));
     // the project's file changed since (an update): the edited copy is still what's used
-    const moved = Object.entries(rec.edits || {}).filter(([p, e]) => e?.base && state.model.files?.[p] !== e.base).map(([p]) => p.split("/").pop());
+    const moved = Object.entries(rec.edits || {}).filter(([p, e]) => e?.base && ![state.model.file_bases?.[p], state.model.files?.[p]].includes(e.base)).map(([p]) => p.split("/").pop());
     if (moved.length) note(`${moved.join(", ")} changed in the project since “${rec.name}” was saved; your edited copy is used.`, "warn");
     else if (skipped.length) note(skippedText(skipped.length).trim(), "warn");
   }
@@ -776,12 +776,18 @@ async function saveSettings(asNew) {
   const key = state.model.key;
   try {
     let rec;
-    // code edits go with the values, each with the hash of the file it started from
-    const ed = Object.entries(editsOf(key)).map(([p, text]) => [p, { text, base: state.model.files?.[p] || null }]);
+    // code edits go with the values, each with the hash of the project's file it started from (and
+    // of the app's copy, when the app made one: a file whose settings were lifted from its calls)
+    const ed = Object.entries(editsOf(key)).map(([p, text]) => {
+      const own = state.model.file_bases?.[p], used = state.model.files?.[p] || null;
+      return [p, { text, base: own || used, ...(own && own !== used ? { copy: used } : {}) }];
+    });
     const edits = ed.length ? Object.fromEntries(ed) : null;
+    // the project version they were made with
+    const version = sourceById(state.model.source_id)?.version || null;
     if (mode === "rename" && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id) });
-    else if (!asNew && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id), values: changedValues(state.model, state.values), edits });
-    else rec = await store.settings.save({ model: key, name: uniqueName(name), values: changedValues(state.model, state.values), edits });
+    else if (!asNew && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id), values: changedValues(state.model, state.values), edits, version });
+    else rec = await store.settings.save({ model: key, name: uniqueName(name), values: changedValues(state.model, state.values), edits, version });
     dlg.close();
     saved.active = `saved:${rec.id}`;
     await loadSaved();
@@ -1322,7 +1328,11 @@ function showLicenses(focus) {
 }
 
 // ---------------------------------------------------------------- viewer tools
-document.querySelectorAll(".hud-tools [data-view]").forEach((b) => b.addEventListener("click", () => state.viewer?.view(b.dataset.view)));
+// a narrow 3D view (the side viewer open beside it) folds the view buttons under ⋯
+const hudTools = $(".hud-tools"), hudMore = $(".hud-more");
+const foldHud = (open) => { hudTools.classList.toggle("open", open); hudMore.setAttribute("aria-expanded", String(open)); };
+hudMore.addEventListener("click", () => foldHud(!hudTools.classList.contains("open")));
+document.querySelectorAll(".hud-tools [data-view]").forEach((b) => b.addEventListener("click", () => { state.viewer?.view(b.dataset.view); foldHud(false); }));
 document.querySelectorAll(".hud-tools [data-toggle]").forEach((b) => b.addEventListener("click", () => {
   const on = b.getAttribute("aria-pressed") !== "true";
   b.setAttribute("aria-pressed", String(on));
@@ -1450,22 +1460,27 @@ function showSettings() {
       el("div", { class: "field-head" }, el("span", { class: "label", text: `${f.label} (${f.unit})` })), inputs,
       el("p", { class: "help-inline" }, used.length ? ["Used by ", ...used.flatMap((a, i) => [i ? ", " : "", a]), "."] : "No model uses this yet."));
   });
-  const body = [
-    el("h2", { text: "Appearance" }),
-    el("p", { class: "help-inline", text: "The skin is the app's look: its colours, lettering, shapes and icons. Each skin has light and dark colours, chosen by the theme." }),
+  const appearance = section("appearance", "Appearance", "The skin is the app's look: its colours, lettering, shapes and icons. Each skin has light and dark colours, chosen by the theme.",
     el("div", { class: "theme-pick", id: "skin-pick", role: "radiogroup", "aria-label": "Skin" }, el("b", { text: "Skin" }), SKINS.map(([id, label]) => el("label", {},
       el("input", { type: "radio", name: "skin", value: id, checked: ui.get().skin === id, onchange: () => setSkin(id) }), " ", label))),
     el("div", { class: "theme-pick", id: "theme-pick", role: "radiogroup", "aria-label": "Theme" }, el("b", { text: "Theme" }), THEMES.map(([id, label]) => el("label", {},
-      el("input", { type: "radio", name: "theme", value: id, checked: ui.get().theme === id, onchange: () => setTheme(id) }), " ", label))),
-    el("h2", { text: "Printer profile" }),
-    el("p", { text: "Models that ask for these start with your values instead of the author's. Leave a value empty to keep the defaults. Magnet and tolerance settings aren't linked: each project measures them differently." }),
+      el("input", { type: "radio", name: "theme", value: id, checked: ui.get().theme === id, onchange: () => setTheme(id) }), " ", label))));
+  const printer = section("profile", "Printer profile", "Models that ask for these start with your values instead of the author's. Leave a value empty to keep the defaults. Magnet and tolerance settings aren't linked: each project measures them differently.",
     el("div", { class: "profile-grid" }, fields),
-    el("p", { id: "profile-note", class: "muted", role: "status" }),
-  ];
-  if (platform.kind === "desktop") body.push(...desktopSettings());
-  else body.push(el("h2", { text: "Your data" }),
-    el("p", { text: "Saved settings and this profile are kept in this browser only. Use Export for OpenSCAD on a model to keep a copy as a file." }));
-  showPage(body);
+    el("p", { id: "profile-note", class: "muted", role: "status" }));
+  const sections = [appearance, printer, ...(platform.kind === "desktop" ? desktopSettings()
+    : [section("data", "Your data", "Saved settings and this profile are kept in this browser only. Use Export for OpenSCAD on a model to keep a copy as a file.")])];
+  showPage([el("div", { class: "library-settings" }, settingsToc(sections), sections)]);
+}
+
+/** One section of a settings page, laid out like Library settings: a heading, a grey intro, then its contents. */
+function section(id, title, intro, ...children) {
+  return el("section", { class: "ls-section", id: `ls-${id}` }, el("h2", { text: title }), intro ? el("p", { class: "muted", text: intro }) : null, ...children);
+}
+/** Jump links to a page's sections. */
+function settingsToc(sections) {
+  return el("nav", { class: "ls-toc", "aria-label": "On this page" }, sections.filter(Boolean).map((sec) => el("a", { href: location.hash,
+    text: sec.querySelector("h2").textContent, onclick: (e) => { e.preventDefault(); sec.scrollIntoView({ behavior: "smooth" }); } })));
 }
 
 const RELEASES_URL = "https://github.com/DrFlGd/SCAD-Workshop/releases";
@@ -1493,11 +1508,11 @@ function desktopSettings() {
   const gb = (n) => (n == null ? "unknown" : bytes(n));
   const cacheLine = el("span", { text: gb(info.cache_bytes) });
   return [
-    el("h2", { text: "Library" }),
+    section("library", "Library", null,
     el("p", {}, "Library folder: ", el("code", { text: info.library?.path || info.workspace || "not available" }), ". ",
       el("a", { href: "#/library-settings", id: "settings-library-link", text: "Library settings" }),
-      " has projects, categories, hidden and deleted items, the trash and updates."),
-    el("h2", { text: "Engine" }),
+      " has projects, categories, hidden and deleted items, the trash and updates.")),
+    section("engine", "Engine", null,
     info.engine
       ? el("p", {}, `OpenSCAD ${info.engine}, native, up to ${info.concurrency || 1} render${info.concurrency > 1 ? "s" : ""} at once. `, el("br"), el("code", { text: info.engine_path || "" }))
       : el("p", { class: "lic-summary", text: info.engine_error || "OpenSCAD isn't available." }),
@@ -1511,10 +1526,10 @@ function desktopSettings() {
     el("p", {}, "Finished renders are kept so repeating one is instant: ", cacheLine, ". ",
       el("button", { type: "button", class: "ghost", text: "Clear", onclick: async () => {
         try { await platform.workspace.clearCache(); const i = await platform.refreshInfo(); cacheLine.textContent = gb(i.cache_bytes); } catch (e) { toast(String(e)); }
-      } })),
-    el("h2", { text: "About" }),
+      } }))),
+    section("about", "About", null,
     el("p", { id: "app-version" }, `SCAD Workshop ${info.version || "(version unknown)"}. `,
-      el("a", { href: RELEASES_URL, target: "_blank", rel: "noopener", text: "All releases and what changed" })),
+      el("a", { href: RELEASES_URL, target: "_blank", rel: "noopener", text: "All releases and what changed" }))),
   ];
 }
 

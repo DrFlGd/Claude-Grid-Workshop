@@ -65,7 +65,9 @@ export function AddProject() {
       await ctx.reloadCatalog();
       const n = res.read?.models ?? 0, parts = res.read?.parts ?? 0;
       const problems = (res.read?.problems || []).length;
-      ctx.toast(`Added ${sourceById(res.source)?.name || label}: ${plural(n, "generator")}${parts ? `, ${plural(parts, "part")}` : ""}${problems ? `; ${plural(problems, "problem")} to look at` : ""}.`);
+      const src = sourceById(res.source), name = src?.name || label;
+      ctx.toast(asLibrary || src?.role === "library" ? `Added ${name}: a library, its modules are in Components.`
+        : `Added ${name}: ${plural(n, "model")}${parts ? `, ${plural(parts, "part")}` : ""}${problems ? `; ${plural(problems, "problem")} to look at` : ""}.`);
       location.hash = scopeHash(`source:${res.source}`);
       makeThumbnails();
     } catch (err) {
@@ -90,7 +92,7 @@ export function AddProject() {
         ${tab === "folder" ? html`<label class="check"><input type="checkbox" checked=${link} onChange=${(e) => setLink(e.target.checked)} id="add-link" />
           Link instead of copying (for a project you're still editing; it won't move with the library)</label>` : null}</div>`}
     <label class="check"><input type="checkbox" checked=${asLibrary} onChange=${(e) => setAsLibrary(e.target.checked)} id="add-library" />
-      It's a library other projects include (like BOSL2): don't list its files as generators</label>
+      It's a library other projects include (like BOSL2): don't list its files as models</label>
     ${error ? html`<p class="form-error" role="alert">${error}</p>` : null}
     <div class="dialog-actions"><button type="button" class="ghost" onClick=${close}>Cancel</button>
       <button type="submit" class="primary" disabled=${busy} id="add-go">Add</button></div>
@@ -116,6 +118,8 @@ function UpdateBanner({ src }) {
       await api(cmd, { id: src.id });
       await ctx.reloadCatalog();
       ctx.toast(label);
+      // the new version's models are rendered at their defaults again, with new thumbnails
+      if (cmd === "update_apply") makeThumbnails();
     } catch (e) { ctx.toast(String(e.message || e)); } finally { setBusy(false); }
   };
   return html`<div class="update-banner" role="region" aria-label="Update">
@@ -129,7 +133,7 @@ function UpdateBanner({ src }) {
         m.added?.length ? `new settings ${m.added.join(", ")}` : "",
         m.removed?.length ? `removed ${m.removed.join(", ")}` : "",
         m.defaults?.length ? `new defaults for ${m.defaults.map((d) => d.name).join(", ")}` : ""].filter(Boolean).join("; ")}</li>`)}
-      ${!ch.added?.length && !ch.removed?.length && !(ch.settings || []).length ? html`<li>No generator or setting changes found.</li>` : null}
+      ${!ch.added?.length && !ch.removed?.length && !(ch.settings || []).length ? html`<li>No model or setting changes found.</li>` : null}
     </ul>
     <p class="muted">The current version stays until you accept, and your edits are kept either way.</p>
     <div class="button-row"><button type="button" class="primary" disabled=${busy} onClick=${() => act("update_apply", "Updated.")} data-update="apply">Use the new version</button>
@@ -210,7 +214,7 @@ export function SourcePanel({ id }) {
       </div>
     </div>
     <${UpdateBanner} src=${src} />
-    ${src.update?.state === "error" ? html`<p class="lic-summary">Couldn't check for updates: ${src.update.error}</p>` : null}
+    ${src.update?.error ? html`<p class="lic-summary">Couldn't check for updates${src.update.error_date ? ` on ${when(src.update.error_date)}` : ""}: ${src.update.error}</p>` : null}
     ${problems.length ? html`<details class="problems"><summary>${plural(problems.length, "problem")} with this project</summary>
       <ul>${problems.map((p) => html`<li>${p.message}</li>`)}</ul></details>` : null}
     <div class="seg tabs-seg source-tabs" role="tablist">${tabs.map(([t, l]) => html`<button type="button" role="tab" class=${`seg-btn${tab === t ? " on" : ""}`}
@@ -312,7 +316,8 @@ function renderMessage(e) {
   return line.trim().replace(/^ERROR:\s*/, "").slice(0, 600);
 }
 
-/** Make thumbnails for library models and parts that have none (renders defaults), keeping
+/** Make thumbnails for library models and parts that have none, or whose project changed since
+ * they were made (renders defaults), keeping
  * whether each model rendered at its defaults (sources/<id>/checks.json). A model that failed
  * isn't tried again until its project or the engine changes, or { source } asks for every model
  * of that project to be checked again (Check defaults). With { components: true }, makes the
@@ -324,7 +329,7 @@ export async function makeThumbnails({ components = false, source = null } = {})
   if (components) return componentThumbnails();
   const todo = source
     ? ctx.index.items.filter((i) => i.kind === "generator" && i.sourceId === source)
-    : ctx.index.items.filter((i) => !i.thumb && (i.kind === "generator" || i.preview) && sourceById(i.sourceId || i.projectId)?.kind !== "bundled"
+    : ctx.index.items.filter((i) => (!i.thumb || i.check?.outdated) && (i.kind === "generator" || i.preview) && sourceById(i.sourceId || i.projectId)?.kind !== "bundled"
       && !(i.check?.ok === false && !i.check.stale));
   if (!todo.length) return;
   thumbRunning = true;

@@ -66,5 +66,7 @@ export const Icon = {
   download: (s) => svg(html`<path d="M12 4v11M7 10l5 5 5-5M5 20h14" />`, s),
   cog: (s) => svg(skinned(html`<circle cx="12" cy="12" r="2.5" /><path d="M10.5 3h3l.5 2.6 1.9.8 2.2-1.5 2.1 2.1-1.5 2.2.8 1.9 2.5.4v3l-2.5.5-.8 1.9 1.5 2.2-2.1 2.1-2.2-1.5-1.9.8-.5 2.5h-3l-.5-2.5-1.9-.8-2.2 1.5-2.1-2.1 1.5-2.2-.8-1.9L3 13.5v-3l2.6-.5.8-1.9-1.5-2.2 2.1-2.1 2.2 1.5 1.9-.8z" />`, OWN.cog), s),
   pin: (s) => svg(html`<path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" /><path d="M12 14v7" />`, s),
+  shelf: (s) => svg(html`<path d="M5 4v15M9.5 4v15M14 5.5l3.8 13.5" /><path d="M3 21h18" />`, s),
+  scale: (s) => svg(html`<path d="M12 4v16M8 20h8M5 7h14" /><path d="M5 7l-2.5 6a2.5 2.5 0 0 0 5 0zM19 7l-2.5 6a2.5 2.5 0 0 0 5 0z" />`, s),
   code: (s) => svg(html`<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16" />`, s),
 };

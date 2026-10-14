@@ -378,7 +378,8 @@ impl App {
             if src["kind"] != "github" {
                 continue;
             }
-            self.job_stage(job, format!("Checking {id}…"));
+            let name = src["detected"]["name"].as_str().unwrap_or(&id).to_string();
+            self.job_stage(job, format!("Checking {name}…"));
             let t = token.clone();
             let lib2 = lib.clone();
             let s2 = src.clone();
@@ -391,17 +392,45 @@ impl App {
                 Ok(Some((version, _))) if src["version"] == version.as_str() => Ok(None),
                 r => r,
             };
+            // source.json is written only when what it says changes, so a library shared between
+            // computers or kept in git doesn't change with every check (when it last checked is kept
+            // by each computer)
+            let old = src["update"].clone();
             match r {
                 Err(e) => {
-                    src["update"] = json!({ "state": "error", "checked": now, "error": e2s(e) });
+                    // a failed check (offline, GitHub's hourly limit) keeps a waiting or skipped update
+                    let mut u = if old.is_object() { old.clone() } else { json!({}) };
+                    if !matches!(u["state"].as_str(), Some("available" | "skipped")) {
+                        u["state"] = json!("error");
+                    }
+                    u["error"] = json!(e2s(e));
+                    if u["state"] != old["state"] || u["error"] != old["error"] {
+                        u["error_date"] = json!(now);
+                        src["update"] = u;
+                        lib.save_source(&src)?;
+                    }
                 }
                 Ok(None) => {
-                    src["update"] = json!({ "state": "current", "checked": now });
+                    if old["state"] != "current" || old.get("error").is_some() {
+                        src["update"] = json!({ "state": "current", "checked": now });
+                        lib.save_source(&src)?;
+                    }
                 }
                 Ok(Some((version, info))) => {
-                    if src["update"]["skipped"] == version.as_str() {
-                        src["update"]["checked"] = json!(now);
-                        lib.save_source(&src)?;
+                    if old["skipped"] == version.as_str() || (old["state"] == "available" && old["latest"]["id"] == version.as_str()) {
+                        // already skipped, or already waiting
+                        if old.get("error").is_some() {
+                            let mut u = old.clone();
+                            if let Some(o) = u.as_object_mut() {
+                                o.remove("error");
+                                o.remove("error_date");
+                            }
+                            src["update"] = u;
+                            lib.save_source(&src)?;
+                        }
+                        if old["state"] == "available" {
+                            found.push(id.clone());
+                        }
                         continue;
                     }
                     let mut versions = src["versions"].as_array().cloned().unwrap_or_default();
@@ -410,7 +439,7 @@ impl App {
                     }
                     src["versions"] = Value::Array(versions);
                     lib.save_source(&src)?;
-                    self.job_stage(job, format!("Reading the new version of {id}…"));
+                    self.job_stage(job, format!("Reading the new version of {name}…"));
                     let summary = match self.read_project(&id, Some(&version), Some(job)).await {
                         Ok(_) => changes(&lib, &id, src["version"].as_str().unwrap_or(""), &version),
                         Err(e) => json!({ "error": e2s(e) }),
@@ -423,9 +452,9 @@ impl App {
                         src["update"] = json!({ "state": "available", "checked": now, "from": "github", "latest": info, "changes": summary });
                         found.push(id.clone());
                     }
+                    lib.save_source(&src)?;
                 }
             }
-            lib.save_source(&src)?;
         }
         Ok(json!({ "updates": found }))
     }

@@ -592,7 +592,7 @@ Each milestone is a release (0.4.x while Phase 4 runs) and is followed by a revi
 | --- | --- | --- |
 | 1 | **Rename clean-up** (0.4.4). Links and text that still say Claude-Grid-Workshop point at SCAD-Workshop; 0.4.3's notes move out of Unreleased. Grown the same evening by the owner's decisions below: no starter projects in the installer, the website retired, no Needs attention; plus Review 1's UI-6 and F-6. | No old addresses left except where history is described; the installer has no `starter/` but has `libs/`; the app's releases link opens |
 | 2 | **Skins from Model Library** (0.4.5, "Skins design" below), then Review 1's interface items UI-2, UI-3, UI-7, UI-8, UI-10 and UI-11. Drafting Sheet, Parts Bin, Layer Line and Classic (today's look), chosen in Settings. | Every page looks right in each skin, light, dark and night, in the app test's screenshots |
-| 3 | **Consistent projects** (0.4.6 to 0.4.8, "Consistent projects design" below): one project description for every source, defaults that render, a check for every model on import, and the `workshop.json` layout. | The consistency checks below pass for the 19 starter projects and the test projects; an update from GitHub still compares against upstream's own files |
+| 3 | **Consistent projects** (0.4.6 to 0.4.9, "Consistent projects design" below): one project description for every source, defaults that render, a check for every model on import, and the `workshop.json` layout. | The consistency checks below pass for the 19 starter projects and the test projects; an update from GitHub still compares against upstream's own files |
 | 4 | **Make parts from a generator** (item 8): Save as part and Make several…, with recipes. | As in item 8 |
 | 5 | **The rest of Phase 4:** importing STL/3MF/OBJ/STEP and Printables ZIPs (with Model Library's readers where they fit), one item per file name with a format picker, multi-colour and multi-part 3MF, collections, ZIP export. | Phase 4's "done when" in the Phases table |
 
@@ -647,9 +647,9 @@ Model Library's skins (its plan's "Skins design"), brought over with its colours
 - **Fonts** (all SIL OFL, credited in THIRD_PARTY.md) are bundled by `tools/build_desktop.py --fetch-fonts` as Archivo is; Layer Line's heading font is cut to Latin letters with fontTools. A font file is only read when the skin in use needs it.
 - **Tests:** the app test opens Settings, checks the four skins are offered and that Drafting Sheet is the default, switches to each one and takes a screenshot in light and dark, so the review after this milestone can look at all of them.
 
-### Consistent projects design (milestone 3, 0.4.6 to 0.4.8)
+### Consistent projects design (milestone 3, 0.4.6 to 0.4.9)
 
-Milestone 3 ships in three releases, each with its own review: **defaults that work** (0.4.6: D-1 to D-3, UI-4, UI-5), **one project description** (0.4.7: F-2 to F-5) and **starter projects as GitHub projects** with suggested projects on Home (0.4.8: F-1). The order puts what the owner sees first (models that open and render) before what only the library folder shows.
+Milestone 3 ships in four releases: **defaults that work** (0.4.6: D-1 to D-3, UI-4, UI-5), **one project description** (0.4.7: F-2 to F-5), **Review 2's small items** (0.4.8) and **starter projects as GitHub projects** with suggested projects on Home, plus Review 2's UI-16, F-9 and F-11 (0.4.9: F-1). A review follows the milestone. The order puts what the owner sees first (models that open and render) before what only the library folder shows.
 
 #### Defaults that work (0.4.6)
 
@@ -667,7 +667,7 @@ Milestone 3 ships in three releases, each with its own review: **defaults that w
 - **What reading found has the same fields (F-4).** One reader for every source: starter projects in old libraries are read like any other project the next time the app reads them (they get `files_stat`, `files_fp`, `readme`, `libraries_used`; their models get `folder`), so Scan for changes covers them too.
 - **`workshop.json` (F-5, item 6).** A project's description in the family manifest's shape (`name`, `summary`, `category`, `tags`, `license`, `authors`, `links`, `models` with `entrypoint`, `name`, `summary` and a `ui` overlay, `presets`, `documents`, `pictures`), at the top of the project's own files. When a project ships one, reading uses it instead of guessing which files are models and what they're called; what reading finds still fills in the settings. The app writes the description it uses for every project to `sources/<id>/workshop.json` (beside `files/`, never inside upstream's files), so the library folder says what each project is without the app. **Save as project file** (project ⋯ menu) writes it into a `local/` or linked project's own folder, from what reading found plus your edits, for sharing. The schema is `schema/workshop.schema.json`, checked in CI.
 
-#### Starter projects as GitHub projects (0.4.8)
+#### Starter projects as GitHub projects (0.4.9)
 
 - **F-1.** Libraries made before 0.4.4 keep the starter projects as `bundled`, stored in this repository's layout and never updated. A one-time offer in Library settings (not automatic: it downloads) turns each into a GitHub project pinned to the commit its family manifest recorded, with upstream's own layout under `files/<commit>/`, keeping its id, saved settings, edits and thumbnails. Projects that aren't on GitHub (Anylid, the openGrid adapters, the parts packs) become `local`-style projects marked as from the app, and stay as they are.
 - **Suggested projects on Home.** A short list of foundational projects, each added from GitHub (so it gets update checks) and checked at its defaults when added: Gridfinity Rebuilt, gridfinity_openscad, Gears (chrisspen), LEGO.scad, and the openGrid and Underware projects once their licenses are settled. The list is a file in the app (`catalog/suggested.json`), shown on Home in a new library and under Add project; adding one is the ordinary Add from GitHub.
@@ -872,5 +872,21 @@ Milestone 2 (0.4.5) took the six interface items with the skins: UI-2 (one bar o
 - The project's own `workshop.json` is read from the top of its files only (not subfolders), and its `models` list, when given, is the whole list: a project that describes itself isn't also guessed at. Entrypoints are relative to the project's top folder (a family manifest's are relative to this repository). Model keys other than `id`, `entrypoint` and `status` are passed through to the model as a family manifest's are, so `ui`, `hidden`, `fixed`, `defaults`, `extra_params`, `presets`, `notes`, `part_parameter` and `browser` all work. A `license` can be a plain SPDX id.
 - `sources/<id>/workshop.json` is written from what reading found (`project::describe`); edits stay in `metadata.json` beside it. Save as project file (`workshop_save`) is offered only for `local/` and linked projects, whose folders are yours: for a GitHub, ZIP or copied project it would change upstream's files, which must stay as they came for update checks. It merges the catalog's resolved project details and each model's name and form edits (a form's `ui` merged per setting over the model's own).
 - F-3's "offer to open that one" is a toast action on the error ("Open it"), parsed from the message's `(id)`.
-- F-4 (one reader writing the same fields) needs nothing more for projects added since 0.4.4; old libraries' starter projects get it with F-1 (0.4.8), when they become GitHub projects read like any other.
+- F-4 (one reader writing the same fields) needs nothing more for projects added since 0.4.4; old libraries' starter projects get it with F-1 (0.4.9), when they become GitHub projects read like any other.
 
+## Review 2 (of 0.4.5, 2026-10-14)
+
+The second periodic review: https://claude.ai/artifact/5T6K5P1TFV7eUMguCv6CGD (8 interface items, UI-12 to UI-19; 6 on the library's file structure, F-7 to F-12), from CI's screenshots of 0.4.5 (every skin in light and dark, the Windows and Linux apps), the acceptance test's library and the code. Unless the owner leaves items out, the small ones ship in 0.4.8 and UI-16 (one head for model, component and part pages), F-9 (pins record their library's copy and version) and F-11 (a project added at a tag or commit follows releases, not main) in 0.4.9 with F-1. The worst finding was mine: the extra font rules for "·" have no weight range, so on Windows and in Chromium regular text in Drafting Sheet falls back to the system font (UI-13). The test library has no ZIP or linked project; the acceptance test adds one of each so Review 3 can compare them (done in 0.4.8, section 13d).
+
+
+### 0.4.8 notes (Review 2's small items)
+
+Built as listed in the review, with these choices:
+
+- **UI-12:** the message takes the status bar's place (bottom left, its height) instead of floating over the 3D view.
+- **UI-15:** the side viewer sets `--side-over` (its panel's width) on the page; the size bar and the colours are inset by it. The size bar is a container (`container: hud`): under 360 px the size drops its triangle count and the view buttons fold under a ⋯ button. The 3D view itself still centres on the whole stage; framing the model in the uncovered part is left for later.
+- **UI-17:** Settings is still built in `app.js`, but from the same `.ls-section` blocks and `.ls-toc` jump links as Library settings (`section()`, `settingsToc()`).
+- **F-7:** an error keeps the update record (`error` and `error_date` added beside it); a check that finds nothing new writes nothing. When each computer last checked stays in its own preferences (`gw-update-check`), as before.
+- **F-8:** the catalogue marks a model `check.outdated` when `checks.json` is for another version of its project; `makeThumbnails` renders those again (their thumbnails and checks). An engine change alone doesn't: a model that failed is tried again, the others keep their pictures.
+- **F-10:** a model whose entry file was lifted into a copy has `file_bases` (the project file's hash) in its details; a recipe's edit stores that as `base`, the copy's hash as `copy`, and the recipe stores `version`. An edit saved before (based on the copy) isn't reported as changed. Derived format 5 reads such projects again, once, at the start-up scan (`scan_changes` now reads any project `outdated` says needs it).
+- **F-12:** the README gained the lines the review asked for; the texts written by 0.4.4–0.4.7 are kept in `library.rs` so an unchanged one is replaced.

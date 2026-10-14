@@ -183,8 +183,8 @@ export function Sidebar() {
     </li></ul>` : null}
     <ul class="nav-list nav-foot">
       <li><a class=${`nav-link${page === "settings" ? " active" : ""}`} href="#/settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.gear(15)}</span><span class="nav-label">Settings</span></a></li>
-      ${isDesktop() ? html`<li><a class=${`nav-link${page === "library-settings" ? " active" : ""}`} href="#/library-settings" id="nav-library-settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.box(15)}</span><span class="nav-label">Library settings</span></a></li>` : null}
-      <li><a class=${`nav-link${page === "licenses" ? " active" : ""}`} href="#/licenses" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon"></span><span class="nav-label">Licenses & credits</span></a></li>
+      ${isDesktop() ? html`<li><a class=${`nav-link${page === "library-settings" ? " active" : ""}`} href="#/library-settings" id="nav-library-settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.shelf(15)}</span><span class="nav-label">Library settings</span></a></li>` : null}
+      <li><a class=${`nav-link${page === "licenses" ? " active" : ""}`} href="#/licenses" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.scale(15)}</span><span class="nav-label">Licenses & credits</span></a></li>
     </ul>
   </nav>
   ${browsing && has[browsing] ? html`<${CategoryPanel} kind=${browsing} current=${current} open=${open} toggle=${toggle} shown=${s.catPanel !== false} key=${browsing} />` : null}`;

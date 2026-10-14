@@ -29,6 +29,7 @@ the same after being moved (library-summary). Writes
 """
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import shutil
@@ -186,8 +187,11 @@ async def main():
             await pg.check('#skin-pick input[value="drafting"]')
             fonts_ok = True
             if (Path(a.ui) / "vendor/fonts/fonts.css").is_file():   # bundled by build_desktop.py --fetch-fonts
+                # (at every weight in use, for letters, not just "·": Review 2's UI-13, where a "·"-only face
+                # with no weight range took over regular text)
                 fonts_ok = await pg.evaluate("""async () => (await Promise.all(['Overpass', 'Overpass Mono', 'Sofia Sans', 'Atkinson Hyperlegible', 'M PLUS Rounded 1c']
-                    .map((f) => document.fonts.load(`700 14px "${f}"`)))).every((l) => l.length > 0)""")
+                    .flatMap((f) => [400, 600, 700].map((w) => document.fonts.load(`${w} 14px "${f}"`, 'Gridfinity 28')
+                      .then((l) => l.some((x) => !/00B7/i.test(x.unicodeRange))))))).every(Boolean)""")
             check("skins: Drafting Sheet by default; Settings offers four, each applies in light and dark and is kept; their fonts are bundled",
                   default_skin == "drafting" and offered == ["drafting", "partsbin", "layerline", "classic"] and applied == [f"{s}/{t}" for s in offered for t in ("light", "dark")]
                   and kept == "partsbin" and fonts_ok, (default_skin, offered, applied, kept, fonts_ok))
@@ -195,6 +199,7 @@ async def main():
 
             # 2. three public projects by URL
             ids = {}
+            add_toasts = []
             for short, url, lib in REPOS:
                 await pg.click("#add-project")
                 await pg.fill("#add-url", url)
@@ -205,11 +210,15 @@ async def main():
                 await pg.wait_for_selector(".source-panel")
                 src = (await pg.evaluate("location.hash")).split("/source/")[1]
                 ids[short] = src
+                add_toasts.append(await pg.locator("#toast").text_content() or "")
                 items = await index_items(pg, src)
                 ok = (len(items) == 0) if lib else (len([i for i in items if i["kind"] == "generator"]) > 0)
                 check(f"added {url.split('github.com/')[1]}", ok, f"{src}: {len(items)} items")
                 await pg.goto(B + "#/")
             await pg.screenshot(path=str(out / "p2-01-added.png"))
+            check("the messages say models, and that a library's modules are in Components (not generators)",
+                  not any("generator" in t for t in add_toasts) and any("a library, its modules are in Components" in t for t in add_toasts)
+                  and any(" model" in t for t in add_toasts), add_toasts)
 
             # 3. a project of your own that includes the library (<BOSL2/...>)
             (library / "local/bevel").mkdir(parents=True, exist_ok=True)
@@ -417,9 +426,12 @@ async def main():
             dims_variant = (await pg.inner_text("#dims")).split("\n")[0]
             listed = await pg.eval_on_selector_all("#settings-pick option", "els => els.map((e) => e.textContent)")
             items_after = [i for i in await index_items(pg, "local-bricks") if "plate" in i["id"]]
+            bricks_version = await pg.evaluate("() => window.__workshop.catalog.sources.find((s) => s.id === 'local-bricks').version")
             check("the Code tab edits a model: Generate uses the edits; saved as a variant with the settings; Defaults is the original code; the file is untouched",
                   "Code changed" in stale and "23.8 × 31.8 × 9.6" in dims_edit and "width = 3;" in entry_edit.get("text", "")
                   and len(entry_edit.get("base") or "") == 64 and rec.get("values") == {"height": 1}
+                  # (0.4.8) the project version it was saved with; its edit based on the project's file, not the app's copy
+                  and rec.get("version") == bricks_version and entry_edit.get("base") == hashlib.sha256(plate.encode()).hexdigest() and len(entry_edit.get("copy") or "") == 64
                   and "15.8 × 31.8 × 3.2" in dims_default and "23.8 × 31.8 × 9.6" in dims_variant
                   and "Three wide · code edited" in listed and len(items_after) == 1
                   and (library / "local/bricks/examples/plate.scad").read_text() == plate,
@@ -441,8 +453,11 @@ async def main():
                 .some((i) => i.src.includes('/library/') && i.complete && i.naturalWidth > 0)""", timeout=15000)
             stored = any((library / f"sources/{gears}/docs").rglob("readme.html"))
             await pg.screenshot(path=str(out / "p4-01-readme.png"))
-            check("side viewer: a model's code, its project's README as HTML kept in the library, pictures from its files",
-                  "include" in code and "tooth_number = 30" in code and "Gear" in h1 and stored, (code[:60], h1, stored))
+            # (0.4.8) the 3D view's size and view buttons stay clear of the open side viewer
+            hud = await pg.evaluate("""() => { const p = document.querySelector('.side-panel').getBoundingClientRect().left;
+                return ['.hud-dims', '.hud-tools'].map((s) => Math.round(document.querySelector(s).getBoundingClientRect().right - p)); }""")
+            check("side viewer: a model's code, its project's README as HTML kept in the library, pictures from its files; the 3D view's size bar stays clear of it",
+                  "include" in code and "tooth_number = 30" in code and "Gear" in h1 and stored and all(x <= 1 for x in hud), (code[:60], h1, stored, hud))
             await pg.goto(B + "#/m/@bosl2/bevel_gear")
             await pg.wait_for_function("()=>document.body.dataset.model==='@bosl2/bevel_gear'")
             await pg.wait_for_selector(".side-panel[data-side-panel=readme] .doc-frame")
@@ -498,6 +513,7 @@ async def main():
             check("upstream change detected and summarised", "Update ready" in banner, banner.replace("\n", " | ")[:300])
             await pg.screenshot(path=str(out / "p2-04-update.png"))
             before = await pg.evaluate(f"() => window.__workshop.catalog.sources.find((s) => s.id === '{v76}').version")
+            t_apply = time.time()
             await pg.click("[data-update=apply]")
             try:
                 await pg.wait_for_selector(".update-banner", state="detached", timeout=60000)
@@ -509,6 +525,20 @@ async def main():
             check("update accepted", before != after, f"{before} -> {after}")
             check("edits survive the update", items.get(cup, {}).get("name") == "My cup" and items[cup]["license"] == "CC-BY-4.0",
                   items.get(cup))
+            # (0.4.8) the new version's models are rendered at their defaults again, with new thumbnails
+            n_models = len([i for i in items.values() if i["kind"] == "generator"])
+            checks_file, rechecked = library / f"sources/{v76}/checks.json", {}
+            for _ in range(600):
+                rechecked = json.loads(checks_file.read_text()) if checks_file.is_file() else {}
+                if rechecked.get("version") == after and len(rechecked.get("models", {})) >= n_models:
+                    break
+                await pg.wait_for_timeout(1000)
+            fresh = [m for m, r in rechecked.get("models", {}).items() if r.get("ok")
+                     and (library / f"sources/{v76}/thumbs/{m}.webp").is_file() and (library / f"sources/{v76}/thumbs/{m}.webp").stat().st_mtime >= t_apply]
+            check("after an update its models are rendered at their defaults again, and their thumbnails remade",
+                  rechecked.get("version") == after and len(rechecked.get("models", {})) >= n_models
+                  and len(fresh) == len([r for r in rechecked.get("models", {}).values() if r.get("ok")]),
+                  (rechecked.get("version"), after, len(rechecked.get("models", {})), n_models, len(fresh)))
 
             # 7. project-wide license; one item keeps its own
             other = f"gen:{v76}/gridfinity-baseplate"
@@ -839,6 +869,57 @@ async def main():
                   and None not in origins and versions_ok, (beside, tray, gone, origins, versions_ok))
             await pg.goto(B + "#/library-settings")
             await pg.click('[data-source="local-defaults"] [data-act=delete-project]')
+
+            # 13d. (0.4.8) a project from a ZIP and one linked to a folder outside the library are kept the
+            # same way as the others (Review 3 compares them); the Settings page is laid out like Library
+            # settings; a yes/no setting's box is in the value column; the library's README explains the
+            # folders that differ
+            outside = home / "outside"
+            (outside / "zipped").mkdir(parents=True, exist_ok=True)
+            (outside / "zipped/peg.scad").write_text("// Peg length\nlength = 20; // [5:1:60]\ncylinder(d=6, h=length, $fn=24);\n")
+            (outside / "zipped/hook.scad").write_text("// Hook depth\ndepth = 12; // [4:1:30]\ncube([6, depth, 6]);\n")
+            zip_path = Path(shutil.make_archive(str(outside / "pegs"), "zip", outside / "zipped"))
+            (outside / "linked shelf").mkdir(parents=True, exist_ok=True)
+            (outside / "linked shelf/shelf.scad").write_text("// Shelf width\nwidth = 80; // [40:5:200]\ncube([width, 30, 4]);\n")
+            added = {}
+            for tab, pick in (("zip", zip_path), ("folder", outside / "linked shelf")):
+                await pg.goto(B + "#/")
+                await pg.click("#add-project")
+                await pg.click(f"[data-add-tab={tab}]")
+                urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(pick)}).encode(), method="POST"))
+                await pg.click("#add-pick")
+                await pg.wait_for_function("(p) => document.querySelector('#add-path')?.textContent === p", arg=str(pick))
+                if tab == "folder" and not await pg.is_checked("#add-link"):
+                    await pg.check("#add-link")
+                await pg.click("#add-go")
+                await pg.wait_for_function("() => location.hash.includes('/source/')", timeout=180000)
+                await pg.wait_for_selector(".source-panel")
+                added[tab] = [(await pg.evaluate("location.hash")).split("/source/")[1], await pg.locator("#toast").text_content() or ""]
+            zid, lid = added["zip"][0], added["folder"][0]
+            for _ in range(240):   # (each model's check is written just before its thumbnail)
+                if len(list((library / f"sources/{zid}/thumbs").glob("*.webp"))) >= 2 and len(list((library / f"sources/{lid}/thumbs").glob("*.webp"))) >= 1:
+                    break
+                await pg.wait_for_timeout(500)
+            shapes = {}
+            for t, i in (("zip", zid), ("linked", lid)):
+                sj = json.loads((library / f"sources/{i}/source.json").read_text())
+                cur = next((v for v in sj.get("versions", []) if v["id"] == sj.get("version")), {})
+                d = library / f"sources/{i}"
+                shapes[t] = [sj.get("origin", {}).get("type"), bool(cur.get("files") and cur.get("content") and cur.get("added")), (d / "workshop.json").is_file(),
+                             (d / "checks.json").is_file(), len(list((d / "thumbs").glob("*.webp"))) if (d / "thumbs").is_dir() else 0]
+            check("a ZIP project and a project linked to a folder are kept like the others: where it came from, its version's files, workshop.json, checks and thumbnails",
+                  shapes == {"zip": ["zip", True, True, True, 2], "linked": ["linked", True, True, True, 1]}
+                  and "2 models" in added["zip"][1] and "1 model" in added["folder"][1], (shapes, added))
+            await pg.goto(B + "#/settings")
+            await pg.wait_for_selector("#ls-appearance")
+            toc = await pg.eval_on_selector_all("#about-body .ls-toc a", "els => els.map((e) => e.textContent)")
+            await pg.goto(B + "#/m/anylid/lid")
+            await pg.wait_for_selector("#p-Mirror_X")
+            cols = await pg.evaluate("() => ['#p-Mirror_X', '#p-Width_Units'].map((s) => Math.round(document.querySelector(s).getBoundingClientRect().left))")
+            readme = (library / "README.txt").read_text()
+            check("Settings is laid out like Library settings; a yes/no setting's box is in the value column; the library's README explains pins, your own projects and old versions",
+                  toc[:4] == ["Appearance", "Printer profile", "Library", "Engine"] and abs(cols[0] - cols[1]) <= 2
+                  and "sources/pinned/pins/" in readme and "Remove versions not in use" in readme, (toc, cols))
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"

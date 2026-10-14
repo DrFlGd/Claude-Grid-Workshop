@@ -482,6 +482,11 @@ export function SideView() {
   const extra = s.sideFile && (!s.sideFile.ref || refKey(s.sideFile.ref) === refKey(ref)) ? s.sideFile : null;
   const docs = info?.docs || [];
   const tabs = [...(modelKey || extra ? [{ id: "code", title: "Code", kind: "code" }] : []), ...docs];
+  // the open panel lies over the right of the 3D view; the size bar and the colours move clear of it
+  const over = target && tabs.length && s.side.open ? Math.max(MIN_W, s.side.width || 560) : 0;
+  useEffect(() => {
+    document.documentElement.style.setProperty("--side-over", over ? `min(${over}px, calc(100vw - 90px))` : "0px");
+  }, [over]);
   if (!target || !tabs.length) return null;
   const want = s.side.tab === "doc" ? docs[0]?.id : s.side.tab;
   const current = tabs.find((t) => t.id === want) || tabs.find((t) => t.kind === (s.side.tab === "code" ? "code" : "html")) || tabs[0];

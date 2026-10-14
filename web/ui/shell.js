@@ -1,6 +1,6 @@
 // Mounts the interface islands into the page. The workbench (model form and
 // 3D view), the parts page and the text pages stay as they were (app.js).
-import { html, render } from "../lib/html.js";
+import { html, render, useEffect } from "../lib/html.js";
 import { ui, initState } from "./state.js";
 import { setContext, ctx } from "./context.js";
 import { Sidebar } from "./sidebar.js";
@@ -18,12 +18,23 @@ import { SideView } from "./sideview.js";
 /** Modal dialogs (desktop): adding a project, editing details, flagging as broken, merge differences, pinning, the form editor. */
 function Dialogs() {
   const d = useStore(ui, (s) => s.dialog);
+  // every dialog behaves the same (Review 2, UI-14): the cursor starts in its first field, Escape
+  // closes it from anywhere, and a click outside does nothing (it used to throw away what you'd typed)
+  useEffect(() => {
+    if (!d) return;
+    const box = document.querySelector("#dialog-root .dialog");
+    const first = box?.querySelector("[autofocus], input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])");
+    if (first && !box.contains(document.activeElement)) first.focus();
+    else if (box && !box.contains(document.activeElement)) { box.tabIndex = -1; box.focus(); }
+    const key = (e) => { if (e.key === "Escape" && !e.defaultPrevented) ui.set({ dialog: null }); };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [d]);
   if (!d) return null;
-  const close = (e) => { if (e.target === e.currentTarget) ui.set({ dialog: null }); };
   const body = d.type === "add-project" ? html`<${AddProject} />` : d.type === "edit" ? html`<${MetaEditor} spec=${d} key=${JSON.stringify(d)} />`
     : d.type === "flag" ? html`<${FlagDialog} spec=${d} />` : d.type === "merge" ? html`<${MergeConflicts} result=${d.result} />`
     : d.type === "pin" ? html`<${PinDialog} spec=${d} key=${d.key} />` : d.type === "form" ? html`<${FormEditor} spec=${d} key=${d.key} />` : null;
-  return html`<div class="dialog-backdrop" onPointerDown=${close} onKeyDown=${(e) => { if (e.key === "Escape") ui.set({ dialog: null }); }}>${body}</div>`;
+  return html`<div class="dialog-backdrop">${body}</div>`;
 }
 
 export function mountShell(context) {

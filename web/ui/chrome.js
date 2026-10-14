@@ -95,10 +95,10 @@ export function Tabs() {
         const it = item(key);
         const on = s.view === "model" && s.active === key;
         return html`<a role="tab" class=${`tab${on ? " active" : ""}`} aria-selected=${on ? "true" : "false"} href=${`#/m/${key}`} key=${key}
-          data-tab=${key} title=${it ? `${it.name}, ${it.project}` : key}
+          data-tab=${key} title=${it ? `${it.name}, ${it.project}` : "No longer in the library"}
           onAuxClick=${(e) => { if (e.button === 1) close(key, e); }}>
           ${it?.thumb ? html`<img src=${it.thumb} alt="" />` : null}
-          <span class="tab-name">${it ? it.name : key}</span><span class="tab-project">${it?.project}</span>
+          <span class="tab-name">${it ? it.name : key.split("/").pop()}</span><span class="tab-project">${it?.project}</span>
           <button type="button" class="tab-close" aria-label=${`Close ${it?.name || key}`} onClick=${(e) => close(key, e)}>${Icon.close(12)}</button>
         </a>`;
       })}
@@ -120,7 +120,7 @@ export function Tabs() {
 function Elapsed({ since }) {
   const [, tick] = useState(0);
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, []);
-  return html`${Math.round((Date.now() - since) / 1000)} s`;
+  return html`<span class="unit">${Math.round((Date.now() - since) / 1000)} s</span>`;
 }
 
 export function StatusBar() {

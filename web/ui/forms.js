@@ -182,7 +182,7 @@ export function FormEditor({ spec }) {
   const input = (name, k, attrs = {}) => html`<input value=${rows[name][k]} onInput=${(e) => set(name, k, e.target.value)} data-form=${`${name}.${k}`} ...${attrs} />`;
   return html`<div class="dialog form-editor" aria-label="Edit form">
     <div class="dialog-head"><h2>${Icon.edit(18)} Edit the form: ${detail.name}</h2><button type="button" class="ghost" aria-label="Close" onClick=${close}>${Icon.close(16)}</button></div>
-    <p class="muted">Change how the settings look. The model's file isn't touched: this is saved with the model's details in your library, in the same shape as a family manifest's model entry (“Copy as JSON”).</p>
+    <p class="muted">Change how the settings look. The model's file isn't touched: this is saved with the model's details in your library. Copy as JSON gives the same description, for a project's workshop.json.</p>
     <div class="fe-list">
       ${params.map((p) => {
         const r = rows[p.name];
@@ -220,7 +220,7 @@ export function FormEditor({ spec }) {
         <button type="button" class="ghost" onClick=${addPreset} disabled=${!presetName.trim()} id="fe-preset-add">Add as a preset</button></div>` : null}
     </section>
     <div class="dialog-actions">
-      <button type="button" class="ghost" onClick=${copy} title="Copy the form as JSON for a family manifest">Copy as JSON</button>
+      <button type="button" class="ghost" onClick=${copy} title="Copy the form as JSON, for a project's workshop.json">Copy as JSON</button>
       ${detail.form ? html`<button type="button" class="ghost danger-text" onClick=${() => save(null)} disabled=${busy} id="fe-reset">Reset the form</button>` : null}
       <span class="spacer"></span>
       <button type="button" class="ghost" onClick=${close}>Cancel</button>

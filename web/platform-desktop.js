@@ -155,7 +155,7 @@ export async function createPlatform() {
       const now = new Date().toISOString();
       const old = rec.id ? await api("settings_get", { id: rec.id }) : null;
       const row = old ? { ...old, ...rec, updated: now }
-        : { id: newId(), model: rec.model, name: rec.name, values: rec.values, ...(rec.edits ? { edits: rec.edits } : {}), created: now, updated: now };
+        : { id: newId(), model: rec.model, name: rec.name, values: rec.values, ...(rec.edits ? { edits: rec.edits } : {}), ...(rec.version ? { version: rec.version } : {}), created: now, updated: now };
       await api("settings_put", { record: row });
       return row;
     },

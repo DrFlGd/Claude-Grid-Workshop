@@ -6,7 +6,7 @@ import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 import { LICENSE_TEXT } from "./index-local.js";
 import { bytes, FORMAT_LABEL, plural } from "../lib/util.js";
-import { isDesktop, readOnly, api } from "./library.js";
+import { isDesktop, readOnly, api, when } from "./library.js";
 import { ItemActions } from "./actions.js";
 import { SideButtons } from "./sideview.js";
 
@@ -135,7 +135,7 @@ export function Inspector() {
     <div class="insp-actions insp-side">${it.kind === "part"
       ? (isDesktop() ? html`<${SideButtons} refObj=${{ source: it.sourceId }} />` : null)
       : html`<${SideButtons} modelKey=${it.key} />`}</div>
-    ${it.broken ? html`<p class="insp-flag broken" role="note">${Icon.alert(14)} Flagged as broken${it.broken.date ? ` on ${it.broken.date}` : ""}${it.broken.note ? html`: <span>${it.broken.note}</span>` : "."}</p>` : null}
+    ${it.broken ? html`<p class="insp-flag broken" role="note">${Icon.alert(14)} Flagged as broken${it.broken.date ? ` on ${when(it.broken.date)}` : ""}${it.broken.note ? html`: <span>${it.broken.note}</span>` : "."}</p>` : null}
     ${it.hidden ? html`<p class="insp-flag" role="note">${Icon.eye(14)} Hidden${it.hidden === "item" ? "" : it.hidden === "project" ? " with its project" : " with its folder"}: it only shows with “Show hidden”.</p>` : null}
     ${it.summary ? html`<p class="insp-summary">${it.summary}</p>` : null}
     <dl class="insp-dl">
@@ -146,12 +146,12 @@ export function Inspector() {
       ${it.settings != null ? html`<dt>Settings</dt><dd>${it.settings}</dd>` : null}
       ${it.dims ? html`<dt>Size</dt><dd>${it.dims.map((d) => Math.round(d * 10) / 10).join(" × ")} mm</dd>` : null}
       ${it.tags.length ? html`<dt>Tags</dt><dd>${it.tags.join(", ")}</dd>` : null}
-      ${it.updated ? html`<dt>Updated</dt><dd>${it.updated} <span class="muted">${it.updatedFrom === "supplied" ? "(files supplied)" : it.updatedFrom === "upstream" ? "(pinned upstream version)" : ""}</span></dd>` : null}
+      ${it.updated ? html`<dt>Updated</dt><dd>${when(it.updated)} <span class="muted">${it.updatedFrom === "supplied" ? "(files supplied)" : it.updatedFrom === "upstream" ? "(pinned upstream version)" : ""}</span></dd>` : null}
       ${Object.entries(it.fields || {}).map(([k, v]) => html`<dt>${k}</dt><dd>${String(v)}</dd>`)}
     </dl>
     ${it.kind === "generator" ? html`<${SavedSettings} item=${it} />` : null}
     ${it.kind === "part" && it.files?.length ? html`<${Downloads} item=${it} />` : null}
-    ${it.generator ? html`<p class="insp-note"><a href=${`#/m/${it.generator}`}>Open the generator</a> to make it at any size.</p>` : null}
+    ${it.generator ? html`<p class="insp-note"><a href=${`#/m/${it.generator}`}>Open the parametric model</a> to make it at any size.</p>` : null}
     ${siblings.length ? html`<section class="insp-section"><h3>More from ${it.project}</h3>
       <div class="insp-chips">${siblings.slice(0, 16).map((x) => html`<button type="button" class="chip" onClick=${() => ui.set({ selection: [x.id], anchor: x.id })}>${x.name}</button>`)}</div>
     </section>` : null}

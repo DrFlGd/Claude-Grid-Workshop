@@ -19,15 +19,17 @@ use std::sync::Arc;
 /// lifted from module calls, reference documents. 3 (0.4.1): lifted settings borrow the library's
 /// descriptions and choice lists, and fractions are lifted. 4 (0.4.2): files that draw through an
 /// included engine are models and the engine isn't (see `models_differ`); category keywords match
-/// whole words.
-pub const DERIVED_FORMAT: u64 = 4;
+/// whole words. 5 (0.4.8): a model whose settings were lifted into a copy records the hash of the
+/// project's own file (`file_bases`), which code edits are based on.
+pub const DERIVED_FORMAT: u64 = 5;
 
-/// Whether a project's derived data was made by an app that reads it differently. Format 3 changed
-/// only settings lifted from module calls, so a project read at format 2 needs reading again only
-/// when it has such models. Format 4: see `models_differ`.
+/// Whether a project's derived data was made by an app that reads it differently. Formats 3 and 5
+/// changed only models whose settings were lifted from module calls, so a project read before
+/// needs reading again only when it has such models. Format 4: see `models_differ`.
 pub fn outdated(derived: &Value) -> bool {
     let f = derived["format"].as_u64().unwrap_or(0);
-    f < 2 || (f < 3 && derived["family"]["models"].as_array().into_iter().flatten().any(|m| m["settings_from"] == "calls"))
+    let lifted = || derived["family"]["models"].as_array().into_iter().flatten().any(|m| m["settings_from"] == "calls");
+    f < 2 || (f < 5 && lifted())
 }
 
 /// Format 4 changed which files are models only for projects with front ends over an included
@@ -77,6 +79,11 @@ pub fn scan_changes(lib: &Library, skip: &[String]) -> Changes {
             continue;
         }
         let Some(mut derived) = lib.derived(&id, &version) else { continue };
+        // read by an app that reads it differently (see `outdated`): read again
+        if outdated(&derived) {
+            out.read.push(id.clone());
+            continue;
+        }
         if kind == "local" || kind == "linked" {
             // their changes make a new version (sync_local); only a read before format 4 is checked here
             if derived["format"].as_u64().unwrap_or(0) < 4 {
@@ -302,6 +309,7 @@ pub async fn ingest(
     let mut renderable: Vec<(String, PathBuf)> = vec![];
     let mut used_ids: Vec<String> = vec![];
     let mut planned = vec![];
+    let mut bases: BTreeMap<String, (String, String)> = BTreeMap::new();
     let mut used: BTreeMap<String, Value> = BTreeMap::new(); // libraries the models include, by name
     let mut project_texts: Option<Vec<String>> = None;
     for entry in &entries {
@@ -373,7 +381,10 @@ pub async fn ingest(
                 let sha = sha_file(&gen)?;
                 blobs.insert(sha.clone(), format!("{id}@{version}{GENERATED}:{entry}"));
                 renderable.push((sha.clone(), gen));
-                fmap.insert(entry_v.clone(), sha);
+                // the project's own file, which code edits are based on (the copy is the app's)
+                if let Some(orig) = fmap.insert(entry_v.clone(), sha) {
+                    bases.insert(mid.clone(), (entry_v.clone(), orig));
+                }
                 lifted = true;
             }
         }
@@ -430,6 +441,9 @@ pub async fn ingest(
                 fam["models"].as_array_mut().unwrap().push(model.clone());
                 let (_, mut detail) = sitebuild::assemble_model(&fam, &model, &key, &format!("/{entry}"), &fmap, &editor, &raw, input_bytes)?;
                 detail["folder"] = json!(ingest::dirname(&format!("/{entry}")).trim_start_matches('/'));
+                if let Some((path, orig)) = bases.get(&mid) {
+                    detail["file_bases"] = json!({ path.as_str(): orig });
+                }
                 let off = ingest::limit_problems(detail["parameters"].as_array().map(Vec::as_slice).unwrap_or(&[]));
                 if !off.is_empty() {
                     problems.push(json!({ "kind": "limits", "model": key, "settings": off, "message": format!("{entry}: {}", off.join("; ")) }));

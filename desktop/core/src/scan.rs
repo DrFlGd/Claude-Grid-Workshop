@@ -544,7 +544,7 @@ pub fn survey(root: &Path) -> Found {
     found.library_files += scads.len() - entries.len();
     if entries.len() > MAX_ENTRIES {
         found.problems.push(format!(
-            "{} .scad files render on their own; only the first {MAX_ENTRIES} became generators. If this is a library, mark it as one.",
+            "{} .scad files render on their own; only the first {MAX_ENTRIES} became models. If this is a library, mark it as one.",
             entries.len()
         ));
         entries.truncate(MAX_ENTRIES);

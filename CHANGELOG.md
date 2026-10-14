@@ -81,6 +81,24 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+Milestone 3, third part (0.4.8): Review 2's small items (`docs/DESKTOP_PLAN.md`, "Review 2").
+
+- **Messages sit in the status bar's place** at the bottom left, so they no longer cover the colour swatches or the Generate button (UI-12).
+- **Drafting Sheet's body text is in Overpass on Windows too:** the faces that only fix "·" had no weight range, so Windows took them for regular text (UI-13). The acceptance test now loads each skin font at 400, 600 and 700 for letters.
+- **Dialogs:** the first field has the focus when one opens, Escape closes it, and a click outside no longer throws away what you typed (UI-14).
+- **With the side viewer open, the 3D view's size bar and colours move clear of it;** in a narrow view the size takes one line and the view buttons fold under ⋯ (UI-15).
+- **Settings is laid out like Library settings:** jump links, one style of intro, a rule between sections (UI-17).
+- **Words:** messages say models, not generators ("Added BOSL2: a library, its modules are in Components."); the form editor no longer mentions family manifests; update checks name the project, not its id; dates read one way everywhere; Drafting's capitals status bar keeps "12 s" lower case (UI-18). A tab for a model no longer in the library shows its file name, not its id.
+- **Skins:** Layer Line's category counts have a spool-coloured dot instead of white text on the colour, and its numbers use a face with a plain zero (Atkinson Hyperlegible's slashed zero read as ⌀); every colour swatch has an edge that shows on dark, so Black stays visible; Parts Bin's status bar and card lines are larger (UI-19).
+- **Update checks keep what they knew** (F-7): a failed check (offline, GitHub's hourly limit) keeps a skipped or waiting update and adds the error beside it; `source.json` is written only when what it says changes, so a synced library or one in git no longer changes with every daily check.
+- **Accepting an update renders the new version's models at their defaults again and remakes their thumbnails** (F-8); so does a change to a local project's files. `checks.json` records the version and engine the thumbnails were made with.
+- **Saved settings record the project version they were made with, and a code edit is based on the project's own file** (its hash in `base`), not the app's copy of it (`copy`, when the app made one) (F-10). Projects with such copies are read again once (derived format 5) so their models know the original's hash.
+- **The library's README explains the folders that differ:** your own projects keep their files in `local/`, `sources/pinned/pins/` must be kept, `previews/` holds models made for parts, and `files/` can hold several versions (F-12). A README from 0.4.4 to 0.4.7 is replaced; one you changed is left alone.
+- Small things from Review 2: the listing head wraps instead of cutting the page's name; no stray scrollbar under the side viewer's tabs; Library settings and Licenses have their own menu icons; a yes/no setting's box sits in the value column like every other setting.
+- **The acceptance test adds a ZIP project and a project linked to a folder** and checks they're kept like the others (origin, version files, `workshop.json`, checks, thumbnails), for Review 3.
+
+## 0.4.7 — 2026-10-14 · Projects describe themselves with workshop.json; origin and versions recorded the same way
+
 Milestone 3, second part (0.4.7): one project description, whatever the source (Review 1's F-2, F-3 and F-5).
 
 - **`workshop.json`, a project's own description** (schema in `schema/workshop.schema.json`, a family manifest's shape): when a project has one at its top, the app takes its models (which files, their ids and names), notes, forms (`ui`, `hidden`, `fixed`), presets, name, summary, category, tags, license, authors and links from it instead of guessing; settings still come from the files. A file it lists that isn't there is noted as a problem.

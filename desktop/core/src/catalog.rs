@@ -187,6 +187,9 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         // models rendered at their defaults (sources/<id>/checks.json), for this version only
         let checks = lib.checks(&id);
         let check_engine = checks["engine"].clone();
+        // checked at an earlier version (an update accepted, a local project's files changed): its
+        // models are rendered again, and their thumbnails remade, in the background
+        let outdated = checks["models"].as_object().is_some_and(|m| !m.is_empty()) && checks["version"] != version.as_str();
         let checks = if checks["version"] == version.as_str() { checks["models"].as_object().cloned().unwrap_or_default() } else { Map::new() };
         let mut problems = derived["problems"].as_array().cloned().unwrap_or_default();
         for (mid, c) in &checks {
@@ -250,6 +253,8 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             }
             if let Some(c) = checks.get(&mid) {
                 detail["check"] = json!({ "ok": c["ok"], "message": c["message"], "stale": check_engine != engine });
+            } else if outdated {
+                detail["check"] = json!({ "outdated": true });
             }
             let mut summary = Map::new();
             for k in ["key", "family", "family_name", "id", "name", "category", "category_label", "summary", "tags", "license", "browser", "updated", "updated_from", "settings", "terms", "thumb", "source_id", "folder", "check"] {
