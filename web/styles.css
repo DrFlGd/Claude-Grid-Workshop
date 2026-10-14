@@ -1394,11 +1394,13 @@ svg g[data-sk] { display: none; }
 .drop-list { margin: 0 0 12px; padding-left: 18px; max-height: 160px; overflow: auto; overflow-wrap: anywhere; }
 .drop-choices { display: grid; gap: 4px; justify-items: start; }
 .drop-choices p { margin: 0 0 8px; }
+.drop-choices button:not(.primary) { border-color: var(--steel-2); } /* outlined, so each choice reads as a button (UI-36) */
 .file-colours { display: inline-flex; gap: 6px; align-items: center; margin-top: 6px; font-size: 14px; }
 /* one Download with its format beside it (milestone 5) */
 .download-pick { display: flex; align-items: stretch; gap: 0; min-width: 0; }
 .downloads > .download-pick { grid-column: 1 / -1; }
-.download-pick > .button { flex: 1; min-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.download-pick > .format-pick { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; width: auto; min-width: 74px; padding: 0 8px; font: inherit; font-weight: 600; }
+.download-pick > .button { flex: 1; min-width: 0; white-space: nowrap; border-top-right-radius: 0; border-bottom-right-radius: 0; } /* one line, beside a Generate of the same height (UI-33) */
+.download-pick > .format-pick { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; width: auto; min-width: 64px; padding: 0 8px; font: inherit; font-weight: 600; }
 .download-pick > .format-pick[hidden] { display: none; }
+.actions > .download-pick { padding: 0; } /* (the padding is its button's, so it's as high as Generate, UI-33) */
 .download-pick:has(> .format-pick[hidden]) > .button { border-radius: var(--radius-s); }

@@ -334,7 +334,13 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         // parts you made one ("latch_v2.stl" with "latch.3mf", milestone 5): metadata.json's
         // `merged: { <part>: [<parts whose files it takes>] }`, kept across updates
         merge_parts(&mut parts, &edits["merged"]);
-        entry["near_misses"] = json!(near_misses(&parts));
+        // (less the groups you chose to keep apart, metadata.json's `apart`, UI-35)
+        let apart = edits["apart"].as_array().cloned().unwrap_or_default();
+        entry["near_misses"] = json!(near_misses(&parts).into_iter().filter(|g| {
+            let mut ids: Vec<&str> = g["ids"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+            ids.sort();
+            !apart.iter().any(|a| *a == json!(ids))
+        }).collect::<Vec<_>>());
         // and the examples made into parts: sources/<id>/examples/<fingerprint>/<model id>.stl, made by the
         // app, so only those whose files changed are made again (F-20)
         let examples_rel = format!("sources/{id}/examples");

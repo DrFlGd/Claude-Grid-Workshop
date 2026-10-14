@@ -38,12 +38,18 @@ export function DropDialog({ spec }) {
   const zips = info.filter((i) => i.zip), dirs = info.filter((i) => i.dir), files = info.filter((i) => !i.dir && !i.zip);
   // each ZIP and folder is a project of its own; loose files go together in one
   const projects = zips.length + dirs.length + (files.length ? 1 : 0);
+  // a name for loose files together: the name they share ("latch" for latch.stl and latch_v2.3mf), else
+  // "Dropped files" and the date (UI-36)
+  const stems = files.map((f) => f.name.replace(/\.[^.]+$/, ""));
+  const shortest = stems.reduce((a, b) => (b.length < a.length ? b : a), stems[0] || "");
+  const suggested = shortest && stems.every((s) => s.toLowerCase().startsWith(shortest.toLowerCase())) ? shortest
+    : `Dropped files ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
   const head = info.length === 1 ? info[0].name : [dirs.length ? plural(dirs.length, "folder") : "", zips.length ? plural(zips.length, "ZIP") : "", files.length ? plural(files.length, "file") : ""].filter(Boolean).join(", ");
   const asProjects = async () => {
     close();
     for (const z of zips) await addProject({ kind: "zip", path: z.path }, z.name);
     for (const d of dirs) await addProject({ kind: "folder", path: d.path }, d.name);
-    if (files.length) await addProject({ kind: "files", paths: files.map((f) => f.path), name: name.trim() || null }, files.length === 1 ? files[0].name : plural(files.length, "file"));
+    if (files.length) await addProject({ kind: "files", paths: files.map((f) => f.path), name: name.trim() || (files.length > 1 ? suggested : null) }, files.length === 1 ? files[0].name : plural(files.length, "file"));
   };
   const toOwn = async (folder) => {
     close();
@@ -62,7 +68,7 @@ export function DropDialog({ spec }) {
     <div class="dialog-head"><h2>Add ${head}</h2><button type="button" class="ghost" aria-label="Close" onClick=${close}>${Icon.close(16)}</button></div>
     <ul class="drop-list">${info.slice(0, 8).map((i) => html`<li>${i.dir ? "📁 " : ""}${i.name}</li>`)}${info.length > 8 ? html`<li class="muted">and ${info.length - 8} more</li>` : null}</ul>
     ${files.length > 1 ? html`<label class="field-block"><span>Project name <small class="muted">(for the ${files.length} files)</small></span>
-      <input id="drop-name" value=${name} onInput=${(e) => setName(e.target.value)} placeholder=${files[0].name.replace(/\.[^.]+$/, "")} /></label>` : null}
+      <input id="drop-name" value=${name} onInput=${(e) => setName(e.target.value)} placeholder=${suggested} /></label>` : null}
     <div class="drop-choices">
       <button type="button" class="primary" id="drop-project" onClick=${asProjects}>${projects === 1 ? "Add as a project" : `Add as ${projects} projects`}</button>
       <p class="muted">Copied into the library with its own name, license and credits, as Add project does.</p>

@@ -1089,3 +1089,12 @@ The fifth periodic review, partway through milestone 5: https://claude.ai/artifa
 - **F-24 (read again):** Read again reads the site PDF again, as it does the README and license; your edits in `metadata.json` still win.
 - **F-25 (README):** `origin.site` and `detected` are described under `source.json`.
 - **CI:** a newer download of a Printables ZIP becomes a version of the first; Read again fills in details for a ZIP added without them; a near miss kept apart stays dismissed; duplicates listed on the project.
+
+### 0.4.18 notes
+
+Review 5's eight items, built as planned, except:
+
+- **F-23:** a ZIP is unpacked once beside the projects (`sources/.adding-<pid>/`) and moved into place, so its PDF can be read before deciding which project it belongs to. When several projects have the same page, the first by id gets the version. The update's `from` is `download`; nothing checks printables.com.
+- **F-24:** Read again never re-read the README or license (the review said it did); it now re-reads the page PDF only. What the PDF no longer says stays in `detected` until edited.
+- **UI-34:** duplicates are found when the page opens (`source_duplicates`: sizes first, then SHA-256 of same-sized files), not kept in `derived/`; a hidden copy drops out of the note.
+- **UI-33:** a stale render's button reads "Last render" beside the picker ("Download last render" without one); the picker's wrapper had the actions' padding, which made the row taller.

@@ -83,6 +83,19 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+Review 5's items (0.4.18).
+
+- **Another download of a Printables model is a new version of its project** (F-23), not a second project: when a ZIP's PDF names a page a project already has, the files go in as a version of it, dated by the page's "updated" date, and its page offers **Use the new version** as an update from GitHub does. The first download's version is dated by the page too.
+- **Read again reads the page's PDF again** (F-24), so a Printables ZIP added before 0.4.16 gets its details; your edits still win.
+- **Duplicates stay listed** (UI-34): a project's page notes each of its files that's in another project too, byte for byte, with **Open the other** and **Hide this copy**.
+- **Keep apart** (UI-35) beside Make one part: files that look like one part but aren't stay separate and aren't offered again (kept in the project's `metadata.json` as `apart`).
+- **Download and its format picker** (UI-33): one line, as high as Generate; the button says "Download" ("Download (1 KB)" for a part) and the picker names the format.
+- **Dropping files** (UI-36): each choice is an outlined button, and files that share no name are named "Dropped files" and the date unless you type a name.
+- The Printables PDF is listed as **Printables page (PDF)** (UI-37), and the library's README describes `origin.site` and `detected` (F-25).
+- CI: a newer download of a Printables ZIP becomes a version of the first and is used; Read again brings back details; Keep apart; duplicates on the project's page.
+
+## 0.4.17 — 2026-10-14 · Milestone 5, fourth part: collections, with quantities, printed ticks and one ZIP export
+
 Milestone 5, fourth part (0.4.17): collections.
 
 - **Collections** in the left menu: lists of parts and models kept for one use (an RC car, a workshop wall), with **New collection** (the + beside the heading, or the command palette). They're lists, not copies: one part can be in several, and the library keeps them in `collections/<id>/collection.json`.

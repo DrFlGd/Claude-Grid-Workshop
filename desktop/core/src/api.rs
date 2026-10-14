@@ -799,6 +799,19 @@ impl App {
                     let src = tokio::task::spawn_blocking(move || sources::add(&lib2, &req, &role, token)).await??;
                     let id = src["id"].as_str().unwrap_or("").to_string();
                     app.invalidate();
+                    if let Some(version) = src["added_version"].as_str().map(String::from) {
+                        // another download of a model site's page a project has: read as a new version
+                        // of that project and offered as an update (Review 5, F-23)
+                        let read = app.read_project(&id, Some(&version), Some(&job)).await?;
+                        let mut s = lib.source(&id)?;
+                        let summary = changes(&lib, &id, s["version"].as_str().unwrap_or(""), &version);
+                        let date = s["versions"].as_array().into_iter().flatten().find(|v| v["id"] == version.as_str()).map(|v| v["date"].clone()).unwrap_or(Value::Null);
+                        s["update"] = json!({ "state": "available", "checked": library::now(), "from": "download",
+                            "latest": { "id": version, "date": date }, "changes": summary });
+                        lib.save_source(&s)?;
+                        app.invalidate();
+                        return Ok(json!({ "source": id, "read": read, "duplicates": [], "version": version }));
+                    }
                     let read = app.read_project(&id, None, Some(&job)).await?;
                     // its model files that are in another project already (added anyway, milestone 5)
                     let duplicates = app.duplicates(&id);
@@ -827,6 +840,12 @@ impl App {
             "source_read" => {
                 let id = arg(&args, "id").map_err(e2s)?.to_string();
                 Ok(Reply::Json(self.spawn(&format!("Reading {id}"), move |app, job| async move {
+                    // its model page's PDF too, when it has one (Review 5, F-24)
+                    let lib = app.library().map_err(|e| anyhow!(e))?;
+                    let i2 = id.clone();
+                    if matches!(tokio::task::spawn_blocking(move || sources::refresh_site_details(&lib, &i2)).await, Ok(Ok(true))) {
+                        app.invalidate();
+                    }
                     app.read_project(&id, None, Some(&job)).await
                 })))
             }
@@ -888,6 +907,8 @@ impl App {
                     "folder_rel": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().and_then(|p| folder_rel(&lib, id, &src, &p)),
                 }))
             }
+            // its part files that are in another project too (Review 5, UI-34: on its page, not only when it's added)
+            "source_duplicates" => j(json!(self.duplicates(arg(&args, "id").map_err(e2s)?))),
             // a model's details, or null when it isn't in the library (an open tab whose project is being read
             // again): not an error, so a stale list doesn't log a failed request
             "model_get" => j(self.catalog()?.models.get(arg(&args, "key").map_err(e2s)?).cloned().unwrap_or(Value::Null)),
@@ -1348,13 +1369,27 @@ impl App {
             }
             "parts_merge" => {
                 // { source, ids: [keep, ...others] }: parts made one (near misses, milestone 5), kept in the
-                // project's metadata.json as `merged: { keep: [others] }`; with `split: true`, made separate again
+                // project's metadata.json as `merged: { keep: [others] }`; with `split: true`, made separate again;
+                // with `apart: true`, the group isn't offered again
                 let lib = self.library()?;
                 lib.writable().map_err(e2s)?;
                 let id = arg(&args, "source").map_err(e2s)?.to_string();
                 let ids: Vec<String> = args["ids"].as_array().into_iter().flatten().filter_map(Value::as_str).map(String::from).collect();
                 let keep = ids.first().ok_or("Name the parts to make one.")?.clone();
                 let mut meta = lib.metadata(&id);
+                if args["apart"] == true {
+                    // Keep apart (Review 5, UI-35): metadata.json's `apart: [[ids...]]`, not offered again
+                    let mut group = ids.clone();
+                    group.sort();
+                    let mut apart = meta["apart"].as_array().cloned().unwrap_or_default();
+                    if !apart.iter().any(|g| *g == json!(group)) {
+                        apart.push(json!(group));
+                    }
+                    meta["apart"] = Value::Array(apart);
+                    lib.save_metadata(&id, &meta).map_err(e2s)?;
+                    self.invalidate();
+                    return j(json!({ "apart": ids }));
+                }
                 if !meta["merged"].is_object() {
                     meta["merged"] = json!({});
                 }
@@ -1556,7 +1591,7 @@ impl App {
             Some((d, dir)) => (Some(d.clone()), dir.clone()),
             None => (None, lib.version_dir(&src, &version)?),
         };
-        let docs = derived.as_ref().and_then(|d| d["docs"].as_array().cloned()).unwrap_or_else(|| {
+        let mut docs = derived.as_ref().and_then(|d| d["docs"].as_array().cloned()).unwrap_or_else(|| {
             // read before 0.4: find them now (the HTML is made when first opened)
             let mut d = crate::docs::find(&dir);
             for x in d.iter_mut().filter(|x| x["kind"] == "html") {
@@ -1565,6 +1600,12 @@ impl App {
             }
             d
         });
+        // a model site's page saved as a PDF (a Printables download) is named for what it is (UI-37)
+        if let (Some(pdf), Some("printables")) = (src["origin"]["site"]["pdf"].as_str(), src["origin"]["site"]["name"].as_str()) {
+            for d in docs.iter_mut().filter(|d| d["src"] == pdf) {
+                d["title"] = json!("Printables page (PDF)");
+            }
+        }
         let github = (src["kind"] == "github")
             .then(|| {
                 let o = &src["origin"];
@@ -1588,13 +1629,15 @@ impl App {
     pub fn duplicates(&self, id: &str) -> Vec<Value> {
         let (Ok(c), Ok(lib)) = (self.catalog(), self.library()) else { return vec![] };
         let path_of = |f: &Value| f["url"].as_str().and_then(|u| u.strip_prefix("library/")).and_then(|r| lib.resolve(&percent_decode(r)).ok());
-        let mut by_size: HashMap<u64, Vec<(PathBuf, String)>> = HashMap::new();
+        // (a file's path, the project it's in: its name and id)
+        let mut by_size: HashMap<u64, Vec<(PathBuf, String, String)>> = HashMap::new();
         for (pid, pack) in c.parts.iter().filter(|(pid, _)| pid.as_str() != id) {
             let name = pack["name"].as_str().unwrap_or(pid).to_string();
+            let source = pack["source_id"].as_str().unwrap_or(pid).to_string();
             for f in pack["items"].as_array().into_iter().flatten().flat_map(|it| it["files"].as_array().into_iter().flatten()) {
                 if let Some(p) = path_of(f) {
                     if let Ok(m) = std::fs::metadata(&p) {
-                        by_size.entry(m.len()).or_default().push((p, name.clone()));
+                        by_size.entry(m.len()).or_default().push((p, name.clone(), source.clone()));
                     }
                 }
             }
@@ -1602,12 +1645,15 @@ impl App {
         let mut out = vec![];
         let mut hashes: HashMap<PathBuf, String> = HashMap::new();
         let mut sha = |p: &Path| hashes.entry(p.to_path_buf()).or_insert_with(|| sources::sha256_file(p).unwrap_or_default()).clone();
-        for f in c.parts.get(id).into_iter().flat_map(|pack| pack["items"].as_array().into_iter().flatten()).flat_map(|it| it["files"].as_array().into_iter().flatten()) {
-            let Some(p) = path_of(f) else { continue };
-            let Some(same) = std::fs::metadata(&p).ok().and_then(|m| by_size.get(&m.len())) else { continue };
-            let mine = sha(&p);
-            if let Some((_, project)) = same.iter().find(|(q, _)| !mine.is_empty() && sha(q) == mine) {
-                out.push(json!({ "file": f["path"], "project": project }));
+        for it in c.parts.get(id).into_iter().flat_map(|pack| pack["items"].as_array().into_iter().flatten()) {
+            for f in it["files"].as_array().into_iter().flatten() {
+                let Some(p) = path_of(f) else { continue };
+                let Some(same) = std::fs::metadata(&p).ok().and_then(|m| by_size.get(&m.len())) else { continue };
+                let mine = sha(&p);
+                if let Some((_, project, source)) = same.iter().find(|(q, _, _)| !mine.is_empty() && sha(q) == mine) {
+                    // `item`: the part here; `source`: the project it's also in (Review 5, UI-34)
+                    out.push(json!({ "file": f["path"], "project": project, "source": source, "item": it["id"] }));
+                }
             }
         }
         out

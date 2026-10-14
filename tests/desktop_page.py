@@ -1225,6 +1225,17 @@ async def main():
             check("files dropped on the window are added as one project, one part per name, each viewable (3MF, STL, OBJ) with a thumbnail, and a file already in the library is named",
                   hint and dropped == [["Badge", "3mf", "3mf", True], ["Case", "", "step", False], ["Gear copy", "stl", "stl", True], ["Knob", "obj", "obj", True], ["Latch", "3mf", "3mf+stl", True]]
                   and "gear copy.stl is in made parts already" in drop_toast.lower(), (hint, dropped, drop_toast))
+            # (0.4.18, UI-34) and listed on the project's page for as long as it's there
+            dup_text = ""
+            try:
+                dup_id = await pg.evaluate("() => window.__workshop.catalog.sources.find((s) => s.name === 'Drop test')?.id")
+                await pg.goto(B + f"#/browse/source/{dup_id}")
+                await pg.wait_for_selector("#duplicates [data-dup-open]", timeout=30000)
+                dup_text = await pg.inner_text("#duplicates")
+            except Exception as e:
+                print("duplicates:", e)
+            check("a file that's in another project too is listed on its project's page, with that project, Open the other and Hide this copy",
+                  "gear copy.stl" in dup_text.lower() and "made parts" in dup_text.lower(), dup_text)
             latch = await pg.evaluate("() => window.__workshop.index.items.find((i) => i.project === 'Drop test' && i.name === 'Latch')?.href")
             await pg.goto(B + latch)
             await pg.wait_for_selector("#file-colours", timeout=30000)
@@ -1261,8 +1272,8 @@ async def main():
             await pg.wait_for_selector("#part-format", timeout=30000)
             kept_pick = await pg.evaluate("() => [document.querySelector('#part-format').value, document.querySelector('#part-download').textContent, document.querySelector('#part-download').getAttribute('download')]")
             await pg.screenshot(path=str(out / "m5-03-format-picker.png"))
-            check("a part with several formats has one Download with a format picker, STL first by default, the choice kept for that part",
-                  sorted(part_formats) == ["3mf", "stl"] and first_pick == "stl" and kept_pick[0] == "3mf" and "3MF" in kept_pick[1] and kept_pick[2] == "latch.3mf",
+            check("a part with several formats has one Download with a format picker (which names the format), STL first by default, the choice kept for that part",
+                  sorted(part_formats) == ["3mf", "stl"] and first_pick == "stl" and kept_pick[0] == "3mf" and kept_pick[1].startswith("Download (") and kept_pick[2] == "latch.3mf",
                   (part_formats, first_pick, kept_pick))
             await pg.goto(B + "#/m/local-bevel/bevel-gear")
             await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear'", timeout=60000)
@@ -1301,6 +1312,19 @@ async def main():
                 print("near misses:", e)
             check("files whose names differ by a version mark are offered as one part, made one, and split again",
                   near_before == ["3mf", "stl"] and near_after == ["3mf+stl"] and near_split == ["3mf", "stl"], (near_before, near_after, near_split))
+            # (0.4.18, UI-35) Keep apart: files that look like one part but aren't, not offered again
+            apart_gone, apart_meta = False, None
+            try:
+                await pg.goto(B + "#/browse/source/local-near")
+                await pg.wait_for_selector("#near-misses [data-apart]", timeout=30000)
+                await pg.click("#near-misses [data-apart]")
+                await pg.wait_for_function("() => !document.querySelector('#near-misses')", timeout=30000)
+                apart_gone = True
+                apart_meta = json.loads((library / "sources/local-near/metadata.json").read_text()).get("apart")
+            except Exception as e:
+                print("keep apart:", e)
+            check("Keep apart: files that look like one part but aren't stay separate and aren't offered again (kept in metadata.json)",
+                  apart_gone and isinstance(apart_meta, list) and len(apart_meta) == 1 and len(apart_meta[0]) == 2, apart_meta)
 
             # 13k. (0.4.16) a Printables download: its page PDF fills in the project's details; a PDF that
             # can't be read leaves them as for any ZIP
@@ -1350,6 +1374,52 @@ async def main():
                   "by David D" in about and "published Oct 20, 2025" in about and "Version history" in about and "From the Printables PDF" in about, about[:400])
             check("a ZIP whose PDF can't be read is still added, with its details as for any ZIP",
                   dm.get("name") == "Damaged" and dm.get("site") is None and ((dm.get("meta") or {}).get("license") or {}).get("spdx") in (None, "NOASSERTION"), dm)
+            # (0.4.18, F-23) another download of the same model: a new version of its project, dated by the
+            # page and offered as an update, rather than a second project
+            og_json = library / "sources" / og.get("id", "none") / "source.json"
+            newer = bytearray((pz / "connector.stl").read_bytes())
+            newer[:16] = b"newer download  "
+            with zipfile.ZipFile(pz / "opengrid (1).zip", "w") as z:
+                z.writestr("files/opengrid-connector-test-v2.stl", bytes(newer))
+                z.write(page_pdf, "opengrid-walldesk-mounting-framework-and-ecosystem.pdf")
+            n_src = await pg.evaluate("() => window.__workshop.catalog.sources.length")
+            await pg.evaluate("(p) => import('/ui/library.js').then((m) => m.addProject({ kind: 'zip', path: p }, 'a newer download'))", str(pz / "opengrid (1).zip"))
+            n_src2 = await pg.evaluate("() => window.__workshop.catalog.sources.length")
+            og_src = json.loads(og_json.read_text()) if og_json.is_file() else {}
+            waiting = (og_src.get("update") or {}).get("latest") or {}
+            applied = {}
+            try:
+                await pg.goto(B + f"#/browse/source/{og['id']}")
+                await pg.wait_for_selector(".update-banner [data-update=apply]", timeout=30000)
+                await pg.click(".update-banner [data-update=apply]")
+                await pg.wait_for_function("() => !document.querySelector('.update-banner')", timeout=60000)
+                applied = json.loads(og_json.read_text())
+            except Exception as e:
+                print("newer download:", e)
+            check("another download of a Printables model becomes a new version of its project, dated by the page, used when you choose",
+                  n_src2 == n_src and len(og_src.get("versions") or []) == 2 and str(waiting.get("date", "")).startswith("2025-10-20")
+                  and applied.get("version") == waiting.get("id") and str(applied.get("version_date", "")).startswith("2025-10-20"),
+                  (n_src, n_src2, [v.get("date") for v in og_src.get("versions") or []], waiting, applied.get("version")))
+            # (0.4.18, F-24) Read again reads the page PDF again: details lost (or never read) come back
+            refreshed = {}
+            try:
+                s = json.loads(og_json.read_text())
+                s["origin"].pop("site", None)
+                s["detected"].pop("from", None)
+                s["detected"]["name"] = "Opengrid"
+                og_json.write_text(json.dumps(s, indent=1))
+                await pg.click("[data-act=reread]")
+                for _ in range(240):
+                    refreshed = json.loads(og_json.read_text())
+                    if (refreshed.get("origin") or {}).get("site"):
+                        break
+                    await pg.wait_for_timeout(500)
+            except Exception as e:
+                print("read again:", e)
+            check("Read again reads a project's Printables PDF again",
+                  ((refreshed.get("origin") or {}).get("site") or {}).get("name") == "printables"
+                  and (refreshed.get("detected") or {}).get("name") == "openGrid - Wall/Desk mounting framework and ecosystem",
+                  (refreshed.get("origin"), (refreshed.get("detected") or {}).get("name")))
 
             # 13l. (0.4.17) a collection: a part (from the inspector), a made part and a model with changed
             # settings (from their pages); quantities and printed; exported as one ZIP with a parts list

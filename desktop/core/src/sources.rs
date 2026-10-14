@@ -375,6 +375,36 @@ pub fn site_details(root: &Path) -> Option<(crate::pdf::Details, String)> {
 /// creator, tags, page address, dates and print settings, each marked as from the PDF.
 fn with_site_details(mut src: Value, root: &Path) -> Value {
     let Some((d, rel)) = site_details(root) else { return src };
+    site_into(&mut src, &d, &rel);
+    // the version is the page's: dated when it was last updated (F-23)
+    if let Some(date) = site_date(&d) {
+        src["version_date"] = json!(date);
+        if let Some(v) = src["versions"].get_mut(0) {
+            v["date"] = json!(date);
+        }
+    }
+    src
+}
+
+/// Read a project's page PDF again (Read again, Review 5 F-24): its details are replaced with what the
+/// PDF says now (your edits are in metadata.json, so they still win). False when it has none.
+pub fn refresh_site_details(lib: &Library, id: &str) -> Result<bool> {
+    let mut src = lib.source(id)?;
+    if !matches!(src["kind"].as_str(), Some("zip" | "folder" | "linked" | "local")) {
+        return Ok(false);
+    }
+    let root = lib.version_dir(&src, src["version"].as_str().unwrap_or(""))?;
+    let Some((d, rel)) = site_details(&root) else { return Ok(false) };
+    let before = src.clone();
+    site_into(&mut src, &d, &rel);
+    if src != before {
+        lib.save_source(&src)?;
+    }
+    Ok(true)
+}
+
+/// A page PDF's details into a project's `detected`, each marked as from it, and the page in `origin.site`.
+fn site_into(src: &mut Value, d: &crate::pdf::Details, rel: &str) {
     let label = json!("Printables PDF");
     let det = &mut src["detected"];
     let mut from = serde_json::Map::new();
@@ -433,7 +463,11 @@ fn with_site_details(mut src: Value, root: &Path) -> Value {
     }
     det["from"] = Value::Object(from);
     src["origin"]["site"] = json!({ "name": "printables", "page": d.url, "pdf": rel });
-    src
+}
+
+/// When a site's page says its model was last updated (else published), as a timestamp.
+fn site_date(d: &crate::pdf::Details) -> Option<String> {
+    d.updated.as_ref().or(d.published.as_ref()).map(|day| format!("{day}T00:00:00Z"))
 }
 
 /// Add a project: download or copy its files into a new version folder and
@@ -501,10 +535,48 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
                 bail!("{name} is already in the library, from the same ZIP file ({id}).");
             }
             let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "project".into());
-            let id = lib.new_source_id(&format!("zip {stem}"));
             let version = format!("zip-{}", &sha[..12]);
-            let (root, n) = install_version(lib, &id, &version, |tmp| extract_zip(path, tmp))?;
             let file_name = path.file_name().map(|s| s.to_string_lossy().into_owned());
+            // unpacked once, beside the projects, to see whether it's another download of a model
+            // site's page that a project here has (Review 5, F-23)
+            let staging = lib.root().join("sources").join(format!(".adding-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&staging);
+            std::fs::create_dir_all(&staging)?;
+            let n = match extract_zip(path, &staging) {
+                Ok(n) => n,
+                Err(e) => {
+                    let _ = std::fs::remove_dir_all(&staging);
+                    return Err(e);
+                }
+            };
+            let page = site_details(&staging).and_then(|(d, _)| {
+                let date = site_date(&d);
+                d.url.map(|u| (u, date))
+            });
+            let move_in = |tmp: &Path| -> Result<usize> {
+                std::fs::remove_dir(tmp)?;
+                std::fs::rename(&staging, tmp).context("couldn't move the unpacked files into place")?;
+                Ok(n)
+            };
+            if let Some((id, _)) = page.as_ref().and_then(|(u, _)| same_origin(lib, |s| s["origin"]["site"]["page"] == u.as_str())) {
+                // another download of the same model: a version of that project, offered as an update
+                let date = page.as_ref().and_then(|(_, d)| d.clone()).unwrap_or_else(|| now.clone());
+                let r = install_version(lib, &id, &version, move_in);
+                let _ = std::fs::remove_dir_all(&staging);
+                let (_, n) = r?;
+                let mut src = lib.source(&id)?;
+                let mut versions = src["versions"].as_array().cloned().unwrap_or_default();
+                versions.push(json!({ "id": version, "sha256": sha, "date": date, "added": now, "files": n, "file": file_name }));
+                src["versions"] = Value::Array(versions);
+                lib.save_source(&src)?;
+                // (not saved: tells the caller to read this version and offer it as an update)
+                src["added_version"] = json!(version);
+                return Ok(src);
+            }
+            let id = lib.new_source_id(&format!("zip {stem}"));
+            let r = install_version(lib, &id, &version, move_in);
+            let _ = std::fs::remove_dir_all(&staging);
+            let (root, n) = r?;
             let src = json!({
                 "id": id, "kind": "zip", "role": role, "added": now,
                 "origin": { "type": "zip", "file": file_name },

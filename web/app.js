@@ -963,10 +963,10 @@ function updateStatusForEdits() {
   const codeSame = (state.renderedEdits || "") === editsKey(editsOf(state.model.key));
   if (valuesSame && codeSame) {
     setStatus("ok", "Preview matches your settings.");
-    if (!a.classList.contains("is-disabled")) a.textContent = `Download ${FORMAT_LABEL[state.downloadFormat] || "STL"}`;
+    if (!a.classList.contains("is-disabled")) a.textContent = downloadText(state.downloadFormat);
   } else if (state.rendered) {
     setStatus("stale", valuesSame ? "Code changed. Generate to update the preview and download." : "Settings changed. Generate to update the preview and download.");
-    if (!a.classList.contains("is-disabled")) a.textContent = "Download last render";
+    if (!a.classList.contains("is-disabled")) a.textContent = $("#download-format").hidden ? "Download last render" : "Last render";
   }
 }
 
@@ -1040,8 +1040,12 @@ async function applyDownloadFormat() {
   a.download = name;
   a.classList.toggle("is-disabled", !blob);
   if (blob) a.removeAttribute("aria-disabled"); else a.setAttribute("aria-disabled", "true");
-  a.textContent = `Download ${FORMAT_LABEL[fmt] || fmt.toUpperCase()}`;
+  a.textContent = downloadText(fmt);
   updateStatusForEdits();
+}
+/** "Download", with the format named only when there's no picker beside it to name it (UI-33). */
+function downloadText(fmt = "stl") {
+  return $("#download-format").hidden ? `Download ${FORMAT_LABEL[fmt] || fmt.toUpperCase()}` : "Download";
 }
 $("#download-format").addEventListener("change", (e) => {
   if (state.model) rememberFormat(state.model.key, e.target.value);
@@ -1657,7 +1661,7 @@ async function showPart(lib, item) {
       link.href = f.url;
       link.setAttribute("download", f.path.split("/").pop());
       link.title = f.path.split("/").pop();
-      link.textContent = `Download ${FORMAT_LABEL[f.format] || f.format} (${bytes(f.bytes)})`;
+      link.textContent = `Download (${bytes(f.bytes)})`; // the picker beside it names the format (UI-33)
     };
     const sel = el("select", { class: "format-pick", id: "part-format", "aria-label": "Format",
       onchange: (e) => { rememberFormat(key, e.target.value); show(e.target.value); } },

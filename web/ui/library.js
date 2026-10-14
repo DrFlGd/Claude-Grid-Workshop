@@ -9,7 +9,7 @@ import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 import { Viewer } from "../viewer.js";
 import { bytes, plural } from "../lib/util.js";
-import { hideProject, deleteProject } from "./actions.js";
+import { hideProject, deleteProject, hideItems } from "./actions.js";
 import { SideButtons, openSide } from "./sideview.js";
 
 export const isDesktop = () => ctx.platform?.kind === "desktop";
@@ -44,6 +44,13 @@ export async function addProject(args, label) {
     const n = res.read?.models ?? 0, parts = res.read?.parts ?? 0;
     const problems = (res.read?.problems || []).length;
     const src = sourceById(res.source), name = src?.name || label;
+    if (res.version) {
+      // another download of a model page a project has: a version of that project, offered as an update (F-23)
+      const date = src?.update?.latest?.date;
+      ctx.toast(`Added it to ${name} as a new version${date ? `, of ${when(date)}` : ""}. Its page has Use the new version.`);
+      location.hash = scopeHash(`source:${res.source}`);
+      return res;
+    }
     // a folder of examples is asked about on the project's page before they're listed (F-21)
     const ex = src?.examples?.folder && !src.examples.as ? src.examples : null;
     const listed = ex ? Math.max(0, n - ex.count) : n;
@@ -250,9 +257,39 @@ function NearMisses({ src }) {
       ctx.toast("Made one part. Its page can split it again.");
     } catch (e) { ctx.toast(String(e.message || e)); } finally { setBusy(false); }
   };
+  // they really are different parts: not offered again (UI-35)
+  const apart = async (ids) => {
+    setBusy(true);
+    try {
+      await api("parts_merge", { source: src.id, ids, apart: true });
+      await ctx.reloadCatalog();
+      ctx.toast("Kept apart. They won't be offered as one part again.");
+    } catch (e) { ctx.toast(String(e.message || e)); } finally { setBusy(false); }
+  };
   return html`<div class="info-note near-misses" id="near-misses">
     <p><b>${near.length === 1 ? "These look like one part" : `${near.length} groups of files look like one part each`}</b>: their names differ only by a version or copy mark, and they have no format in common.</p>
-    <ul>${near.map((g) => html`<li>${listText(g.names)} <button type="button" class="link-btn" disabled=${busy} data-merge=${g.ids.join(",")} onClick=${() => merge(g.ids)}>Make one part</button></li>`)}</ul>
+    <ul>${near.map((g) => html`<li>${listText(g.names)} <button type="button" class="link-btn" disabled=${busy} data-merge=${g.ids.join(",")} onClick=${() => merge(g.ids)}>Make one part</button>
+      <button type="button" class="link-btn" disabled=${busy} data-apart=${g.ids.join(",")} onClick=${() => apart(g.ids)}>Keep apart</button></li>`)}</ul>
+  </div>`;
+}
+
+/** Its files that are in another project too (UI-34): found when it's added, listed for as long as they are. */
+function Duplicates({ src }) {
+  const v = useStore(ui, (s) => s.catalogVersion);
+  const [found, setFound] = useState([]);
+  useEffect(() => {
+    let live = true;
+    setFound([]);
+    if (src.kind !== "bundled" && src.kind !== "pinned") api("source_duplicates", { id: src.id }).then((d) => live && setFound(d || []), () => {});
+    return () => { live = false; };
+  }, [src.id, v]);
+  const rows = found.map((d) => ({ ...d, it: ctx.index?.get(`part:${src.id}/${d.item}`) })).filter((d) => d.it && !d.it.hidden);
+  if (!rows.length || readOnly()) return null;
+  return html`<div class="info-note duplicates" id="duplicates">
+    <p><b>${rows.length === 1 ? "A file here is" : `${rows.length} files here are`} in another project too</b>: the same file, byte for byte.</p>
+    <ul>${rows.map((d) => html`<li>${d.file.split("/").pop()}: also in ${d.project}
+      <button type="button" class="link-btn" data-dup-open=${d.source} onClick=${() => { location.hash = scopeHash(`source:${d.source}`); }}>Open the other</button>
+      <button type="button" class="link-btn" data-dup-hide=${d.item} onClick=${() => hideItems([d.it])}>Hide this copy</button></li>`)}</ul>
   </div>`;
 }
 
@@ -335,6 +372,7 @@ export function SourcePanel({ id }) {
     <${UpdateBanner} src=${src} />
     <${ExamplesChoice} src=${src} />
     <${NearMisses} src=${src} />
+    <${Duplicates} src=${src} />
     ${src.kind === "bundled" && src.update?.state === "upstream" ? html`<p class="lic-summary" id="upstream-newer">A newer version is on GitHub, from ${when(src.update.latest?.date)}${src.update.latest?.ahead_by ? ` (${plural(src.update.latest.ahead_by, "change")} since the app's copy)` : ""}.
       ${origin.not_updatable ? html` This copy can't be updated in place because ${origin.not_updatable}: <a href=${origin.repository} target="_blank" rel="noopener">add it from GitHub</a> to follow it.`
         : html` <a href="#/library-settings/projects">Get it from GitHub</a> (Library settings) to follow it.`}</p>` : null}
