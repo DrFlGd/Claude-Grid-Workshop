@@ -177,10 +177,14 @@ function openTabs(keys) {
   if (keys.length) location.hash = `#/m/${keys[0]}`;
 }
 
+/** One of a folder of examples made into parts (F-15): not listed as a model, but its page opens. */
+const isExampleModel = (key) => (state.catalog?.examples_todo || []).some((e) => e.key === key)
+  || state.libraries.some((l) => l.items.some((i) => i.example && i.generator === key));
+
 async function loadDetail(key) {
   // a model that's no longer in the library (an open tab, a list made before a project was read again):
   // say so without asking for it
-  if (platform.kind === "desktop" && !key.startsWith("@") && state.index && !state.index.get(`gen:${key}`)) {
+  if (platform.kind === "desktop" && !key.startsWith("@") && state.index && !state.index.get(`gen:${key}`) && !isExampleModel(key)) {
     throw Object.assign(new Error(`${key} isn't in the library`), { status: 404 });
   }
   if (!details.has(key)) {

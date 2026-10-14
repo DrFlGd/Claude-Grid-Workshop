@@ -1257,6 +1257,53 @@ impl App {
                 self.invalidate();
                 j(Value::Null)
             }
+            "example_put" => {
+                // { source, model, data }: an example made into a part (F-15), made at its defaults by the app:
+                // sources/<id>/examples/<version>/<model>.stl (rebuildable)
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let id = arg(&args, "source").map_err(e2s)?;
+                let model = arg(&args, "model").map_err(e2s)?;
+                if !model.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') {
+                    return Err("invalid model id".into());
+                }
+                let src = lib.source(id).map_err(e2s)?;
+                let version = src["version"].as_str().unwrap_or("");
+                let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
+                let p = lib.resolve(&format!("sources/{id}/examples/{version}/{model}.stl")).map_err(e2s)?;
+                crate::config::write_atomic(&p, &data).map_err(e2s)?;
+                // your own project's versions aren't kept: its earlier versions' parts go
+                if src["kind"] == "local" || src["kind"] == "linked" {
+                    for e in std::fs::read_dir(p.parent().and_then(Path::parent).ok_or("no folder")?).into_iter().flatten().flatten() {
+                        if e.file_name() != version {
+                            let _ = std::fs::remove_dir_all(e.path());
+                        }
+                    }
+                }
+                self.invalidate();
+                j(Value::Null)
+            }
+            "examples_set" => {
+                // { source, as: "models" | "parts" | "leave" }: what a project's folder of examples is (F-15),
+                // kept in its metadata.json so it holds across updates; the project is read again
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let id = arg(&args, "source").map_err(e2s)?.to_string();
+                let r#as = arg(&args, "as").map_err(e2s)?.to_string();
+                if !["models", "parts", "leave"].contains(&r#as.as_str()) {
+                    return Err(format!("unknown choice {as}", as = r#as));
+                }
+                let src = lib.source(&id).map_err(e2s)?;
+                let folder = lib.derived(&id, src["version"].as_str().unwrap_or("")).map(|d| d["examples"]["folder"].clone()).filter(Value::is_string)
+                    .ok_or("This project has no folder of examples.")?;
+                let mut meta = lib.metadata(&id);
+                meta["examples"] = json!({ "folder": folder, "as": r#as });
+                lib.save_metadata(&id, &meta).map_err(e2s)?;
+                self.invalidate();
+                Ok(Reply::Json(self.spawn(&format!("Reading {id} again"), move |app, job| async move {
+                    app.read_project(&id, None, Some(&job)).await
+                })))
+            }
             "defaults_clear" => {
                 let lib = self.library()?;
                 lib.clear_checks(arg(&args, "source").map_err(e2s)?).map_err(e2s)?;

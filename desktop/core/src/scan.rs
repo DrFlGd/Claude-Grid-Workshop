@@ -401,6 +401,8 @@ pub struct Found {
     pub parts: Vec<Value>,
     pub problems: Vec<String>,
     pub scad_files: usize,
+    /// A folder of examples (Review 3, F-15): `{ folder, main, count }`, see [`examples_folder`].
+    pub examples: Option<Value>,
 }
 
 /// The files a SCAD file `include`s (not `use`s: `use` doesn't run top-level code), as written.
@@ -504,12 +506,41 @@ fn models_among(scads: &[ScadFile]) -> Vec<String> {
     scads.iter().enumerate().filter(|(i, _)| model[*i] && !engine[*i]).map(|(_, f)| f.rel.clone()).collect()
 }
 
+/// More models than this in one folder, each only a call into the same main file, is a folder of examples.
+const EXAMPLES_MIN: usize = 20;
+
+/// A folder of examples (Review 3, F-15): one folder with more than [`EXAMPLES_MIN`] models, each of
+/// which only includes or uses the same main file and calls its modules: no settings, modules or
+/// functions of its own (LEGO.scad's `examples/`: a piece per file, by part number). Gears' examples
+/// have settings of their own, so they're models. `{ folder, main, count }`.
+fn examples_folder(entries: &[String], scads: &[ScadFile], refs: &BTreeMap<String, Vec<String>>) -> Option<Value> {
+    let mut by_folder: BTreeMap<String, Vec<&String>> = BTreeMap::new();
+    for e in entries {
+        if let Some((dir, _)) = e.rsplit_once('/') {
+            by_folder.entry(dir.to_string()).or_default().push(e);
+        }
+    }
+    let (folder, files) = by_folder.into_iter().filter(|(_, fs)| fs.len() > EXAMPLES_MIN).max_by_key(|(_, fs)| fs.len())?;
+    let mut main: Option<&String> = None;
+    for e in &files {
+        let f = scads.iter().find(|s| &s.rel == *e)?;
+        let only_calls = f.shape.modules == 0 && f.shape.functions == 0 && f.assigns.iter().all(|a| a.starts_with('$'));
+        let [r] = refs.get(*e).map(Vec::as_slice).unwrap_or(&[]) else { return None };
+        if !only_calls || r.starts_with(&format!("{folder}/")) || main.is_some_and(|m| m != r) {
+            return None;
+        }
+        main = Some(r);
+    }
+    Some(json!({ "folder": folder, "main": main?, "count": files.len() }))
+}
+
 /// Look through a project folder.
 pub fn survey(root: &Path) -> Found {
     let files = list_files(root);
     let mut found = Found::default();
     let mut imported: Vec<String> = vec![]; // model files read by import() are inputs, not parts
     let mut scads: Vec<ScadFile> = vec![];
+    let mut refs: BTreeMap<String, Vec<String>> = BTreeMap::new(); // the project files each .scad file includes or uses
     for f in &files {
         let lower = f.rel.to_lowercase();
         let name = lower.rsplit('/').next().unwrap_or(&lower).to_string();
@@ -529,9 +560,11 @@ pub fn survey(root: &Path) -> Found {
             found.scad_files += 1;
             let text = String::from_utf8_lossy(&std::fs::read(root.join(&f.rel)).unwrap_or_default()).into_owned();
             let dir = ingest::dirname(&format!("/{}", f.rel)).to_string();
-            for imp in ingest::references(&text).1 {
+            let (uses, imports) = ingest::references(&text);
+            for imp in imports {
                 imported.push(ingest::normpath(&ingest::join(&dir, &imp)).trim_start_matches('/').to_lowercase());
             }
+            refs.insert(f.rel.clone(), uses.iter().map(|u| ingest::normpath(&ingest::join(&dir, u)).trim_start_matches('/').to_string()).collect());
             let in_test_dir = lower.split('/').any(|p| p == "test" || p == "tests");
             if in_test_dir {
                 found.library_files += 1;
@@ -542,6 +575,7 @@ pub fn survey(root: &Path) -> Found {
     }
     let mut entries = models_among(&scads);
     found.library_files += scads.len() - entries.len();
+    found.examples = examples_folder(&entries, &scads, &refs);
     if entries.len() > MAX_ENTRIES {
         found.problems.push(format!(
             "{} .scad files render on their own; only the first {MAX_ENTRIES} became models. If this is a library, mark it as one.",
@@ -782,6 +816,27 @@ mod tests {
         let (files, missing) = r.collect("box.scad");
         assert!(missing.is_empty());
         assert_eq!(files.keys().cloned().collect::<Vec<_>>(), vec!["/box.scad", "/lib/util.scad"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_folder_of_examples() {
+        // F-15: more than 20 files that only call the main file's modules (LEGO.scad's examples/)
+        let d = std::env::temp_dir().join(format!("workshop-examples-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("examples")).unwrap();
+        std::fs::write(d.join("blocks.scad"), "module block(w = 1, l = 2) { cube([w * 8, l * 8, 9.6]); }\n").unwrap();
+        for i in 1..=21 {
+            std::fs::write(d.join(format!("examples/brick-1x{i}.scad")), format!("use <../blocks.scad>;\n$fn = 24;\nblock(w = 1, l = {i});\n")).unwrap();
+        }
+        let f = survey(&d);
+        assert_eq!(f.examples, Some(json!({ "folder": "examples", "main": "blocks.scad", "count": 21 })));
+        // one with a setting of its own: they're models (Gears' examples)
+        std::fs::write(d.join("examples/brick-1x1.scad"), "use <../blocks.scad>;\nlength = 3; // [1:10]\nblock(w = 1, l = length);\n").unwrap();
+        assert_eq!(survey(&d).examples, None);
+        // twenty aren't a folder of examples
+        std::fs::remove_file(d.join("examples/brick-1x1.scad")).unwrap();
+        assert_eq!(survey(&d).examples, None);
         let _ = std::fs::remove_dir_all(&d);
     }
 

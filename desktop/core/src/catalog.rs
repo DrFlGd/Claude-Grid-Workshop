@@ -97,6 +97,8 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
     let mut cats: Vec<(String, Vec<Value>, usize)> = vec![];
     // items the user deleted (kept out of the catalog; Library settings can bring them back)
     let mut removed_items: Vec<Value> = vec![];
+    // examples made into parts (F-15) whose part isn't made yet: the app makes them in the background
+    let mut examples_todo: Vec<Value> = vec![];
     // a removed category points to the one its items moved to
     let moved: HashMap<String, String> = custom_cats
         .iter()
@@ -198,6 +200,8 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         entry["icon"] = project_thumb.clone().map(Value::String).unwrap_or(Value::Null);
         entry["models"] = json!(derived["models"].as_array().map(|m| m.len()).unwrap_or(0));
         entry["parts"] = json!(derived["parts"].as_array().map(|p| p.len()).unwrap_or(0));
+        // a folder of examples (F-15): the project's page asks once what they should be
+        entry["examples"] = derived["examples"].clone();
         // models rendered at their defaults (sources/<id>/checks.json), for this version only
         let checks = lib.checks(&id);
         let check_engine = checks["engine"].clone();
@@ -230,6 +234,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         let has_thumb = |name: &str| thumbs.as_ref().is_some_and(|t| t.join(name).is_file());
         // models
         let mut model_names = vec![];
+        let mut example_parts: Vec<(String, String, Value)> = vec![]; // (id, key, name)
         for d in derived["models"].as_array().into_iter().flatten() {
             let mid = d["id"].as_str().unwrap_or("").to_string();
             let key = d["key"].as_str().unwrap_or("").to_string();
@@ -294,6 +299,13 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
                     profile_uses.entry(field).or_insert_with(|| json!([])).as_array_mut().unwrap().push(json!({ "key": key, "param": p["name"] }));
                 }
             }
+            if detail["as_part"] == true {
+                // one of a folder of examples made into parts (F-15): listed in the Parts Library once
+                // made; its page stays, for making it at other sizes
+                example_parts.push((mid.clone(), key.clone(), detail["name"].clone()));
+                out.models.insert(key, detail);
+                continue;
+            }
             let cat = summary.get("category").and_then(Value::as_str).unwrap_or("other").to_string();
             match cats.iter_mut().find(|(c, _, _)| *c == cat) {
                 Some((_, v, _)) => v.push(json!(key)),
@@ -304,7 +316,22 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             models.push(Value::Object(summary));
         }
         // ready-made parts: one pack per project
-        let parts = derived["parts"].as_array().cloned().unwrap_or_default();
+        let mut parts = derived["parts"].as_array().cloned().unwrap_or_default();
+        // and the examples made into parts: sources/<id>/examples/<version>/<model id>.stl, made by the app
+        let examples_rel = format!("sources/{id}/examples/{version}");
+        let examples_folder = crate::scan::humanize(derived["examples"]["folder"].as_str().unwrap_or("examples").rsplit('/').next().unwrap_or("examples"));
+        for (mid, key, name) in example_parts {
+            match lib.resolve(&format!("{examples_rel}/{mid}.stl")).ok().and_then(|p| std::fs::metadata(p).ok()) {
+                Some(m) => parts.push(json!({
+                    "id": mid, "name": name, "category": examples_folder, "kind": "printable", "tags": [],
+                    "files": [{ "path": format!("{mid}.stl"), "format": "stl", "bytes": m.len() }], "preview": format!("{mid}.stl"),
+                    "generator": key, "example": true,
+                })),
+                // (one that didn't render isn't tried again until its defaults are checked again)
+                None if checks.get(&mid).is_some_and(|c| c["ok"] == false) => {}
+                None => examples_todo.push(json!({ "key": key, "source": id, "model": mid })),
+            }
+        }
         // where its files are, as a library path: the stored copy, or your own project's folder (local/ or linked)
         let files_rel = match src["kind"].as_str() {
             Some("local" | "linked") => lib.version_dir(&src, &version).ok().and_then(|d| crate::api::folder_rel(lib, &id, &src, &d)),
@@ -370,13 +397,14 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
                 it["meta"] = Value::Object(vals.clone());
                 it["from"] = Value::Object(from);
                 it["folder"] = json!(folder);
+                let base = if it["example"] == true { &examples_rel } else { &files_rel };
                 for f in it["files"].as_array_mut().into_iter().flatten() {
-                    f["url"] = json!(format!("library/{files_rel}/{}", f["path"].as_str().unwrap_or("")));
+                    f["url"] = json!(format!("library/{base}/{}", f["path"].as_str().unwrap_or("")));
                 }
                 if let Some(stl) = it["preview_stl"].as_str() {
                     it["preview_url"] = json!(format!("library/sources/{id}/{stl}"));
                 } else if let Some(p) = it["preview"].as_str().filter(|p| p.to_lowercase().ends_with(".stl")) {
-                    it["preview_url"] = json!(format!("library/{files_rel}/{p}"));
+                    it["preview_url"] = json!(format!("library/{base}/{p}"));
                 }
                 if has_thumb(&format!("part-{pid}.webp")) {
                     it["thumb"] = json!(file_url(&format!("sources/{id}/thumbs/part-{pid}.webp")));
@@ -526,6 +554,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         "sources": sources,
         "suggested": suggested(lib),
         "attention": attention,
+        "examples_todo": examples_todo,
         "library": lib.info(),
         "library_meta": { "metadata": lib_meta.get("metadata").cloned().unwrap_or(json!({})), "categories": custom_cats },
     });

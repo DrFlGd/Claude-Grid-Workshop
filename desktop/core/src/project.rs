@@ -336,6 +336,18 @@ pub async fn ingest(
         (l, _) => l,
     };
     let entries: Vec<String> = if role == "library" { vec![] } else { listed.clone().unwrap_or_else(|| found.entries.clone()) };
+    // a folder of examples (Review 3, F-15): listed as models until the project's page has asked, then
+    // as metadata.json's `examples: { folder, as }` says: "models", "parts" (each made once at its own
+    // values, listed in the Parts Library) or "leave" (left out)
+    let examples = found.examples.clone().filter(|_| role != "library").map(|mut e| {
+        let choice = lib.metadata(&id)["examples"].clone();
+        e["as"] = if choice["folder"] == e["folder"] { choice["as"].clone() } else { json!("") };
+        e
+    });
+    let examples_as = examples.as_ref().and_then(|e| e["as"].as_str()).unwrap_or("").to_string();
+    let examples_dir = examples.as_ref().map(|e| format!("{}/", e["folder"].as_str().unwrap_or(""))).unwrap_or_default();
+    let in_examples = |entry: &str| examples.is_some() && entry.trim_start_matches('/').starts_with(&examples_dir);
+    let entries: Vec<String> = if examples_as == "leave" { entries.into_iter().filter(|e| !in_examples(e)).collect() } else { entries };
     let words = format!(
         "{} {} {} {}",
         det["name"].as_str().unwrap_or(""),
@@ -526,6 +538,9 @@ pub async fn ingest(
                 fam["models"].as_array_mut().unwrap().push(model.clone());
                 let (_, mut detail) = sitebuild::assemble_model(&fam, &model, &key, &format!("/{entry}"), &fmap, &editor, &raw, input_bytes)?;
                 detail["folder"] = json!(ingest::dirname(&format!("/{entry}")).trim_start_matches('/'));
+                if examples_as == "parts" && in_examples(&entry) {
+                    detail["as_part"] = json!(true); // made once at its defaults and listed as a part (F-15)
+                }
                 if let Some((path, orig)) = bases.get(&mid) {
                     detail["file_bases"] = json!({ path.as_str(): orig });
                 }
@@ -597,6 +612,7 @@ pub async fn ingest(
         "files_fp": scan::fingerprint(&root),
         "described_by": if own.is_none() { "reading" } else if own_name == "workshop.json" { "workshop.json" } else { "description.json" },
         "limits_checked": true,
+        "examples": examples,
     });
     lib.save_derived(&id, version, &derived)?;
     // every version records its file count and contents (F-2); the description beside the files (F-5)

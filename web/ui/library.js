@@ -184,6 +184,43 @@ function UpdateBanner({ src }) {
   </div>`;
 }
 
+/**
+ * A folder of examples (Review 3, F-15): many files that each only call the project's main file
+ * (LEGO.scad's examples/, a piece per file). Asked once on the project's page: list them as models
+ * (as before), make them parts (each made once at its own values, in the Parts Library), or leave
+ * them out. The answer is kept in the project's metadata.json, so it holds across updates.
+ */
+const EXAMPLES_AS = { models: "listed as models", parts: "made into parts", leave: "left out" };
+function ExamplesChoice({ src }) {
+  const ex = src.examples;
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!ex?.folder || src.role === "library") return null;
+  const choose = async (as) => {
+    setBusy(true);
+    try {
+      await runJob(api("examples_set", { source: src.id, as }), `Reading ${src.name} again`);
+      await ctx.reloadCatalog();
+      setOpen(false);
+      ctx.toast(as === "parts" ? `The ${ex.count} examples are being made into parts, in the background.` : `The examples are ${EXAMPLES_AS[as]}.`);
+      makeThumbnails();
+    } catch (e) { ctx.toast(String(e.message || e)); } finally { setBusy(false); }
+  };
+  const folder = `${ex.folder}/`;
+  if (ex.as && !open) {
+    return html`<p class="lic-summary" id="examples-choice">Its ${folder} folder (${plural(ex.count, "file")}): ${EXAMPLES_AS[ex.as] || ex.as}.
+      ${readOnly() ? null : html` <button type="button" class="link-btn" onClick=${() => setOpen(true)}>Change</button>`}</p>`;
+  }
+  if (readOnly()) return null;
+  const btn = (as, label, cls = "ghost") => html`<button type="button" class=${cls} disabled=${busy} data-examples=${as} onClick=${() => choose(as)}>${label}</button>`;
+  return html`<div class="update-banner" role="region" aria-label="Examples" id="examples-choice">
+    <p><b>${folder} has ${ex.count} examples</b>: each file only calls ${ex.main.split("/").pop()} to make one thing, so each is a part more than a model to set up.</p>
+    <p class="muted">Parts are made once, in the background, and listed in the Parts Library; each can still be opened as a model to change its settings.</p>
+    <div class="button-row">${btn("parts", "Make them parts", "primary")}${btn("models", "List them as models")}${btn("leave", "Leave them out")}
+      ${ex.as ? html`<button type="button" class="ghost" onClick=${() => setOpen(false)}>Cancel</button>` : null}</div>
+  </div>`;
+}
+
 export function SourcePanel({ id }) {
   const v = useStore(ui, (s) => s.catalogVersion);
   const tab = useStore(ui, (s) => s.sourceTab || "items");
@@ -259,6 +296,7 @@ export function SourcePanel({ id }) {
       </div>
     </div>
     <${UpdateBanner} src=${src} />
+    <${ExamplesChoice} src=${src} />
     ${src.kind === "bundled" && src.update?.state === "upstream" ? html`<p class="lic-summary" id="upstream-newer">A newer version is on GitHub, from ${when(src.update.latest?.date)}${src.update.latest?.ahead_by ? ` (${plural(src.update.latest.ahead_by, "change")} since the app's copy)` : ""}.
       ${origin.not_updatable ? html` This copy can't be updated in place because ${origin.not_updatable}: <a href=${origin.repository} target="_blank" rel="noopener">add it from GitHub</a> to follow it.`
         : html` <a href="#/library-settings/projects">Get it from GitHub</a> (Library settings) to follow it.`}</p>` : null}
@@ -388,6 +426,7 @@ export async function makeThumbnails({ components = false, source = null, unchec
   // asked while thumbnails are being made (a project added meanwhile): go round again after
   if (thumbRunning) { if (!components && !source && !unchecked) thumbAgain = true; return; }
   if (components) return componentThumbnails();
+  if (!source && !unchecked && (ctx.catalog?.examples_todo || []).length) return makeExampleParts();
   const checking = !!(source || unchecked);
   const todo = unchecked ? uncheckedModels() : source
     ? ctx.index.items.filter((i) => i.kind === "generator" && i.sourceId === source)
@@ -437,6 +476,36 @@ export async function makeThumbnails({ components = false, source = null, unchec
   if (thumbAgain) { thumbAgain = false; setTimeout(() => makeThumbnails(), 0); }
   if (source) ctx.toast(failed ? `${plural(failed, "model")} of ${todo.length} didn't render at ${failed === 1 ? "its" : "their"} defaults; see Library settings.` : `All ${plural(todo.length, "model")} render at their defaults.`);
   return { made, failed };
+}
+
+/** Examples made into parts (F-15): each rendered once at its defaults, kept as the project's part. Thumbnails follow. */
+async function makeExampleParts() {
+  const todo = ctx.catalog.examples_todo;
+  thumbRunning = true;
+  const done = addJob(`Making parts from examples · 0 of ${todo.length}`);
+  let made = 0;
+  try {
+    for (const [n, ex] of todo.entries()) {
+      done.update(`Making parts from examples · ${n + 1} of ${todo.length}`);
+      try {
+        const { detail, values } = await ctx.loadModel(ex.key);
+        const blob = (await ctx.engine.render(detail, values, () => {}).promise).blob;
+        const data = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(r.error); r.readAsDataURL(blob); });
+        await api("example_put", { source: ex.source, model: ex.model, data });
+        made++;
+      } catch (e) {
+        console.warn("example part", ex.key, e);
+        await api("defaults_put", { source: ex.source, model: ex.model, ok: false, message: renderMessage(e) }).catch(() => {});
+      }
+    }
+  } finally {
+    done();
+    thumbRunning = false;
+  }
+  await ctx.reloadCatalog();
+  // then their thumbnails (and anything else waiting); ones that didn't render aren't tried again until asked
+  setTimeout(() => makeThumbnails(), 0);
+  return { made };
 }
 
 async function componentThumbnails() {

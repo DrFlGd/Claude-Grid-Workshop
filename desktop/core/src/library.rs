@@ -212,6 +212,57 @@ Rebuildable folders can be deleted: the app makes them again.\n\
 The app's render cache and search index are kept on each computer, not here.\n";
 
 /// Written with concat! so its lines keep their indentation (a `\` line continuation drops it, F-18).
+/// The README.txt written by 0.4.10 and 0.4.11: replaced when found unchanged.
+const README_0_4_10: &str = concat!(
+    "SCAD Workshop library\n",
+    "\n",
+    "This folder is a library for the SCAD Workshop desktop app: projects you added,\n",
+    "your own projects, saved settings and all your edits. Move it, copy it, sync it\n",
+    "or keep it in git, then use \"Open library...\" in the app to use it anywhere.\n",
+    "\n",
+    "  library.json    name, favourites, categories and library-wide settings\n",
+    "  sources/        one folder per project (below)\n",
+    "  local/          your own projects: put .scad or model files in a folder here\n",
+    "  recipes/        saved settings, with any code edits\n",
+    "  collections/    collections (coming)\n",
+    "  icons/          pictures you chose for categories\n",
+    "  thumbs/         thumbnails of components (rebuildable)\n",
+    "  trash/          deleted projects, until you empty the trash\n",
+    "\n",
+    "Inside sources/<project>/:\n",
+    "  source.json     where it came from and its versions; \"version\" is the one in\n",
+    "                  use. origin.type says where from: github (checked for updates),\n",
+    "                  zip, folder (copied in), linked (a folder elsewhere, below),\n",
+    "                  local (local/<name>/), app (a starter project from an earlier\n",
+    "                  app) or pinned (your pinned components)\n",
+    "  metadata.json   your edits: names, categories, licenses, forms\n",
+    "  files/<version>/   the project's files exactly as they came, never changed. It\n",
+    "                  can hold several versions: on the project's page, Versions >\n",
+    "                  Remove versions not in use deletes the others\n",
+    "  derived/        what the app found when it read them (rebuildable)\n",
+    "  generated/      copies made so typed-in values become settings (rebuildable)\n",
+    "  docs/           the README as HTML, PDFs (rebuildable)\n",
+    "  thumbs/         pictures of its models and parts (rebuildable)\n",
+    "  previews/       models the app made for its parts (rebuildable)\n",
+    "  checks.json     whether each model renders at its defaults (rebuildable)\n",
+    "  workshop.json   what the app read the project as: its models and their\n",
+    "                  names and forms. It reports; it doesn't decide (rebuildable)\n",
+    "  description.json   the app's description of a project it knows from GitHub (a\n",
+    "                  starter project from an earlier app, Gridfinity Rebuilt...):\n",
+    "                  names and forms for the files it lists, and the files it leaves\n",
+    "                  out; any other file that draws something is a model too. Used\n",
+    "                  when the project has no workshop.json of its own. Keep it\n",
+    "\n",
+    "Your own projects (local/<name>/) are read where they are: their sources/ folder\n",
+    "has no files/. Linked projects (origin \"linked\") are read from their own folder\n",
+    "outside the library: they don't move with it and aren't in its backups.\n",
+    "sources/pinned/pins/ holds the components you pinned as models: keep it, it\n",
+    "isn't rebuildable.\n",
+    "\n",
+    "Rebuildable folders can be deleted: the app makes them again.\n",
+    "The app's render cache and search index are kept on each computer, not here.\n",
+);
+
 const README: &str = concat!(
     "SCAD Workshop library\n",
     "\n",
@@ -242,6 +293,7 @@ const README: &str = concat!(
     "  generated/      copies made so typed-in values become settings (rebuildable)\n",
     "  docs/           the README as HTML, PDFs (rebuildable)\n",
     "  thumbs/         pictures of its models and parts (rebuildable)\n",
+    "  examples/       parts made from a folder of examples (rebuildable)\n",
     "  previews/       models the app made for its parts (rebuildable)\n",
     "  checks.json     whether each model renders at its defaults (rebuildable)\n",
     "  workshop.json   what the app read the project as: its models and their\n",
@@ -364,7 +416,7 @@ impl Library {
         // written by the app (a Phase 1 workspace's, or an older version's left as it was): replaced;
         // one the user changed is left alone
         if old_readme.as_deref().is_none_or(|t| {
-            t.starts_with("SCAD Workshop workspace") || t.starts_with("Claude Grid Workshop workspace") || [README_0_4_3, README_0_4_4, README_0_4_6, README_0_4_7, README_0_4_8, README_0_4_9].contains(&t)
+            t.starts_with("SCAD Workshop workspace") || t.starts_with("Claude Grid Workshop workspace") || [README_0_4_3, README_0_4_4, README_0_4_6, README_0_4_7, README_0_4_8, README_0_4_9, README_0_4_10].contains(&t)
         }) {
             let _ = std::fs::write(&readme, README);
         }

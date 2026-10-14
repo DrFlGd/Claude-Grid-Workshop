@@ -593,7 +593,7 @@ Each milestone is a release (0.4.x while Phase 4 runs) and is followed by a revi
 | 1 | **Rename clean-up** (0.4.4). Links and text that still say Claude-Grid-Workshop point at SCAD-Workshop; 0.4.3's notes move out of Unreleased. Grown the same evening by the owner's decisions below: no starter projects in the installer, the website retired, no Needs attention; plus Review 1's UI-6 and F-6. | No old addresses left except where history is described; the installer has no `starter/` but has `libs/`; the app's releases link opens |
 | 2 | **Skins from Model Library** (0.4.5, "Skins design" below), then Review 1's interface items UI-2, UI-3, UI-7, UI-8, UI-10 and UI-11. Drafting Sheet, Parts Bin, Layer Line and Classic (today's look), chosen in Settings. | Every page looks right in each skin, light, dark and night, in the app test's screenshots |
 | 3 | **Consistent projects** (0.4.6 to 0.4.9, "Consistent projects design" below): one project description for every source, defaults that render, a check for every model on import, and the `workshop.json` layout. | The consistency checks below pass for the 19 starter projects and the test projects; an update from GitHub still compares against upstream's own files |
-| 4 | **Make parts from a generator** (item 8, "Make parts from a generator design" below; 0.4.11 and 0.4.12, with Review 3's F-15): Save as part and Make several…, with recipes. | As in item 8; made parts can be made again after an update |
+| 4 | **Make parts from a generator** (item 8, "Make parts from a generator design" below; 0.4.11, with Review 3's F-15 in 0.4.12): Save as part and Make several…, with recipes. | As in item 8; made parts can be made again after an update |
 | 5 | **The rest of Phase 4:** importing STL/3MF/OBJ/STEP and Printables ZIPs (with Model Library's readers where they fit), one item per file name with a format picker, multi-colour and multi-part 3MF, collections, ZIP export. | Phase 4's "done when" in the Phases table |
 
 Items 1, 2 and 9 of the requests of 2026-10-12 (pictures, your own content, several libraries) come after these, unless a review moves them up.
@@ -950,9 +950,9 @@ Only the changed values are stored (as saved settings do), with the code edits w
 
 **F-15: a folder of example files.** When reading a project finds one folder with more than 20 files that draw something, each of which only includes or uses the same main file and calls one of its modules (LEGO.scad's `examples/`), the project page asks once: **List them as models** (as today), **Make them parts** (each is rendered once at its own values into the project's parts, through the same queue, so they're browsable without 180 forms), or **Leave them out**. The answer is kept in the project's `metadata.json` (`examples: { "folder": "examples", "as": "parts" }`) so it holds across updates, and `catalog/suggested.json` can carry it for LEGO.scad. Gears' `examples/` (18 files with settings of their own) isn't asked about: the rule needs files that are only calls.
 
-**Order:** 0.4.11 Save as part and made parts' pages (recipe, Open with these settings, Make again); 0.4.12 Make several (Batch to the Parts Library, saved settings as rows); 0.4.13 F-15. Review 4 follows.
+**Order:** Save as part and made parts' pages (recipe, Open with these settings, Make again); Make several (Batch to the Parts Library, saved settings as rows); F-15. Review 4 follows. Released as 0.4.11 (Save as part and Make several: the first's CI run was cancelled when the second was pushed before it finished) and 0.4.12 (F-15).
 
-### 0.4.11 notes
+### 0.4.11 notes: Save as part
 
 Save as part and made parts' pages, built as planned, except:
 
@@ -962,11 +962,19 @@ Save as part and made parts' pages, built as planned, except:
 - **Your own projects' part files** (in `local/` or linked) were looked for in a stored copy that only added projects have, so their previews, thumbnails and downloads failed. Their files are now read where the project is (`library/local/<name>/…`, `library/~linked/<id>/…`), and the backend's `read` serves `library/` paths the same way as the `library://` protocol.
 - The recipe keeps the code edits as saved settings do (`{ path: { text, base } }`), so an edited part opens with the same code.
 
-### 0.4.12 notes
+### 0.4.11 notes: Make several
 
 Make several, built as planned, except:
 
-- **F-15 moves to 0.4.13**, so Make several ships on its own: example folders made into parts need their own place for the made files in an added project (whose stored copy never changes) and a queue that survives closing the app, which is more than a dialog.
+- **F-15 goes after it** (0.4.12), so Make several doesn't wait on it: example folders made into parts need their own place for the made files in an added project (whose stored copy never changes) and a queue that survives closing the app, which is more than a dialog.
 - The dialog chooses **either** combinations of settings **or** saved settings ("Vary settings" or "Your saved settings", shown when the model has saved settings), rather than mixing them as rows. Saved settings with code edits aren't offered: the parts are made with the form's code.
 - Parts are named by the model, its sizes and whatever else varies (a choice by its label, a yes/no by its name), or by the saved setting's name ("Basic Bin Drawer wide"). Two with the same name get " 2" from the backend, as Save as part does.
 - Made parts are filed under the model's category, with no dialog to ask: Edit details changes it afterwards.
+
+### 0.4.12 notes
+
+F-15, a folder of examples, built as planned, except:
+
+- **What counts:** one folder with more than 20 models, each including or using exactly one file outside the folder (the same one for all), with no modules, functions or settings of its own (`$` variables allowed). `survey` records it as `examples: { folder, main, count }`; reading adds `as` from `metadata.json` ("" until asked).
+- **Made into parts:** the examples stay models in the catalog's model table (so their pages, renders and checks work as before) but carry `as_part` and aren't listed under Parametric Models. Each becomes a part of the project's pack once its STL is in `sources/<id>/examples/<version>/<model>.stl` (rebuildable; Remove versions removes it with its version, and a local project keeps only the current one). Until then it's in the catalog's `examples_todo`, which the background queue (the thumbnails' queue) works through before thumbnails.
+- `catalog/suggested.json` doesn't choose for LEGO.scad: the project's page asks, like any other. Choosing parts there would make 180 parts in the background straight after adding it, which should be the user's call.

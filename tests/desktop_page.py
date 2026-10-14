@@ -1085,7 +1085,7 @@ async def main():
             await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear' && location.hash==='#/m/local-bevel/bevel-gear'")
             await pg.wait_for_function(DONE, timeout=300000)
             check("Open with these settings opens the model and makes it", "matches" in await pg.inner_text("#status"))
-            # (0.4.12) Make several… saves each part to the Parts Library, named from the setting that varies
+            # (0.4.11) Make several… saves each part to the Parts Library, named from the setting that varies
             await pg.click("#model-more summary")
             await pg.click("#batch-open")
             await pg.wait_for_selector("#batch[open] .batch-range input")
@@ -1099,6 +1099,36 @@ async def main():
             await pg.click("#batch-close")
             check("Make several saves each part to the Parts Library with its recipe, named from what varies",
                   len(several) == 4 and several_recipes.count("local-bevel/bevel-gear") == 4, several)
+
+            # 13h. (0.4.12, F-15) a folder of examples (more than 20 files that only call the main file) is asked
+            # about once on the project's page; made into parts, each is made once and listed as a part, kept in
+            # metadata.json, and its model page still opens
+            blocks = library / "local" / "blocks"
+            (blocks / "examples").mkdir(parents=True, exist_ok=True)
+            (blocks / "blocks.scad").write_text("module block(w = 1, l = 2) { cube([w * 8, l * 8, 9.6]); }\n")
+            (blocks / "plate.scad").write_text("// Plate size\nsize = 4; // [1:10]\nuse <blocks.scad>\nblock(size, size);\n")
+            for i in range(1, 23):
+                (blocks / "examples" / f"brick-1x{i}.scad").write_text(f"use <../blocks.scad>;\n\nblock(w = 1, l = {i});\n")
+            await pg.evaluate("import('/ui/library.js').then(async (m) => { await m.rescanLocal(false); await m.rescanLocal(false); })")
+            await pg.goto(B + "#/browse/source/local-blocks")
+            await pg.wait_for_selector("#examples-choice [data-examples=parts]", timeout=120000)
+            asked = await pg.inner_text("#examples-choice")
+            await pg.click("#examples-choice [data-examples=parts]")
+            count_js = "() => { const i = window.__workshop.index.items.filter((x) => x.projectId === 'local-blocks'); return [i.filter((x) => x.kind === 'generator').length, i.filter((x) => x.kind === 'part').length] }"
+            try:
+                await pg.wait_for_function(f"() => ({count_js})()[1] >= 22", timeout=300000)
+            except Exception:
+                pass
+            counts = await pg.evaluate(count_js)
+            ex_meta = json.loads((library / "sources/local-blocks/metadata.json").read_text()).get("examples")
+            brick = await pg.evaluate("() => window.__workshop.index.items.find((x) => x.projectId === 'local-blocks' && x.kind === 'part' && x.name === 'Brick 1x3')?.href")
+            await pg.goto(B + (brick or "#/"))
+            await pg.wait_for_selector("#part-status a", timeout=20000)
+            await pg.click("#part-status a")
+            await pg.wait_for_function(DONE, timeout=120000)
+            check("a folder of examples is asked about once; made into parts, each is made and listed as a part, the choice kept, its model page still opens",
+                  "22 examples" in asked and counts == [1, 22] and ex_meta == {"folder": "examples", "as": "parts"}
+                  and "matches" in await pg.inner_text("#status"), (asked[:80], counts, ex_meta, brick))
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"

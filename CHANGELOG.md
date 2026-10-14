@@ -83,7 +83,15 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-Milestone 4, first and second parts: Save as part and Make several, released together as 0.4.11 (0.4.11's own CI run was cancelled when Make several was pushed before it finished; see For agents › Working in a cloud session).
+Milestone 4, last part (0.4.12): Review 3's F-15, a folder of examples.
+
+- **A folder of examples is asked about once** on its project's page: more than 20 files in one folder that each only call the project's main file (LEGO.scad's `examples/`, a piece per file) can be **made into parts**, **listed as models** (as before) or **left out**. The answer is kept in the project's `metadata.json` (`examples: { folder, as }`), so it holds across updates, and can be changed from the same place.
+- **Made into parts**, each example is made once at its own values in the background ("Making parts from examples · 3 of 180") into `sources/<id>/examples/<version>/`, listed in the Parts Library under the project with its picture, and its page still opens the model for other sizes. One that doesn't render is listed among the project's problems and isn't tried again until its defaults are checked.
+- The library's README names the `examples/` folder.
+
+## 0.4.11 — 2026-10-14 · Save as part and Make several: made parts kept in the Parts Library with their recipes
+
+Milestone 4, first and second parts: Save as part and Make several, released together (0.4.11's own CI run was cancelled when Make several was pushed before it finished; see For agents › Working in a cloud session).
 
 Make several:
 
