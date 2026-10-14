@@ -47,13 +47,14 @@ export function DropDialog({ spec }) {
   };
   const toOwn = async (folder) => {
     close();
+    const from = location.hash; // the page to open the project from, unless you've moved on by then
     try {
       const r = await api("local_add", { paths: [...dirs, ...files].map((i) => i.path), folder: folder || null });
       await rescanLocal(true);
       await rescanLocal(true);
       ctx.toast(`Copied ${head} into ${r.folder}, one of your own projects.`);
       const src = (ctx.catalog?.sources || []).find((s) => s.kind === "local" && String(s.origin?.path || "").replace(/^local\//, "") === r.folder);
-      if (src) location.hash = `#/browse/source/${src.id}`;
+      if (src && location.hash === from) location.hash = `#/browse/source/${src.id}`;
     } catch (e) { ctx.toast(String(e.message || e)); }
   };
   const ownOk = !zips.length; // a ZIP is added as a project of its own, not unpacked into yours

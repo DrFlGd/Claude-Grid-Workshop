@@ -91,6 +91,7 @@ Milestone 5, first part (0.4.14): ready-made parts look and come in like generat
 - **Drop files, folders and ZIPs on the window** to add them. A dialog offers **Add as a project** (copied into the library, like Add project; loose files become one project, named as you like, and each folder or ZIP its own), **Add to <project>** when one of your own projects is open, or **Add as a project of your own** (a new folder in `local/`). A hint shows while dragging.
 - **Files already in the library are named** when a project is added ("gear copy.stl is in Made parts already"), found by size and then SHA-256. They're added anyway.
 - CI: the acceptance test drops a folder's worth of files (STL, a two-colour 3MF, OBJ, STEP, a 3MF with a picture, a copy of a made part) and one file onto a project of your own, with screenshots.
+- Fix (CI's first run of 0.4.14): after **Add to <project>** finished copying, the app opened that project's page even when you'd moved to another page meanwhile, which is what pulled the acceptance test off Library settings before Restore. It now opens the project only if you're still where you dropped the files, and the test waits for the copy's message.
 
 ## 0.4.13 — 2026-10-14 · Review 4: the Made parts shelf, example parts, your own licenses, changes counted by the files a model uses
 

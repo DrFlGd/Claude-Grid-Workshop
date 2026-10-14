@@ -1236,6 +1236,8 @@ async def main():
             await pg.wait_for_selector("#drop-own", timeout=20000)
             await pg.click("#drop-own")
             try:
+                # (the copy is done when it says so: it reads the project twice first)
+                await pg.wait_for_function("() => (document.querySelector('#toast')?.textContent || '').toLowerCase().includes('copied spacer.stl')", timeout=120000)
                 await pg.wait_for_function("() => window.__workshop.index.items.some((i) => i.projectId === 'local-blocks' && i.name === 'Spacer')", timeout=60000)
             except Exception:
                 pass
