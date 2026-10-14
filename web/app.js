@@ -14,7 +14,7 @@ import { html, render } from "./lib/html.js";
 import { LibrarySettingsPage } from "./ui/libsettings.js";
 import { unflagItems } from "./ui/actions.js";
 import { saveComponentThumb } from "./ui/library.js";
-import { ui, recordRecent, setTabs, layoutFor, isDark, setTheme, THEMES } from "./ui/state.js";
+import { ui, recordRecent, setTabs, layoutFor, isDark, setTheme, THEMES, setSkin, SKINS } from "./ui/state.js";
 import { scopeFromPath } from "./ui/context.js";
 import { scopeInfo } from "./ui/sidebar.js";
 
@@ -234,6 +234,12 @@ function renderModelHeader(detail) {
     } })));
   $("#model-alerts").replaceChildren(...alerts);
   const hasNotes = !!holder.textContent.trim();
+  // every page has a one-line summary under its name: a component (or a model without one) takes its notes' first sentence
+  if (!detail.summary && hasNotes) {
+    const text = holder.textContent.replace(/\s+/g, " ").trim();
+    const first = (text.match(/^.{20,}?[.!?](?=\s|$)/) || [text])[0];
+    $("#model-summary").textContent = first.length > 180 ? `${first.slice(0, 177).trimEnd()}…` : first;
+  }
   $("#model-notes-body").replaceChildren(...holder.childNodes);
   $("#model-notes").hidden = !hasNotes;
   $("#model-notes").open = false;
@@ -248,15 +254,23 @@ function renderModelExtra(detail) {
   if (platform.kind !== "desktop") return;
   const ro = !!state.catalog?.library?.read_only;
   const btn = (id, text, title, onclick, disabled = false) => el("button", { type: "button", class: "ghost small", id, text, title, onclick, disabled });
-  if (detail.kind === "component") {
-    box.append(btn("copy-code", "Copy code", "Copy the OpenSCAD code for these settings (includes the library, calls the module)", copyComponentCode));
-    box.append(btn("pin-component", "Pin as a model…", "Keep this component under Parametric Models, with these settings as its defaults", () =>
-      ui.set({ dialog: { type: "pin", key: detail.key, values: structuredClone(state.values) } }), ro));
-  }
+  // one row on every model and component page: Code, README, Edit form; the rarer actions under ⋯
   const it = state.index?.get(`gen:${detail.key}`);
   if (it && it.sourceId) {
     box.append(btn("edit-form", "Edit form", "Rename settings, add help, choices and conditions, hide settings (saved with this item in the library)", () =>
       ui.set({ dialog: { type: "form", key: detail.key } }), ro));
+  }
+  const more = [];
+  if (detail.kind === "component") {
+    more.push(btn("copy-code", "Copy code", "Copy the OpenSCAD code for these settings (includes the library, calls the module)", copyComponentCode));
+    more.push(btn("pin-component", "Pin as a model…", "Keep this component under Parametric Models, with these settings as its defaults", () =>
+      ui.set({ dialog: { type: "pin", key: detail.key, values: structuredClone(state.values) } }), ro));
+  }
+  if (more.length) {
+    const menu = el("details", { class: "menu", id: "model-more" }, el("summary", { class: "ghost small", title: "More", "aria-label": "More", text: "⋯" }),
+      el("div", { class: "menu-panel" }, more));
+    more.forEach((b) => b.addEventListener("click", () => { menu.open = false; }));
+    box.append(menu);
   }
   box.hidden = !box.childNodes.length;
 }
@@ -438,6 +452,8 @@ function buildField(p) {
     const sel = el("select", { id, "aria-describedby": describedby,
       onchange: (e) => setValue(p, p.options[e.target.selectedIndex].value) },
       p.options.map((o) => el("option", { text: o.label })));
+    // choices longer than half the column get the whole row under the label
+    if (p.options.some((o) => String(o.label).length > 24)) wrap.classList.add("wide");
     wrap.append(head(el("label", { for: id, text: label })), sel, ...helpNodes);
   } else if (p.widget === "slider" && !Array.isArray(p.default)) {
     const step = p.step ?? (Number.isInteger(p.default) && Number.isInteger(p.min ?? 0) && Number.isInteger(p.max ?? 0) ? 1 : "any");
@@ -1417,7 +1433,10 @@ function showSettings() {
   });
   const body = [
     el("h2", { text: "Appearance" }),
-    el("div", { class: "theme-pick", role: "radiogroup", "aria-label": "Theme" }, THEMES.map(([id, label]) => el("label", {},
+    el("p", { class: "help-inline", text: "The skin is the app's look: its colours, lettering, shapes and icons. Each skin has light and dark colours, chosen by the theme." }),
+    el("div", { class: "theme-pick", id: "skin-pick", role: "radiogroup", "aria-label": "Skin" }, el("b", { text: "Skin" }), SKINS.map(([id, label]) => el("label", {},
+      el("input", { type: "radio", name: "skin", value: id, checked: ui.get().skin === id, onchange: () => setSkin(id) }), " ", label))),
+    el("div", { class: "theme-pick", id: "theme-pick", role: "radiogroup", "aria-label": "Theme" }, el("b", { text: "Theme" }), THEMES.map(([id, label]) => el("label", {},
       el("input", { type: "radio", name: "theme", value: id, checked: ui.get().theme === id, onchange: () => setTheme(id) }), " ", label))),
     el("h2", { text: "Printer profile" }),
     el("p", { text: "Models that ask for these start with your values instead of the author's. Leave a value empty to keep the defaults. Magnet and tolerance settings aren't linked: each project measures them differently." }),
@@ -1436,7 +1455,7 @@ const RELEASES_URL = "https://github.com/DrFlGd/SCAD-Workshop/releases";
 let mountedPage = null;
 function showPage(children) {
   if (mountedPage) { render(null, mountedPage); mountedPage = null; }
-  $("#about-body").replaceChildren(...children);
+  $("#about-body").replaceChildren(...children.filter((c) => c != null && c !== false));
 }
 
 function showLibrarySettings() {

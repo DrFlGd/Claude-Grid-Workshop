@@ -243,16 +243,24 @@ try:
         print("libraries:", report["libraries"], flush=True)
 
     # every generator opened above stays open as a tab
-    tabs = d.execute_script("return [...document.querySelectorAll('.tabstrip [data-tab]')].map(t => t.dataset.tab)")
+    tabs = d.execute_script("return [...document.querySelectorAll('.tabbar [data-tab], .tabbar [data-tab-more]')].map(t => t.dataset.tab || t.dataset.tabMore)")
     report["tabs"] = tabs
     print("tabs:", tabs, flush=True)
     for key in ("gridfinity-rebuilt/bin", "underware/t-channel", "gridfinity-extended/bin"):
         if key not in tabs:
             failures.append(f"no tab for {key}")
 
-    # night theme, on the library
+    # (0.4.5) the default skin, its bundled font and its colours mixed in the top bar, in the real webview
     d.execute_script("location.hash = '#/browse/all'")
     wait("document.querySelector('.results [data-item]')", 20, "the library again")
+    report["skin"] = d.execute_script("""return [document.documentElement.dataset.skin, [...document.fonts].some((f) => f.family.replace(/["']/g, "") === "Overpass" && f.status === "loaded"),
+        getComputedStyle(document.querySelector('.topsearch')).borderTopColor]""")
+    print("skin:", report["skin"], flush=True)
+    if report["skin"][0] != "drafting" or not report["skin"][1] or report["skin"][2] in ("", "rgba(0, 0, 0, 0)"):
+        failures.append(f"skin not applied as expected: {report['skin']}")
+    shot("04d-drafting-skin")
+
+    # night theme, on the library
     for _ in range(3):
         if d.execute_script("return document.documentElement.dataset.theme") == "night":
             break

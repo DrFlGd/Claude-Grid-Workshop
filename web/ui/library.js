@@ -155,35 +155,43 @@ export function SourcePanel({ id }) {
   const url = origin.url || src.meta?.origin;
   const problems = src.problems || [];
   const tabs = [["items", "Items"], ["about", "About"], ["files", "Files"], ["versions", "Versions"]];
+  // one main action beside the project's name (Check for updates, or Read again); the rest under ⋯ (Review 1, UI-3)
+  const reread = html`<button type="button" class=${src.kind === "github" ? "" : "ghost"} disabled=${!!busy || ro} data-act="reread" onClick=${() => act("read", async () => {
+    await runJob(api("source_read", { id }), `Reading ${src.name}`);
+    await ctx.reloadCatalog();
+    makeThumbnails();
+  })}>${busy === "read" ? "Reading…" : "Read again"}</button>`;
   return html`<section class="source-panel" data-source=${id}>
     <div class="source-head">
       ${src.icon ? html`<img class="source-icon" src=${src.icon} alt="" />` : null}
       <div>
         <p class="source-kind">${kindText(src)}${src.role === "library" ? " · library" : ""}${src.version_date ? ` · version of ${when(src.version_date)}` : ""}</p>
-        <p class="source-sub">${url ? html`<a href=${url} target="_blank" rel="noopener">${url.replace(/^https?:\/\//, "")}</a>`
-          : html`<span title=${origin.path || origin.file || ""}>${(origin.path || origin.file || "").split(/[\\/]/).filter(Boolean).slice(-2).join("/")}</span>`}
-          ${src.meta?.license?.spdx ? html` · ${src.meta.license.spdx === "NOASSERTION" ? "License not stated" : src.meta.license.spdx}` : null}</p>
+        <p class="source-sub">${[
+          url ? html`<a href=${url} target="_blank" rel="noopener">${url.replace(/^https?:\/\//, "")}</a>`
+            : origin.path || origin.file ? html`<span title=${origin.path || origin.file}>${(origin.path || origin.file).split(/[\\/]/).filter(Boolean).slice(-2).join("/")}</span>` : null,
+          src.meta?.license?.spdx ? (src.meta.license.spdx === "NOASSERTION" ? "License not stated" : src.meta.license.spdx) : null,
+        ].filter(Boolean).flatMap((x, i) => (i ? [" · ", x] : [x]))}</p>
       </div>
       <div class="source-actions">
-        <button type="button" class="ghost" disabled=${ro} onClick=${() => ui.set({ dialog: { type: "edit", level: "project", source: id } })} data-act="edit">Edit details</button>
-        <button type="button" class="ghost" disabled=${ro} onClick=${() => hideProject(id, !src.hidden)} data-act="hide-project"
-          title=${src.hidden ? "List it again" : "Keep it and everything in it out of browsing and search"}>${src.hidden ? "Unhide" : "Hide"}</button>
         ${src.kind === "github" ? html`<button type="button" class="ghost" disabled=${!!busy || ro} data-act="check" onClick=${() => act("check", async () => {
           const r = await runJob(api("updates_check", { id }), `Checking ${src.name}`);
           await ctx.reloadCatalog();
           ctx.toast(r.updates?.length ? "An update is ready to review." : "No newer version.");
-        })}>${busy === "check" ? "Checking…" : "Check for updates"}</button>` : null}
-        ${src.kind !== "bundled" ? html`<button type="button" class="ghost" disabled=${!!busy || ro} data-act="reread" onClick=${() => act("read", async () => {
-          await runJob(api("source_read", { id }), `Reading ${src.name}`);
-          await ctx.reloadCatalog();
-          makeThumbnails();
-        })}>${busy === "read" ? "Reading…" : "Read again"}</button>` : null}
-        <details class="menu"><summary class="ghost" aria-label="More">⋯</summary><div class="menu-panel">
+        })}>${busy === "check" ? "Checking…" : "Check for updates"}</button>`
+        : src.kind !== "bundled" ? reread : null}
+        <details class="menu" id="source-more"><summary class="ghost" aria-label="More" title="More">⋯</summary><div class="menu-panel" onClick=${(e) => {
+          if (e.target.closest("button")) e.currentTarget.closest("details").open = false;
+        }}>
+          <button type="button" disabled=${ro} onClick=${() => ui.set({ dialog: { type: "edit", level: "project", source: id } })} data-act="edit">Edit details…</button>
+          ${src.kind === "github" ? reread : null}
+          <button type="button" disabled=${ro} onClick=${() => hideProject(id, !src.hidden)} data-act="hide-project"
+            title=${src.hidden ? "List it again" : "Keep it and everything in it out of browsing and search"}>${src.hidden ? "Unhide" : "Hide"}</button>
           <button type="button" onClick=${() => api("source_get", { id }).then((i) => i.folder && ctx.platform.library.openPath(i.folder))}>Open its folder</button>
           ${src.kind !== "bundled" && src.kind !== "local" ? html`<button type="button" disabled=${ro} onClick=${() => act("role", async () => {
             await runJob(api("source_role", { id, role: src.role === "library" ? "project" : "library" }), `Reading ${src.name}`);
             await ctx.reloadCatalog();
           })}>${src.role === "library" ? "Treat as a project (list its models)" : "Treat as a library (others include it)"}</button>` : null}
+          <hr />
           <button type="button" class="danger-text" disabled=${ro} data-act="remove" onClick=${() => act("remove", async () => {
             if (await deleteProject(id)) location.hash = "#/";
           })}>Delete project…</button>

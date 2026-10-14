@@ -21,6 +21,7 @@ export const ui = createStore({
   tabs: [],                // open model keys
   activeTab: null,
   jobs: [],                // [{ id, label, started, cancel }]
+  skin: "drafting",         // drafting | partsbin | layerline | classic (SKINS below)
   theme: "system",
   quicklook: null,         // item id
   palette: false,
@@ -50,6 +51,7 @@ export function initState(store) {
     favs: prefs.get("gw-favs", []) || [],
     recent: prefs.get("gw-recent", []) || [],
     tabs: prefs.get("gw-tabs", []) || [],
+    skin: SKINS.some(([v]) => v === saved.skin) ? saved.skin : "drafting",
     theme: saved.theme || "system",
     size: saved.size || "m",
     sort: saved.sort || "default",
@@ -62,13 +64,14 @@ export function initState(store) {
     catPanel: saved.catPanel !== false,
     side: { ...ui.get().side, ...(saved.side || {}) },
   });
+  applySkin();
   applyTheme();
   matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", applyTheme);
 }
 
 function savePrefs() {
   const s = ui.get();
-  prefs?.set(LAYOUT_KEY, { theme: s.theme, size: s.size, sort: s.sort, group: s.group, columns: s.columns, inspector: s.inspector, layouts: s.layouts, condensed: s.condensed, groupBefore: s.groupBefore, catPanel: s.catPanel, side: s.side });
+  prefs?.set(LAYOUT_KEY, { skin: s.skin, theme: s.theme, size: s.size, sort: s.sort, group: s.group, columns: s.columns, inspector: s.inspector, layouts: s.layouts, condensed: s.condensed, groupBefore: s.groupBefore, catPanel: s.catPanel, side: s.side });
 }
 
 export function setPref(patch) {
@@ -86,6 +89,23 @@ export function setLayout(layout) {
   const s = ui.get();
   ui.set({ layout, layouts: { ...(s.layouts || {}), [s.scope]: layout } });
   savePrefs();
+}
+
+/** The skins (docs/DESKTOP_PLAN.md, "Skins design"; Model Library's): a skin is
+ *  data-skin on the page's root, read by styles.css and by the icons drawn for each skin. */
+export const SKINS = [
+  ["drafting", "Drafting Sheet"],
+  ["partsbin", "Parts Bin"],
+  ["layerline", "Layer Line"],
+  ["classic", "Classic (the look before skins)"],
+];
+export function applySkin() {
+  document.documentElement.dataset.skin = (SKINS.find(([v]) => v === ui.get().skin) || SKINS[0])[0];
+  window.dispatchEvent(new CustomEvent("gw-theme"));
+}
+export function setSkin(skin) {
+  setPref({ skin });
+  applySkin();
 }
 
 export const THEMES = [["system", "Follow the system"], ["light", "Light"], ["dark", "Dark"], ["night", "Night (dim, warm, for a dark workshop)"]];

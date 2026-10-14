@@ -77,7 +77,7 @@ function Row({ scope, label, n, icon, depth = 0, expand, open, onToggle, current
   const active = current === scope;
   const toggle = expand ? html`<button type="button" class="nav-toggle" aria-expanded=${open ? "true" : "false"} aria-label=${`${open ? "Collapse" : "Expand"} ${label}`}
       onClick=${onToggle}>${Icon.chevron(12)}</button>` : null;
-  return html`<li class="nav-row" style=${`--depth:${depth}`} data-section-row=${section || null}>
+  return html`<li class="nav-row" style=${`--depth:${depth}`} data-depth=${depth} data-section-row=${section || null}>
     ${toggleEnd ? null : toggle || html`<span class="nav-toggle-space"></span>`}
     <a href=${scopeHash(scope)} class=${`nav-link${active ? " active" : within ? " within" : ""}`} aria-current=${active ? "page" : null}
       onClick=${() => ui.set({ navOpen: false })} data-scope=${scope}>

@@ -1,7 +1,7 @@
 // Command palette (Ctrl+K): actions and anything in the index, from one box.
 import { html, useState, useLayoutEffect, useRef, useMemo } from "../lib/html.js";
 import { useStore } from "../lib/store.js";
-import { ui, setLayout, setPref, setTheme, THEMES } from "./state.js";
+import { ui, setLayout, setPref, setTheme, THEMES, setSkin, SKINS } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { Icon } from "./icons.js";
 
@@ -25,6 +25,7 @@ function commands() {
     { label: "Switch to List view", run: () => setLayout("list") },
     { label: "Switch to Table view", run: () => setLayout("table") },
     { label: "Switch to Grouped view", run: () => setLayout("grouped") },
+    ...SKINS.map(([id, label]) => ({ label: `Skin: ${label}`, run: () => setSkin(id) })),
     ...THEMES.map(([id, label]) => ({ label: id === "system" ? "Theme: follow the system" : `Theme: ${label}`, run: () => setTheme(id) })),
     { label: ui.get().inspector ? "Hide the inspector" : "Show the inspector", run: () => setPref({ inspector: !ui.get().inspector }) },
   ];

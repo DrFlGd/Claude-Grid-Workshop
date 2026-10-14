@@ -79,6 +79,7 @@ jobs:
           python tools/thumbnails.py --site _site --native-engine build/native/squashfs-root/AppRun
           # the OpenSCAD libraries the app ships with (pinned and hash-checked), indexed into Components by build_desktop.py
           python tools/fetch_libraries.py --out build/desktop/libs
+          pip install fonttools   # cuts Layer Line's heading font to the letters the app uses
           python tools/build_desktop.py --site _site --out build/desktop --fetch-fonts
       - uses: actions/upload-artifact@v4
         with:

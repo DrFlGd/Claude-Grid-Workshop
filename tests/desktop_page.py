@@ -151,6 +151,43 @@ async def main():
             check("left menu: Parametric Models, Components, Parts Library; the categories in a panel beside it (projects inside, folds away, scrolls)",
                   sections == ["Parametric Models", "Components", "Parts Library"] and panel_home == 0 and ccats >= 8 and pcats >= 1 and within == 1 and scrolls == "auto",
                   (sections, panel_home, ccats, pcats, within, scrolls))
+
+            # 1b. (0.4.5) skins: Drafting Sheet unless chosen; Settings offers all four; each one in light and dark
+            await pg.goto(B + "#/settings")
+            await pg.wait_for_selector("#skin-pick input")
+            default_skin = await pg.evaluate("document.documentElement.dataset.skin")
+            offered = await pg.eval_on_selector_all("#skin-pick input", "els => els.map((e) => e.value)")
+            first_gen = await pg.evaluate("() => window.__workshop.index.items.find((i) => i.kind === 'generator' && !i.hidden).id.replace(/^gen:/, '')")
+            applied = []
+            for skin in offered:
+                for theme in ("light", "dark"):
+                    await pg.goto(B + "#/settings")
+                    await pg.wait_for_selector("#skin-pick input")
+                    await pg.check(f'#skin-pick input[value="{skin}"]')
+                    await pg.check(f'#theme-pick input[value="{theme}"]')
+                    applied.append(await pg.evaluate("[document.documentElement.dataset.skin, document.documentElement.dataset.theme].join('/')"))
+                    for page, target in (("home", "#/"), ("browse", "#/browse/all"), ("model", f"#/m/{first_gen}")):
+                        await pg.goto(B + target)
+                        await pg.wait_for_selector({"home": ".home .tile", "browse": ".results [data-item]", "model": "#generate"}[page])
+                        await asyncio.sleep(1.5)
+                        await pg.screenshot(path=str(out / f"p5-skin-{skin}-{theme}-{page}.png"))
+            await pg.goto(B + "#/settings")
+            await pg.wait_for_selector("#skin-pick input")
+            await pg.check('#skin-pick input[value="partsbin"]')
+            await pg.check('#theme-pick input[value="system"]')
+            await asyncio.sleep(1)   # preferences are written a moment after a change
+            await pg.reload()
+            await pg.wait_for_function("() => !!window.__workshop")
+            kept = await pg.evaluate("document.documentElement.dataset.skin")
+            await pg.wait_for_selector("#skin-pick input")
+            await pg.check('#skin-pick input[value="drafting"]')
+            fonts_ok = True
+            if (Path(a.ui) / "vendor/fonts/fonts.css").is_file():   # bundled by build_desktop.py --fetch-fonts
+                fonts_ok = await pg.evaluate("""async () => (await Promise.all(['Overpass', 'Overpass Mono', 'Sofia Sans', 'Atkinson Hyperlegible', 'M PLUS Rounded 1c']
+                    .map((f) => document.fonts.load(`700 14px "${f}"`)))).every((l) => l.length > 0)""")
+            check("skins: Drafting Sheet by default; Settings offers four, each applies in light and dark and is kept; their fonts are bundled",
+                  default_skin == "drafting" and offered == ["drafting", "partsbin", "layerline", "classic"] and applied == [f"{s}/{t}" for s in offered for t in ("light", "dark")]
+                  and kept == "partsbin" and fonts_ok, (default_skin, offered, applied, kept, fonts_ok))
             await pg.goto(B + "#/")
 
             # 2. three public projects by URL
@@ -250,6 +287,7 @@ async def main():
             code = await pg.evaluate("() => window.__workshop.platform.api('component_code', { key: '@bosl2/bevel_gear', values: { teeth: 24, mod: 2, mate_teeth: 36 } })")
             check("the component's OpenSCAD code", "include <BOSL2/gears.scad>" in code and "bevel_gear(teeth=24, mate_teeth=36" in code and "mod=2" in code, code.replace("\n", " | "))
             # pin it as a model (the settings it has now become its defaults)
+            await pg.click("#model-more summary")
             await pg.click("#pin-component")
             await pg.wait_for_selector(".pin-dialog #pin-name")
             await pg.fill("#pin-name", "Bevel gear 24T")
@@ -428,6 +466,7 @@ async def main():
             v76 = ids["vector76-gridfinity"]
             await pg.goto(B + f"#/browse/source/{v76}")
             await pg.wait_for_selector(".source-panel")
+            await pg.click("#source-more summary")
             await pg.click(".source-actions [data-act=edit]")
             await pg.fill("#meta-license", "CC-BY-4.0")
             await pg.click("#meta-save")
@@ -469,6 +508,7 @@ async def main():
             await pg.fill("#meta-license", "MIT")
             await pg.click("#meta-save")
             await pg.wait_for_selector(".dialog", state="detached")
+            await pg.click("#source-more summary")
             await pg.click(".source-actions [data-act=edit]")
             await pg.fill("#meta-license", "CC-BY-SA-4.0")
             await pg.click("#meta-save")

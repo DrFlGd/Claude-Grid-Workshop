@@ -8,7 +8,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=Overpass:wght@400..800&family=Overpass+Mono:wght@400..700&family=Sofia+Sans:wght@400..800&family=Sofia+Sans+Condensed:wght@400..700&family=Sofia+Sans+Extra+Condensed:wght@600..800&family=Atkinson+Hyperlegible:wght@400;700&family=M+PLUS+Rounded+1c:wght@800&display=swap">
   <link rel="stylesheet" href="styles.css">
   <script type="importmap">
     { "imports": { "three": "./vendor/three/three.module.js" } }
@@ -63,6 +63,7 @@
     <section class="stage" aria-label="3D preview">
       <canvas id="viewer"></canvas>
       <p class="stage-empty" id="stage-empty" hidden></p>
+      <div class="hud-top">
       <div class="hud hud-dims" id="dims" hidden></div>
       <div class="hud hud-tools" role="toolbar" aria-label="View">
         <button type="button" data-view="iso" title="Angled view">3D</button>
@@ -70,6 +71,7 @@
         <button type="button" data-view="front" title="Front view">Front</button>
         <button type="button" data-toggle="edges" aria-pressed="false" title="Show edges">Edges</button>
         <button type="button" data-toggle="grid" aria-pressed="true" title="Show 42 mm grid">Grid</button>
+      </div>
       </div>
       <div class="hud hud-filament" role="radiogroup" aria-label="Preview colour" id="filament"></div>
       <div class="stage-overlay" id="stage-overlay" hidden>

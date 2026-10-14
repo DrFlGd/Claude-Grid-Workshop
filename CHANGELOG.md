@@ -81,6 +81,19 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+Milestone 2 of the owner's direction of 2026-10-14: Model Library's skins, and Review 1's interface items UI-2, UI-3, UI-7, UI-8, UI-10 and UI-11.
+
+- **Skins** (`docs/DESKTOP_PLAN.md`, "Skins design"): Settings › Appearance has a Skin choice above Theme: **Drafting Sheet** (the new default: square corners, fine rules, drafting blue, Overpass and Overpass Mono, a faint grid behind pictures and the 3D view, mono section headings with a rule, the status bar as a title block), **Parts Bin** (machine-tool green, Sofia Sans, label-tape headings, pegboard, drawer-front cards), **Layer Line** (silk magenta, Atkinson Hyperlegible and M PLUS Rounded 1c, pill shapes, layer lines, a spool colour per category) and **Classic** (the look up to 0.4.4). Each has light and dark colours; Night keeps its own. The command palette lists them too. Colours, fonts, corners and icon lines that were written in place are now names the skins set (`--chrome-ink`, `--accent-hover`, `--accent-edge`, `--star`, `--font-head`, `--font-mono`, `--head-stretch`, `--radius-xs`, `--icon-stroke`…), so the top bar works light or dark. Home, star, box, settings and search icons have a drawing per skin (Model Library's). The skins' fonts (SIL OFL) are bundled by `build_desktop.py --fetch-fonts`; CI installs fontTools to cut Layer Line's heading font to Latin letters.
+- **The size of the model and the view buttons share one bar** above the 3D view, size on the left, buttons on the right, wrapping under each other in a narrow window, so the buttons no longer cover the size (UI-2).
+- **Every page that lists things has the same head** (UI-3): its name and count with the view buttons and the inspector button on the right; below, Sort, Group, Condense and the thumbnail size; then the filters. On a project's page that row comes under the project's tabs, and the project has one main button (Check for updates, or Read again) with Edit details…, Hide, Open its folder, Treat as… and Delete project… under ⋯.
+- **Tabs keep a readable width** (UI-7): at least 170 px; when the row is crowded they leave out the project's name first, and tabs that don't fit go in a "+N ▾" list at the end of the row (where they can be opened or closed). The open model's tab always stays in the row.
+- **Messages appear above the status bar at the right** (UI-8), clear of the settings column and its Generate and Download buttons.
+- **A drop-down whose choices are long takes the whole row** under its label (UI-10), so "7mm increments - Excluding…" isn't cut off.
+- **Model and component pages have the same head** (UI-11): name, a one-line summary (a component's is the first sentence of its notes), credits, then one row of actions: Code, README, Edit form, with Copy code and Pin as a model… under ⋯ on a component.
+- **Fixed:** Settings showed "null" under Engine on Linux and macOS (an empty Windows-only line).
+
+## 0.4.4 — 2026-10-14 · No starter projects, website retired, license status in Library settings
+
 Milestone 1 of the owner's direction of 2026-10-14 (the rename clean-up), with the owner's decisions of the same evening and items UI-1, UI-6 and F-6 of Review 1.
 
 - **No starter projects in the installer** (owner: "we can stop including SCAD generators and models with the build, those were included as initial tests"). A new library starts with Components only; Home says how to add a project when there are no models. A library that already has the starter projects keeps them as ordinary projects. Library settings shows "Bring back starter projects" only when the app has a starter library (tests); `app_info` gains `starter`. CI checks the .deb has no `starter/` and still has `libs/`.

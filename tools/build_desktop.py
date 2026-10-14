@@ -33,7 +33,7 @@ ap.add_argument("--site", type=Path, default=Path("_site"))
 ap.add_argument("--out", type=Path, default=Path("build/desktop"))
 ap.add_argument("--cli", type=Path, help="workshop-cli (default: desktop/target/release, or $WORKSHOP_CLI)")
 ap.add_argument("--fetch-fonts", action="store_true",
-                help="bundle the Archivo UI font (SIL OFL, from google/fonts) instead of loading it from Google Fonts")
+                help="bundle the skins' fonts (SIL OFL, from google/fonts) instead of loading them from Google Fonts")
 a = ap.parse_args()
 
 DATA = {"data", "fs", "parts", "thumbs"}  # library content: goes into the starter library, not the window
@@ -67,23 +67,67 @@ if (a.out / "libs/libraries.json").exists():
 else:
     print("no bundled libraries (run tools/fetch_libraries.py --out build/desktop/libs first): the app will have no Components", file=sys.stderr)
 
-# The app works offline: no Google Fonts request. Bundle Archivo if asked (CI does),
-# otherwise fall back to system fonts.
-FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/archivo/"
+# The app works offline: no Google Fonts request. Bundle the skins' fonts if
+# asked (CI does), otherwise fall back to system fonts. A font file is only read
+# when a skin in use needs it.
+FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/"
+# The skins' fonts (docs/DESKTOP_PLAN.md, "Skins design"): (family, folder in google/fonts,
+# [(file, weights)], widths). A family whose folder has no OFL.txt gets the
+# licence's text with the copyright line from its METADATA.pb.
+FONTS = [
+    ("Archivo", "archivo", [("Archivo%5Bwdth%2Cwght%5D.ttf", "100 900")], "62% 125%"),
+    ("Overpass", "overpass", [("Overpass%5Bwght%5D.ttf", "100 900")], None),
+    ("Overpass Mono", "overpassmono", [("OverpassMono%5Bwght%5D.ttf", "300 700")], None),
+    ("Sofia Sans", "sofiasans", [("SofiaSans%5Bwght%5D.ttf", "1 1000")], None),
+    ("Sofia Sans Condensed", "sofiasanscondensed", [("SofiaSansCondensed%5Bwght%5D.ttf", "1 1000")], None),
+    ("Sofia Sans Extra Condensed", "sofiasansextracondensed", [("SofiaSansExtraCondensed%5Bwght%5D.ttf", "1 1000")], None),
+    ("Atkinson Hyperlegible", "atkinsonhyperlegible", [("AtkinsonHyperlegible-Regular.ttf", "400 600"), ("AtkinsonHyperlegible-Bold.ttf", "700 900")], None),
+    # Layer Line's headings: one heavy weight for all of them, cut to Latin
+    # letters and the app's symbols when fontTools is there (3.6 MB to ~100 KB).
+    ("M PLUS Rounded 1c", "mplusrounded1c", [("MPLUSRounded1c-ExtraBold.ttf", "100 1000")], None),
+]
+SUBSET = "U+0000-024F,U+02B0-02FF,U+2000-206F,U+2070-209F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2300-23FF,U+25A0-25FF,U+2600-27BF"
 index = a.out / "ui/index.html"
-html = index.read_text()
+html = index.read_text(encoding="utf-8")
 lines = [l for l in html.splitlines() if "fonts.googleapis.com" not in l and "fonts.gstatic.com" not in l]
 font_css = ""
 if a.fetch_fonts:
-    import urllib.request
+    import io, re, urllib.request
+    get = lambda path: urllib.request.urlopen(FONT_URL + path, timeout=60).read()
     fonts = a.out / "ui/vendor/fonts"
     fonts.mkdir(parents=True, exist_ok=True)
-    for remote, local in (("Archivo%5Bwdth%2Cwght%5D.ttf", "Archivo-Variable.ttf"), ("OFL.txt", "Archivo-OFL.txt")):
-        (fonts / local).write_bytes(urllib.request.urlopen(FONT_URL + remote, timeout=60).read())
-    (fonts / "archivo.css").write_text(
-        "@font-face { font-family: 'Archivo'; src: url('Archivo-Variable.ttf') format('truetype');\n"
-        "  font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; }\n")
-    font_css = '  <link rel="stylesheet" href="vendor/fonts/archivo.css">'
+    faces = []
+    for family, folder, files, widths in FONTS:
+        name = family.replace(" ", "")
+        for remote, weights in files:
+            data = get(folder + "/" + remote)
+            if family == "M PLUS Rounded 1c":
+                try:
+                    from fontTools import subset
+                    from fontTools.ttLib import TTFont
+                    font = TTFont(io.BytesIO(data))
+                    sub = subset.Subsetter(subset.Options(layout_features=["*"], name_IDs=["*"], notdef_outline=True))
+                    sub.populate(unicodes=subset.parse_unicodes(SUBSET))
+                    sub.subset(font)
+                    out = io.BytesIO()
+                    font.save(out)
+                    data = out.getvalue()
+                except ImportError:
+                    print(f"fontTools isn't installed: {family} is bundled whole")
+            local = name + "-Variable.ttf" if "%5B" in remote else remote
+            (fonts / local).write_bytes(data)
+            faces.append(f"@font-face {{ font-family: '{family}'; src: url('{local}') format('truetype');\n"
+                         f"  font-weight: {weights};{f' font-stretch: {widths};' if widths else ''} font-display: swap; }}\n")
+        try:
+            licence = get(folder + "/OFL.txt")
+        except Exception:
+            meta = get(folder + "/METADATA.pb").decode("utf-8")
+            owner = re.search(r'copyright: "([^"]+)"', meta).group(1)
+            body = get("atkinsonhyperlegible/OFL.txt").decode("utf-8")
+            licence = (owner + "\n\n" + body[body.index("This Font Software is licensed"):]).encode("utf-8")
+        (fonts / (name + "-OFL.txt")).write_bytes(licence)
+    (fonts / "fonts.css").write_text("".join(faces))
+    font_css = '  <link rel="stylesheet" href="vendor/fonts/fonts.css">'
 out_lines = []
 for l in lines:
     if font_css and 'href="styles.css"' in l:

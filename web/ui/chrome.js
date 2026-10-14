@@ -48,36 +48,72 @@ export function TopButtons() {
       onClick=${cycleTheme}>${cur === "light" ? Icon.sun(17) : cur === "dark" ? Icon.moon(17) : Icon.night(17)}</button>`;
 }
 
+// Tabs are at least TAB_MIN wide; those that don't fit go in a "+N" list at the
+// end of the row (the active one always stays in the row). When the row is
+// crowded the tabs leave out their project's name first.
+const TAB_MIN = 180, TAB_ROOMY = 240;
+
 export function Tabs() {
   const s = useStore(ui, (st) => ({ tabs: st.tabs, active: st.activeTab, view: st.view }));
   const strip = useRef();
+  const bar = useRef();
+  const [width, setWidth] = useState(0);
+  const any = s.tabs.length > 0;
+  useEffect(() => {
+    if (!any || !bar.current) return undefined;
+    const el = bar.current;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    setWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, [any]);
   useEffect(() => { strip.current?.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [s.active, s.view, s.tabs.length]);
-  if (!s.tabs.length) return null;
-  // a mouse wheel scrolls the strip sideways when there are more tabs than fit
-  const onWheel = (e) => {
-    const el = strip.current;
-    if (el && el.scrollWidth > el.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { el.scrollLeft += e.deltaY; e.preventDefault(); }
-  };
+  if (!any) return null;
   const close = (key, e) => {
     e.preventDefault();
     e.stopPropagation();
     ctx.closeModelTab(key);
   };
+  const item = (key) => ctx.index.get(`${key.startsWith("@") ? "comp" : "gen"}:${key}`);
   const libActive = s.view !== "model";
-  return html`<div class="tabstrip" role="tablist" aria-label="Open models" ref=${strip} onWheel=${onWheel}>
-    <a role="tab" class=${`tab tab-lib${libActive ? " active" : ""}`} aria-selected=${libActive ? "true" : "false"}
-      href=${ui.get().lastBrowse || "#/"}>${Icon.grid(14)} Library</a>
-    ${s.tabs.map((key) => {
-      const it = ctx.index.get(`${key.startsWith("@") ? "comp" : "gen"}:${key}`);
-      const on = s.view === "model" && s.active === key;
-      return html`<a role="tab" class=${`tab${on ? " active" : ""}`} aria-selected=${on ? "true" : "false"} href=${`#/m/${key}`} key=${key}
-        data-tab=${key} title=${it ? `${it.name}, ${it.project}` : key}
-        onAuxClick=${(e) => { if (e.button === 1) close(key, e); }}>
-        ${it?.thumb ? html`<img src=${it.thumb} alt="" />` : null}
-        <span class="tab-name">${it ? it.name : key}</span><span class="tab-project">${it?.project}</span>
-        <button type="button" class="tab-close" aria-label=${`Close ${it?.name || key}`} onClick=${(e) => close(key, e)}>${Icon.close(12)}</button>
-      </a>`;
-    })}
+  // how many fit beside the Library tab (about 110 px) and, when some don't, the +N button (about 64 px)
+  const room = Math.max(0, (width || 2000) - 110);
+  let shown = s.tabs, more = [];
+  if (s.tabs.length * TAB_MIN > room) {
+    const fit = Math.max(1, Math.floor((room - 64) / TAB_MIN));
+    shown = s.tabs.slice(0, fit);
+    const ai = s.tabs.indexOf(s.active);
+    if (s.view === "model" && ai >= fit) shown = [...shown.slice(0, fit - 1), s.active];
+    more = s.tabs.filter((k) => !shown.includes(k));
+  }
+  const crowded = shown.length * TAB_ROOMY > room;
+  return html`<div class="tabbar" ref=${bar}>
+    <div class=${`tabstrip${crowded ? " crowded" : ""}`} role="tablist" aria-label="Open models" ref=${strip}>
+      <a role="tab" class=${`tab tab-lib${libActive ? " active" : ""}`} aria-selected=${libActive ? "true" : "false"}
+        href=${ui.get().lastBrowse || "#/"}>${Icon.grid(14)} Library</a>
+      ${shown.map((key) => {
+        const it = item(key);
+        const on = s.view === "model" && s.active === key;
+        return html`<a role="tab" class=${`tab${on ? " active" : ""}`} aria-selected=${on ? "true" : "false"} href=${`#/m/${key}`} key=${key}
+          data-tab=${key} title=${it ? `${it.name}, ${it.project}` : key}
+          onAuxClick=${(e) => { if (e.button === 1) close(key, e); }}>
+          ${it?.thumb ? html`<img src=${it.thumb} alt="" />` : null}
+          <span class="tab-name">${it ? it.name : key}</span><span class="tab-project">${it?.project}</span>
+          <button type="button" class="tab-close" aria-label=${`Close ${it?.name || key}`} onClick=${(e) => close(key, e)}>${Icon.close(12)}</button>
+        </a>`;
+      })}
+    </div>
+    ${more.length ? html`<details class="menu tab-more" key="more">
+      <summary class="ghost small" title="The other open models" aria-label=${`${more.length} more open models`}>+${more.length} ▾</summary>
+      <div class="menu-panel">${more.map((key) => {
+        const it = item(key);
+        return html`<div class="tab-more-row" key=${key}>
+          <button type="button" data-tab-more=${key} onClick=${(e) => { e.target.closest("details").open = false; location.hash = `#/m/${key}`; }}>
+            <b>${it ? it.name : key}</b>${it?.project ? html` <span class="muted">${it.project}</span>` : null}</button>
+          <button type="button" class="tab-close" aria-label=${`Close ${it?.name || key}`} onClick=${(e) => close(key, e)}>${Icon.close(12)}</button>
+        </div>`;
+      })}</div>
+    </details>` : null}
   </div>`;
 }
 

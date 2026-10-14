@@ -359,27 +359,12 @@ export function Browser() {
           <h1>${title}</h1>
           <span class="browse-count">${countText}${s.q ? ` · ${res.ms < 1 ? "<1" : Math.round(res.ms)} ms` : ""}</span>
         </div>
-        <div class="browse-tools">
-          ${s.layout === "grid" ? html`<div class="seg" role="group" aria-label="Thumbnail size">
-            ${["s", "m", "l"].map((k) => html`<button type="button" aria-pressed=${s.size === k ? "true" : "false"} onClick=${() => setPref({ size: k })}
-              title=${{ s: "Small", m: "Medium", l: "Large" }[k] + " thumbnails"}>${k.toUpperCase()}</button>`)}
-          </div>` : null}
-          <label class="tool-select"><span class="visually-hidden">Sort</span>
-            <select value=${s.sort} onChange=${(e) => setPref({ sort: e.target.value })} aria-label="Sort">
-              ${SORTS.map(([v, l]) => html`<option value=${v}>${v === "default" ? "Sort: " + (s.q ? "best match" : "default") : "Sort: " + l}</option>`)}
-            </select></label>
-          <label class="tool-select"><span class="visually-hidden">Group</span>
-            <select value=${s.group} onChange=${(e) => { setPref({ group: e.target.value, groupBefore: null }); ui.set({ openGroup: null, sourceTab: "items" }); }} aria-label="Group">
-              ${GROUPS.map(([v, l]) => html`<option value=${v}>${v === "none" ? l : "Group: " + l}</option>`)}
-            </select></label>
-          <button type="button" class="tool-btn condense-btn" aria-pressed=${condensing ? "true" : "false"} data-condense
-            title=${s.group === "none" ? "Group by project and show each project as one tile" : `Show each group as one tile (${noun})`}
-            onClick=${condense}>${Icon.stack(15)}<span>Condense</span></button>
+        <div class="browse-views">
           <div class="seg" role="group" aria-label="View">
             ${LAYOUTS.map(([v, l, ic]) => html`<button type="button" aria-pressed=${s.layout === v ? "true" : "false"} title=${`${l} view`}
               aria-label=${`${l} view`} data-layout=${v} onClick=${() => setLayout(v)}>${ic(16)}</button>`)}
           </div>
-          <button type="button" class="tool-btn" aria-pressed=${s.inspector ? "true" : "false"} title="Show or hide the inspector"
+          <button type="button" class="tool-btn inspector-btn" aria-pressed=${s.inspector ? "true" : "false"} title="Show or hide the inspector"
             aria-label="Inspector" onClick=${() => setPref({ inspector: !s.inspector })}>${Icon.panel(16)}</button>
         </div>
       </div>
@@ -387,6 +372,23 @@ export function Browser() {
         onClick=${() => ui.set({ openGroup: null, selection: [], anchor: null, sourceTab: "items" })}>‹ All ${noun}</button> / <b>${s.openGroup}</b></p>` : null}
       ${panelSource ? html`<${SourcePanel} id=${panelSource} key=${panelSource} />` : null}
       ${info.note ? html`<p class="browse-note">${info.note}</p>` : null}
+      ${sourceHidden ? null : html`<div class="browse-tools">
+        <label class="tool-select"><span class="visually-hidden">Sort</span>
+          <select value=${s.sort} onChange=${(e) => setPref({ sort: e.target.value })} aria-label="Sort">
+            ${SORTS.map(([v, l]) => html`<option value=${v}>${v === "default" ? "Sort: " + (s.q ? "best match" : "default") : "Sort: " + l}</option>`)}
+          </select></label>
+        <label class="tool-select"><span class="visually-hidden">Group</span>
+          <select value=${s.group} onChange=${(e) => { setPref({ group: e.target.value, groupBefore: null }); ui.set({ openGroup: null, sourceTab: "items" }); }} aria-label="Group">
+            ${GROUPS.map(([v, l]) => html`<option value=${v}>${v === "none" ? l : "Group: " + l}</option>`)}
+          </select></label>
+        <button type="button" class="tool-btn condense-btn" aria-pressed=${condensing ? "true" : "false"} data-condense
+          title=${s.group === "none" ? "Group by project and show each project as one tile" : `Show each group as one tile (${noun})`}
+          onClick=${condense}>${Icon.stack(15)}<span>Condense</span></button>
+        ${s.layout === "grid" ? html`<div class="seg size-seg" role="group" aria-label="Thumbnail size">
+          ${["s", "m", "l"].map((k) => html`<button type="button" aria-pressed=${s.size === k ? "true" : "false"} onClick=${() => setPref({ size: k })}
+            title=${{ s: "Small", m: "Medium", l: "Large" }[k] + " thumbnails"}>${k.toUpperCase()}</button>`)}
+        </div>` : null}
+      </div>`}
       ${sourceHidden ? null : html`<div class="filters">
         ${!info.query.kind ? html`<${FilterMenu} name="kind" label="Kind" values=${res.facets.kind} selected=${s.filters.kind || []}
           render=${(v) => KINDS[v] || v} onChange=${setFilter("kind")} />` : null}
