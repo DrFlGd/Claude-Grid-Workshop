@@ -262,8 +262,18 @@ jobs:
         run: |
           pip install selenium
           cargo install tauri-driver --locked 2>&1 | tail -3
-          cargo install --git https://github.com/chippers/msedgedriver-tool 2>&1 | tail -3
-          msedgedriver-tool 2>&1 | tail -3
+          # the driver must match the WebView2 runtime. msedgedriver-tool fetches it; when it can't be
+          # built (a yanked dependency stopped it in 0.4.20), fetch it for WebView2's version, then fall
+          # back to the runner's own Edge driver
+          { cargo install --locked --git https://github.com/chippers/msedgedriver-tool 2>&1 | tail -3 && msedgedriver-tool 2>&1 | tail -3; } || true
+          if [ ! -f msedgedriver.exe ]; then
+            wv=$(powershell -NoProfile -Command "(Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue).pv" | tr -d '\r' || true)
+            echo "WebView2 $wv"
+            for host in msedgedriver.microsoft.com msedgedriver.azureedge.net; do
+              [ -n "$wv" ] && curl -fsSL -o edgedriver.zip "https://$host/$wv/edgedriver_win64.zip" && unzip -oq edgedriver.zip msedgedriver.exe && break
+            done
+          fi
+          [ -f msedgedriver.exe ] || cp "$EDGEWEBDRIVER/msedgedriver.exe" .
           ls -la msedgedriver.exe
           # the installer has no starter projects; the test's projects come from the one built for tests
           export WORKSHOP_STARTER="$(cygpath -w "$PWD/build/desktop/starter")"

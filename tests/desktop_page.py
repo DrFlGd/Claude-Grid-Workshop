@@ -1480,6 +1480,7 @@ async def main():
             og_filters = []
             try:
                 await pg.goto(B + f"#/browse/source/{og['id']}")
+                await pg.click("[data-source-tab=items]", timeout=20000)    # the About tab, opened above, has no filters
                 await pg.wait_for_selector("[data-filter=updated]", timeout=30000)
                 og_filters = await pg.evaluate("() => [...document.querySelectorAll('[data-filter]')].map((b) => b.dataset.filter)")
             except Exception as e:
