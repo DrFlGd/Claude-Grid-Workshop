@@ -10,7 +10,7 @@ Status (2026-10-05):
 - **Phase 2 done:** the portable library, adding projects, update checks, metadata editing; see "Phase 2 notes" at the end.
 - **0.2.x (Phase 2 follow-ups):** numbered releases, the left menu by category (Parametric Models and Parts Library), Library settings, hide / delete / flag as broken, the trash; see "0.2 notes" at the end.
 - **Phase 3 done (0.3):** bundled libraries and their modules as **Components**, pinning, the form editor; see "Components" in section 2 and "0.3 notes" at the end.
-- **Next (owner, 2026-10-14):** five milestones and a review after each; see "Owner direction of 2026-10-14". Milestones 1 to 5 are done (0.4.4 to 0.4.19, Review 6's items in 0.4.20); next is the library format (owner, 2026-10-16), then reading settings reliably, then milestone 6; future features of 2026-10-16 are listed under the library format.
+- **Next (owner, 2026-10-14):** five milestones and a review after each; see "Owner direction of 2026-10-14". Milestones 1 to 5 are done (0.4.4 to 0.4.19, Review 6's items in 0.4.20, the logo in 0.4.21, the library format in 0.4.22); next is reading settings reliably (owner, 2026-10-16), then milestone 6; future features of 2026-10-16 are listed under the library format.
 - **Phase 4 (0.4) started:** the side viewer (a model's code, a project's reference documents) in 0.4.0; see "Reference documents and the side viewer" in section 5. Next: importing ready-made models and Printables ZIPs, one item per file name, 3MF export, collections.
 
 ## Goal

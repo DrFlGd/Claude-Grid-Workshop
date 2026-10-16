@@ -83,7 +83,9 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-The library format (owner, 2026-10-16), before milestone 6.
+## 0.4.22 — 2026-10-16 · The library format
+
+The library format (owner, 2026-10-16), before milestone 6; 95 of 95 checks.
 
 - **The library format is written down:** `docs/LIBRARY_FORMAT.md` describes every folder and file in a library, which hold your work and which the app can make again, each JSON file's fields, and the ids collections use. The library's README.txt says the same in short.
 - **Library format 2:** every JSON file the app writes says its `format` (`desktop/core/src/format.rs` names them all, and `write_json` stamps them), and a file written by a newer version is read but never written over. A library from 0.4.21 or before is upgraded when it's opened, after the files it changes are copied as they were to `backups/format-1-<date>.zip`. An older app then opens the library read-only and says why.
