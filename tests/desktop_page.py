@@ -202,6 +202,12 @@ async def main():
             check("skins: Drafting Sheet by default; Settings offers four, each applies in light and dark and is kept; their fonts are bundled",
                   default_skin == "drafting" and offered == ["drafting", "partsbin", "layerline", "classic"] and applied == [f"{s}/{t}" for s in offered for t in ("light", "dark")]
                   and kept == "partsbin" and fonts_ok, (default_skin, offered, applied, kept, fonts_ok))
+            # (0.4.21) the logo: the sheet with the cube, in the skin's colour; the favicon is its small form
+            logo = await pg.evaluate("""async () => { const m = document.querySelector('.brand .brand-mark');
+                return { cube: !!m?.querySelector('.cube'), face: getComputedStyle(m.querySelector('.face')).fill,
+                         favicon: /M126 77/.test(await (await fetch('favicon.svg')).text()) }; }""")
+            check("the logo is in the sidebar, its shaded face in the skin's colour, and is the favicon",
+                  logo["cube"] and logo["face"] not in ("none", "rgb(0, 0, 0)") and logo["favicon"], logo)
             await pg.goto(B + "#/")
 
             # 2. three public projects by URL

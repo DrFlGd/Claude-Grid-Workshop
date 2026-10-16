@@ -61,7 +61,6 @@
   color-scheme: dark;
 }
 :root[data-theme="night"] .topsearch:focus-within { border-color: var(--tool); }
-:root[data-theme="night"] .brand-mark .filled { fill: var(--tool); stroke: var(--tool); }
 :root[data-theme="night"] img { filter: brightness(.82) sepia(.15); }
 /* Dark theme: the same names, darker values. --ink stays "text", --white stays "surface". */
 :root[data-theme="dark"] {
@@ -115,8 +114,13 @@ a { color: inherit; }
   flex: none;
 }
 .brand { display: flex; white-space: nowrap; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; font-family: var(--font-head); font-stretch: var(--head-stretch); font-size: 17px; }
-.brand-mark { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; }
-.brand-mark .filled { fill: var(--tool); stroke: var(--tool); }
+/* the logo (owner, 2026-10-16), its small form, drawn in the skin's colours */
+.brand-mark { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-linejoin: round; stroke-linecap: round; }
+.brand-mark .page { fill: color-mix(in srgb, var(--tool) 10%, transparent); stroke: none; }
+.brand-mark .fold { fill: color-mix(in srgb, var(--tool) 55%, transparent); stroke: none; }
+.brand-mark .face { fill: color-mix(in srgb, var(--tool) 45%, transparent); stroke: none; }
+.brand-mark .cube { stroke-width: 12; }
+.brand-mark .edge { stroke-width: 16; }
 .engine { margin-left: auto; font-size: 12.5px; color: color-mix(in srgb, var(--chrome-ink) 70%, var(--chrome)); white-space: nowrap; text-decoration: none; }
 .engine:hover { color: var(--chrome-ink); text-decoration: underline; }
 .engine.off { color: color-mix(in srgb, var(--danger) 55%, var(--chrome-ink)); }

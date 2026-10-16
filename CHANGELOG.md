@@ -83,7 +83,14 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-Review 6's items (0.4.20).
+The logo.
+
+- **The app has its logo** (owner's design, 2026-10-16): a drawing sheet with a dimensioned cube. The app icon, installer and window use it, drawn again as a vector (`desktop/src-tauri/icons/src/logo.svg`) with a simpler form for 16 to 48 pixels (`logo-small.svg`: no grid, dimensions or hidden lines, a larger cube). The sidebar shows the small form in the skin's colour, and it's the favicon. `tools/make_icons.py` makes the icon files from the two drawings.
+- CI: the logo is in the sidebar and is the favicon.
+
+## 0.4.20 — 2026-10-16 · Review 6's items
+
+Review 6's items (0.4.20), released with 92 of 92 checks after three CI fixes.
 
 - **A model's colours show without choosing 3MF** (UI-39): after the preview of a model that calls `color()`, the app makes OpenSCAD's 3MF behind it, shows its colours in the 3D view, and with STL chosen says so ("It has 3 parts in 3 colours: choose 3MF to keep them"). **Show the file's colours** sits in the 3D view for models and parts alike, on unless you untick it; the filament swatches hide while it's on.
 - **Made parts keep the chosen format** (F-28): Save as part, Make several and Make again write a .3mf from OpenSCAD (colours and objects kept) when 3MF is chosen beside Download; the recipe records the format.

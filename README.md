@@ -1,5 +1,7 @@
 # SCAD Workshop
 
+<img src="desktop/src-tauri/icons/src/logo.svg" alt="" width="112" align="right">
+
 A desktop app (Windows, Linux) for keeping a library of OpenSCAD projects and making 3D-printable parts from them: add projects from GitHub links, ZIPs and folders (GitHub projects are checked for updates), browse and search everything they make, fill in a model's settings and render it with native OpenSCAD on your computer. The modules of five common OpenSCAD libraries (BOSL2, MCAD, NopSCADlib, Round-Anything, threads-scad) come with the app as ready-to-use **Components**.
 
 **Desktop app:** installers on the [latest release](https://github.com/DrFlGd/SCAD-Workshop/releases/latest) (numbered: 0.4.3, 0.4.4, …; each one built and tested by CI from `main`)
