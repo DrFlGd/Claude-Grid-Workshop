@@ -10,7 +10,7 @@ Status (2026-10-05):
 - **Phase 2 done:** the portable library, adding projects, update checks, metadata editing; see "Phase 2 notes" at the end.
 - **0.2.x (Phase 2 follow-ups):** numbered releases, the left menu by category (Parametric Models and Parts Library), Library settings, hide / delete / flag as broken, the trash; see "0.2 notes" at the end.
 - **Phase 3 done (0.3):** bundled libraries and their modules as **Components**, pinning, the form editor; see "Components" in section 2 and "0.3 notes" at the end.
-- **Next (owner, 2026-10-14):** five milestones and a review after each; see "Owner direction of 2026-10-14".
+- **Next (owner, 2026-10-14):** five milestones and a review after each; see "Owner direction of 2026-10-14". Milestones 1 to 5 are done (0.4.4 to 0.4.19, Review 6's items in 0.4.20); next is the library format (owner, 2026-10-16), then milestone 6.
 - **Phase 4 (0.4) started:** the side viewer (a model's code, a project's reference documents) in 0.4.0; see "Reference documents and the side viewer" in section 5. Next: importing ready-made models and Printables ZIPs, one item per file name, 3MF export, collections.
 
 ## Goal
@@ -597,6 +597,14 @@ Each milestone is a release (0.4.x while Phase 4 runs) and is followed by a revi
 | 5 | **The rest of Phase 4:** importing STL/3MF/OBJ/STEP and Printables ZIPs (with Model Library's readers where they fit), one item per file name with a format picker, multi-colour and multi-part 3MF, collections, ZIP export. | Phase 4's "done when" in the Phases table |
 
 Items 1, 2 and 9 of the requests of 2026-10-12 (pictures, your own content, several libraries) come after these, unless a review moves them up.
+
+**Added 2026-10-16 (owner), before milestone 6: the library format.** The folder layout is already the same for every project whatever its source (milestone 3), but it's written down only in the code and the library's README. Several libraries open side by side (milestone 6) need it fixed first. Planned in detail before it's built:
+
+- **A written spec**, `docs/LIBRARY_FORMAT.md`: every folder and file in a library, what writes it, what's rebuildable, and what must be kept; the README in each library becomes a short summary of it.
+- **A format version in each JSON file the app writes** (`library.json`, `source.json`, `metadata.json`, `collection.json`, recipes, derived data), so a newer app can upgrade a file it reads and an older one can tell it's looking at something newer. Files without one are read as today's.
+- **One recipe shape:** saved settings (`recipes/<id>.json`) and a made part's `<name>.recipe.json` share the same fields (model, project and its version, files fingerprint, values, code edits, format), so either can be made again the same way.
+- **Check library** in Library settings: reads the whole folder against the spec and lists anything off it (a missing file, an unknown version, a recipe whose model is gone, a collection entry that refers to nothing), with Repair for what can be repaired safely. Nothing in `files/<version>/` is ever changed: projects stay exactly as they came, which is what update checks and hash checks rely on.
+- **Not changed:** your own and linked projects keep being read where they are, and the project files themselves aren't reorganised.
 
 ### Decisions later the same evening
 

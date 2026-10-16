@@ -91,6 +91,7 @@ Review 6's items (0.4.20).
 - **Collections** (UI-40, F-27): several copies are counted as they're printed ("1 of 3", with − and +), a finished row is quieter rather than struck through, and Notes shows its hint only while typing. A model entry keeps the files it was added with and says "Made from an earlier version" with **Use the current version** when its model changes; Export says how many changed.
 - One **Updated** filter on a Printables project, and **Published** grouped by age (UI-38); a part with one file has **Download (size)** with its format beside it (UI-41); **Add a project** is under the sections in the sidebar, and Home lists collections (UI-42).
 - The library's README describes what `metadata.json` holds and how collections refer to items (F-29).
+- Roadmap: the library format (a written spec, a version in each JSON file, one recipe shape, Check library) comes before milestone 6 (owner, 2026-10-16); see the plan's "Owner direction of 2026-10-14".
 - CI: colours shown and named with STL chosen; a part saved as 3MF; the same Printables files not added twice; one Updated filter; printed copies counted; a collection's model marked when it changed; Home's collections; a one-file part's Download.
 
 ## 0.4.19 — 2026-10-14 · Milestone 5, last part: multi-colour 3MF from OpenSCAD's own export
