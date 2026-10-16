@@ -783,7 +783,7 @@ fn pinned_derived(lib: &Library, id: &str, models: &HashMap<String, Value>) -> V
             if let Some(p) = lib.source_dir(id).ok().map(|d| d.join("pins").join(format!("{pid}.json"))) {
                 let mut pin = pin.clone();
                 pin["from"] = json!({ "library": base["component"]["library"], "copy": now });
-                let _ = crate::config::write_atomic(&p, &serde_json::to_vec_pretty(&pin).unwrap_or_default());
+                let _ = crate::config::write_json(&p, &pin);
             }
         }
         let params: Vec<Value> = d["parameters"].as_array().cloned().unwrap_or_default();

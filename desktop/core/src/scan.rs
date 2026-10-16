@@ -619,7 +619,8 @@ pub fn survey(root: &Path) -> Found {
         let category = if dir.is_empty() { "Parts".to_string() } else { humanize(dir.rsplit('/').next().unwrap_or(&dir)) };
         // a part made from a model (milestone 4) has how it was made beside it: <name>.recipe.json
         let recipe_rel = if dir.is_empty() { format!("{stem}.recipe.json") } else { format!("{dir}/{stem}.recipe.json") };
-        let recipe: Option<Value> = std::fs::read(root.join(&recipe_rel)).ok().and_then(|b| serde_json::from_slice(&b).ok()).filter(|r: &Value| r["model"].is_string());
+        let recipe: Option<Value> = std::fs::read(root.join(&recipe_rel)).ok().and_then(|b| serde_json::from_slice(&b).ok()).filter(|r: &Value| r["model"].is_string())
+            .map(|r| crate::format::recipe_view(r, true, Some(stem)));
         let mut part = json!({
             "id": id, "name": if recipe.is_some() { json!(stem) } else { json!(humanize(stem)) }, "category": category, "kind": "printable", "tags": [],
             "files": fs.iter().map(|f| json!({ "path": f.rel, "format": ext(&f.rel), "bytes": f.bytes })).collect::<Vec<_>>(),

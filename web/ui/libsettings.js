@@ -93,6 +93,38 @@ function Backups({ lib }) {
   </${Section}>`;
 }
 
+// ---------------------------------------------------------------- check library
+/** Check library (0.4.22, docs/LIBRARY_FORMAT.md): the folder against the library format. What
+ * can be repaired safely (unfinished copies, what the app made from versions that are gone,
+ * files not yet in this version's format) and what's only listed for you to look at. */
+function CheckLibrary({ ro }) {
+  const [res, setRes] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (cmd) => {
+    setBusy(true);
+    try {
+      const r = await api(cmd, {});
+      setRes(r);
+      if (cmd === "library_repair") { await ctx.reloadCatalog(); ctx.toast(`Repaired ${plural(r.repaired, "thing")}.`); }
+    } catch (e) { fail(e); }
+    setBusy(false);
+  };
+  const row = (f) => html`<li data-check-path=${f.path}><span>${f.what}</span> <code>${f.path}</code></li>`;
+  return html`<${Section} id="check" title="Check library"
+    intro="Reads the whole library folder and lists anything that isn't as this version of the app keeps it. Repair brings files up to this version's format (keeping a copy as they were) and removes only what the app can make again. It never changes a project's files or anything you made.">
+    <div class="button-row">
+      <button type="button" class="ghost" disabled=${busy} onClick=${() => run("library_check")} id="library-check">${busy ? "Checking…" : "Check library"}</button>
+      ${res?.repair?.length ? html`<button type="button" class="ghost" disabled=${ro || busy} onClick=${() => run("library_repair")} id="library-repair">Repair ${plural(res.repair.length, "thing")}</button>` : null}
+    </div>
+    ${res ? html`<div class="check-result" id="check-result">
+      ${!res.repair.length && !res.look.length ? html`<p id="check-clean">Nothing to repair or look at in ${plural(res.checked, "file")} the app keeps.</p>` : null}
+      ${res.repair.length ? html`<h3>Can be repaired</h3><ul class="check-list" id="check-repair">${res.repair.map(row)}</ul>` : null}
+      ${res.look.length ? html`<h3>To look at</h3><p class="muted">The app leaves these as they are; open the folder to see them.</p><ul class="check-list" id="check-look">${res.look.map(row)}</ul>` : null}
+      ${res.backups?.length ? html`<p class="muted">Files the app changed are kept as they were in ${res.backups.map((b, i) => html`${i ? ", " : ""}<code>${b}</code>`)}.</p>` : null}
+    </div>` : null}
+  </${Section}>`;
+}
+
 // ---------------------------------------------------------------- projects
 /** A project's license as the table shows it: the license, and a note when it isn't cleared for sharing prints. */
 function LicenseCell({ s }) {
@@ -371,10 +403,11 @@ export function LibrarySettingsPage() {
   const lib = info.library || ctx.catalog?.library || {};
   const ro = !!lib.read_only;
   return html`<div class="library-settings" data-v=${v}>
-    <nav class="ls-toc" aria-label="On this page">${[["folder", "Folder"], ["backups", "Backups"], ["projects", "Projects"], ["libraries", "Libraries"], ["categories", "Categories"], ["items", "Hidden and deleted"], ["trash", "Trash"], ["defaults", "Defaults"], ["github", "GitHub"]]
+    <nav class="ls-toc" aria-label="On this page">${[["folder", "Folder"], ["backups", "Backups"], ["check", "Check"], ["projects", "Projects"], ["libraries", "Libraries"], ["categories", "Categories"], ["items", "Hidden and deleted"], ["trash", "Trash"], ["defaults", "Defaults"], ["github", "GitHub"]]
       .map(([id, label]) => html`<a href=${`#/library-settings`} onClick=${(e) => { e.preventDefault(); document.getElementById(`ls-${id}`)?.scrollIntoView({ behavior: "smooth" }); }}>${label}</a>`)}</nav>
     <${Folder} info=${info} lib=${lib} ro=${ro} />
     <${Backups} lib=${lib} />
+    <${CheckLibrary} ro=${ro} />
     <${Projects} ro=${ro} />
     <${Libraries} ro=${ro} />
     <${Categories} ro=${ro} />

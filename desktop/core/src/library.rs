@@ -28,7 +28,9 @@ use serde_json::{json, Map, Value};
 use std::path::{Component, Path, PathBuf};
 
 /// The library format this build writes. A library with a higher number opens read-only.
-pub const FORMAT: u64 = 1;
+/// 2 (0.4.22): every JSON file the app writes says its format (format.rs), and saved
+/// settings and made parts' recipes have one shape. A format 1 library is upgraded on open.
+pub const FORMAT: u64 = 2;
 
 const SUBDIRS: [&str; 4] = ["sources", "local", "collections", "recipes"];
 
@@ -500,7 +502,8 @@ const README_0_4_18: &str = concat!(
     "The app's render cache and search index are kept on each computer, not here.\n",
 );
 
-const README: &str = concat!(
+/// The README.txt written by 0.4.20 and 0.4.21: replaced when found unchanged.
+const README_0_4_20: &str = concat!(
     "SCAD Workshop library\n",
     "\n",
     "This folder is a library for the SCAD Workshop desktop app: projects you added,\n",
@@ -567,6 +570,83 @@ const README: &str = concat!(
     "Rebuildable folders can be deleted: the app makes them again.\n",
     "The app's render cache and search index are kept on each computer, not here.\n",
 );
+pub const README: &str = concat!(
+    "SCAD Workshop library\n",
+    "\n",
+    "This folder is a library for the SCAD Workshop desktop app: projects you added,\n",
+    "your own projects, saved settings and all your edits. Move it, copy it, sync it\n",
+    "or keep it in git, then use \"Open library...\" in the app to use it anywhere.\n",
+    "\n",
+    "Library format 2 (SCAD Workshop 0.4.22 on). Each JSON file the app writes says\n",
+    "its \"format\"; a file with a higher number than the app knows was made by a\n",
+    "newer version, and the app reads it without writing over it. Library settings >\n",
+    "Check library lists anything that isn't as the app keeps it. The full\n",
+    "description: docs/LIBRARY_FORMAT.md in the app's source code.\n",
+    "\n",
+    "  library.json    name, favourites, categories and library-wide settings\n",
+    "  sources/        one folder per project (below)\n",
+    "  local/          your own projects: put .scad or model files in a folder here\n",
+    "  recipes/        saved settings, with any code edits (a recipe, below)\n",
+    "  collections/    lists of parts and models with quantities and how many are\n",
+    "                  printed: collections/<id>/collection.json. Entries refer to\n",
+    "                  items by id (part:<project>/<part>, gen:<project>/<model>), not\n",
+    "                  copies; a model's entry keeps its settings and the fingerprint\n",
+    "                  of the files it used, as a recipe does\n",
+    "  icons/          pictures you chose for categories\n",
+    "  thumbs/         thumbnails of components (rebuildable)\n",
+    "  trash/          deleted projects, until you empty the trash\n",
+    "  backups/        JSON files as they were before the app upgraded them to a\n",
+    "                  newer format, as ZIPs (delete them when you like)\n",
+    "\n",
+    "Inside sources/<project>/:\n",
+    "  source.json     where it came from and its versions; \"version\" is the one in\n",
+    "                  use. origin.type says where from: github (checked for updates),\n",
+    "                  zip, folder (copied in), linked (a folder elsewhere, below),\n",
+    "                  local (local/<name>/), app (a starter project from an earlier\n",
+    "                  app) or pinned (your pinned components).\n",
+    "                  origin.site names the model's page on a site (Printables) and\n",
+    "                  the PDF of that page among its files. \"detected\" is what was\n",
+    "                  read from the files and that PDF; your edits win over it\n",
+    "  metadata.json   your edits: names, categories, licenses, forms, parts made into\n",
+    "                  one and files kept apart (\"apart\"), projects merged into it,\n",
+    "                  and what its folder of examples should be\n",
+    "  files/<version>/   the project's files exactly as they came, never changed. It\n",
+    "                  can hold several versions: on the project's page, Versions >\n",
+    "                  Remove versions not in use deletes the others\n",
+    "  derived/        what the app found when it read them (rebuildable)\n",
+    "  generated/      copies made so typed-in values become settings (rebuildable)\n",
+    "  docs/           the README as HTML, PDFs (rebuildable)\n",
+    "  thumbs/         pictures of its models and parts (rebuildable)\n",
+    "  examples/<fingerprint>/   parts made from a folder of examples, kept by the\n",
+    "                  files each example uses (rebuildable)\n",
+    "  previews/       models the app made for its parts (rebuildable)\n",
+    "  checks.json     whether each model renders at its defaults (rebuildable)\n",
+    "  workshop.json   what the app read the project as: its models and their\n",
+    "                  names and forms. It reports; it doesn't decide (rebuildable)\n",
+    "  description.json   the app's description of a project it knows from GitHub (a\n",
+    "                  starter project from an earlier app, Gridfinity Rebuilt...):\n",
+    "                  names and forms for the files it lists, and the files it leaves\n",
+    "                  out; any other file that draws something is a model too. Used\n",
+    "                  when the project has no workshop.json of its own. Keep it\n",
+    "\n",
+    "Your own projects (local/<name>/) are read where they are: their sources/ folder\n",
+    "has no files/. Linked projects (origin \"linked\") are read from their own folder\n",
+    "outside the library: they don't move with it and aren't in its backups.\n",
+    "sources/pinned/pins/ holds the components you pinned as models: keep it, it\n",
+    "isn't rebuildable.\n",
+    "\n",
+    "local/Made parts/<model>/ holds the parts you made from models (Save as part,\n",
+    "Make several), in a folder per model (\"<model> (<project>)\" when two models\n",
+    "share a name), as .stl or .3mf (the format chosen beside Download). Beside each\n",
+    "part, <name>.recipe.json says how it was made. Saved settings (recipes/) and\n",
+    "made parts' recipes have one shape: the model, its project and the project's\n",
+    "version, the fingerprint of the files the model used, the changed settings and\n",
+    "code edits, the file type (\"output\": stl or 3mf) and when it was made.\n",
+    "Make again and Open with these settings read it: keep it, it isn't rebuildable.\n",
+    "\n",
+    "Rebuildable folders can be deleted: the app makes them again.\n",
+    "The app's render cache and search index are kept on each computer, not here.\n",
+);
 
 #[derive(Clone, Debug)]
 pub struct Library {
@@ -578,6 +658,8 @@ pub struct Library {
 /// What opening a Phase 1 workspace moved.
 #[derive(Debug, Default)]
 pub struct Migration {
+    /// Files brought up to this version's format on opening (backed up first).
+    pub upgraded: Vec<String>,
     pub recipes: usize,
     pub prefs_moved: bool,
     pub cache_removed: bool,
@@ -656,7 +738,8 @@ impl Library {
             let p = lib.root.join(d);
             std::fs::create_dir_all(&p).with_context(|| format!("couldn't create {}", p.display()))?;
         }
-        if !meta_path.is_file() {
+        let fresh = !meta_path.is_file();
+        if fresh {
             migration = lib.migrate_workspace(app_prefs)?;
             let name = lib.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Library".into());
             write_json(
@@ -670,11 +753,81 @@ impl Library {
         // written by the app (a Phase 1 workspace's, or an older version's left as it was): replaced;
         // one the user changed is left alone
         if old_readme.as_deref().is_none_or(|t| {
-            t.starts_with("SCAD Workshop workspace") || t.starts_with("Claude Grid Workshop workspace") || [README_0_4_3, README_0_4_4, README_0_4_6, README_0_4_7, README_0_4_8, README_0_4_9, README_0_4_10, README_0_4_12, README_0_4_16, README_0_4_17, README_0_4_18].contains(&t)
+            t.starts_with("SCAD Workshop workspace") || t.starts_with("Claude Grid Workshop workspace") || [README_0_4_3, README_0_4_4, README_0_4_6, README_0_4_7, README_0_4_8, README_0_4_9, README_0_4_10, README_0_4_12, README_0_4_16, README_0_4_17, README_0_4_18, README_0_4_20].contains(&t)
         }) {
             let _ = std::fs::write(&readme, README);
         }
+        if fresh || lib.meta()["format"].as_u64().unwrap_or(1) < FORMAT {
+            migration.upgraded = lib.upgrade_files("format-1")?;
+            let mut meta = lib.meta();
+            meta["format"] = json!(FORMAT);
+            write_json(&meta_path, &meta)?;
+        }
         Ok((lib, migration))
+    }
+
+    /// Every JSON file the app writes, as the format table (format.rs) names them: the
+    /// library's own, each project's, collections, saved settings, made parts' recipes
+    /// (anywhere under local/) and trash entries.
+    pub fn json_files(&self) -> Vec<PathBuf> {
+        let mut out = vec![self.root.join("library.json")];
+        let kids = |d: PathBuf| -> Vec<PathBuf> { std::fs::read_dir(d).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default() };
+        for s in kids(self.sources_dir()) {
+            out.extend(["source.json", "metadata.json", "checks.json"].map(|f| s.join(f)));
+            out.extend(kids(s.join("pins")));
+        }
+        out.extend(kids(self.collections_dir()).into_iter().map(|c| c.join("collection.json")));
+        out.extend(kids(self.recipes_dir()));
+        out.extend(kids(self.trash_dir()).into_iter().map(|t| t.join("trash.json")));
+        fn walk(d: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+            for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+                let p = e.path();
+                let Ok(t) = e.file_type() else { continue };
+                if t.is_dir() && depth < 12 {
+                    walk(&p, depth + 1, out);
+                } else if t.is_file() && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".recipe.json")) {
+                    out.push(p);
+                }
+            }
+        }
+        walk(&self.root.join("local"), 0, &mut out);
+        out.retain(|p| p.is_file() && crate::format::kind_of(p).is_some());
+        out
+    }
+
+    /// Bring every JSON file up to this version's shape (format.rs): each gets its format
+    /// number and recipes take one shape. The files it changes are first copied, as they
+    /// were, to `backups/<label>-<date>.zip`. Files a newer version wrote, and files that
+    /// aren't valid JSON, are left alone (Check library lists them). Returns the changed
+    /// files, relative to the library. Run on opening a format 1 library, and after Merge.
+    pub fn upgrade_files(&self, label: &str) -> Result<Vec<String>> {
+        self.writable()?;
+        let mut changed: Vec<(PathBuf, Vec<u8>, Value)> = vec![];
+        for p in self.json_files() {
+            let Some(kind) = crate::format::kind_of(&p) else { continue };
+            let Ok(bytes) = std::fs::read(&p) else { continue };
+            let Ok(mut v) = serde_json::from_slice::<Value>(&bytes) else { continue };
+            if kind != crate::format::Kind::Library && crate::format::upgrade(kind, &mut v, Some(&p)) {
+                changed.push((p, bytes, v));
+            }
+        }
+        let rel = |p: &Path| p.strip_prefix(&self.root).unwrap_or(p).to_string_lossy().replace('\\', "/");
+        if !changed.is_empty() {
+            let stamp: String = now().chars().filter(char::is_ascii_digit).take(14).collect();
+            let dest = self.root.join("backups").join(format!("{label}-{stamp}.zip"));
+            std::fs::create_dir_all(dest.parent().unwrap())?;
+            let mut z = zip::ZipWriter::new(std::io::BufWriter::new(std::fs::File::create(&dest).with_context(|| format!("couldn't write {}", dest.display()))?));
+            let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            for (p, bytes, _) in &changed {
+                z.start_file(rel(p), opts)?;
+                std::io::Write::write_all(&mut z, bytes)?;
+            }
+            z.finish()?;
+            for (p, _, v) in &changed {
+                write_json(p, v)?;
+            }
+        }
+        Ok(changed.iter().map(|(p, _, _)| rel(p)).collect())
     }
 
     /// Phase 1 kept saved settings in settings/saved, preferences in settings/prefs.json
@@ -800,6 +953,7 @@ impl Library {
             .flatten()
             .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
             .filter_map(|e| serde_json::from_slice::<Value>(&std::fs::read(e.path()).ok()?).ok())
+            .map(|v| crate::format::recipe_view(v, false, None))
             .filter(|v| v["model"].as_str() == Some(model))
             .collect();
         out.sort_by_key(|v| v["name"].as_str().unwrap_or_default().to_lowercase());
@@ -813,6 +967,7 @@ impl Library {
                 rd.flatten()
                     .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
                     .filter_map(|e| serde_json::from_slice::<Value>(&std::fs::read(e.path()).ok()?).ok())
+                    .map(|v| crate::format::recipe_view(v, false, None))
                     .collect()
             })
             .unwrap_or_default()
@@ -824,7 +979,7 @@ impl Library {
         if !p.exists() {
             return Ok(None);
         }
-        Ok(Some(serde_json::from_slice(&std::fs::read(p)?)?))
+        Ok(Some(crate::format::recipe_view(serde_json::from_slice(&std::fs::read(p)?)?, false, None)))
     }
 
     /// Store a complete record (must have "id" and "model").
@@ -1283,6 +1438,10 @@ mod tests {
         Library::open(&dir, &prefs).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("README.txt")).unwrap(), README);
         assert!(README.contains("\"apart\"") && README.contains("by id"), "the README says what metadata.json holds and how collections refer to items (F-29)");
+        std::fs::write(dir.join("README.txt"), README_0_4_20).unwrap();
+        Library::open(&dir, &prefs).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("README.txt")).unwrap(), README);
+        assert!(README.contains("Library format 2") && README.contains("Check library"));
         std::fs::write(dir.join("README.txt"), README_0_4_3).unwrap();
         Library::open(&dir, &prefs).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("README.txt")).unwrap(), README);
@@ -1302,6 +1461,50 @@ mod tests {
         assert!(lib.read_only().is_some());
         assert!(lib.put_recipe(&json!({"id": "a", "model": "m/x"})).is_err());
         assert!(lib.set_favourites(&json!(["a"])).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn format_1_library_is_upgraded() {
+        let dir = temp_dir("format1");
+        for d in ["recipes", "collections/c", "sources/zip-a", "local/Made parts/Bin"] {
+            std::fs::create_dir_all(dir.join(d)).unwrap();
+        }
+        let files = [
+            ("library.json", r#"{"format": 1, "id": "lib-x", "name": "Old", "favourites": []}"#),
+            ("recipes/a1.json", r#"{"id":"a1","model":"zip-a/box","name":"A","values":{"w":2},"version":"v1"}"#),
+            ("collections/c/collection.json", r#"{"id":"c","name":"C","items":[{"ref":"gen:zip-a/box","format":"stl"}]}"#),
+            ("sources/zip-a/source.json", r#"{"id":"zip-a","kind":"zip","version":"v1","versions":[{"id":"v1"}]}"#),
+            ("local/Made parts/Bin/Bin 2.recipe.json", r#"{"model":"zip-a/box","values":{},"date":"2026-10-01T00:00:00Z","format":"3mf"}"#),
+            ("local/Made parts/Bin/Bin 2.3mf", "x"),
+        ];
+        for (p, t) in files {
+            std::fs::write(dir.join(p), t).unwrap();
+        }
+        let (lib, m) = Library::open(&dir, &Prefs::new(dir.join("p.json"))).unwrap();
+        let read = |p: &str| -> Value { serde_json::from_slice(&std::fs::read(dir.join(p)).unwrap()).unwrap() };
+        assert_eq!(read("library.json")["format"], FORMAT);
+        assert_eq!(m.upgraded.len(), 4, "{:?}", m.upgraded);
+        let a1 = read("recipes/a1.json");
+        assert_eq!((a1["project_version"].as_str(), a1["kind"].as_str(), a1["format"].as_u64(), a1.get("version")), (Some("v1"), Some("settings"), Some(1), None));
+        let part = read("local/Made parts/Bin/Bin 2.recipe.json");
+        assert_eq!((part["output"].as_str(), part["created"].as_str(), part["name"].as_str(), part["format"].as_u64()), (Some("3mf"), Some("2026-10-01T00:00:00Z"), Some("Bin 2"), Some(1)));
+        // an entry's own download format stays as it was
+        assert_eq!(read("collections/c/collection.json")["items"][0]["format"], "stl");
+        assert_eq!(read("sources/zip-a/source.json")["format"], 1);
+        // the files as they were, in a backup
+        let backup = std::fs::read_dir(dir.join("backups")).unwrap().flatten().next().unwrap().path();
+        let mut z = zip::ZipArchive::new(std::fs::File::open(&backup).unwrap()).unwrap();
+        let mut old = String::new();
+        std::io::Read::read_to_string(&mut z.by_name("recipes/a1.json").unwrap(), &mut old).unwrap();
+        assert!(old.contains(r#""version":"v1""#));
+        // saved settings read in the one shape, and a second open changes nothing
+        assert_eq!(lib.recipes("zip-a/box").unwrap()[0]["project_version"], "v1");
+        let (_, m2) = Library::open(&dir, &Prefs::new(dir.join("p.json"))).unwrap();
+        assert!(m2.upgraded.is_empty());
+        // a file a newer version wrote is read, never written over
+        std::fs::write(dir.join("recipes/n.json"), r#"{"id":"n","model":"zip-a/box","format":5}"#).unwrap();
+        assert!(lib.put_recipe(&json!({"id": "n", "model": "zip-a/box"})).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

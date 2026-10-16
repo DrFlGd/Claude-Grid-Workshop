@@ -1160,3 +1160,29 @@ Review 6's nine items, built as planned, except:
 - **F-28:** Make several makes each row as OpenSCAD's 3MF when 3MF is chosen, and the last row once more as an STL for the preview. With the WebAssembly engine parts stay STL.
 - **F-27:** entries added before 0.4.20 take the current fingerprint the first time their collection's page is opened (parts and components have none).
 
+
+## Library format design (0.4.22, before milestone 6)
+
+The owner's direction of 2026-10-16 (above, "Added 2026-10-16 … the library format"). A survey of every file the app writes in a library (2026-10-16) found: the folder layout is already the same for every project, but only `library.json` (format 1), derived data (format 5), `workshop.json` and `description.json` carry a version; an older app opening files written by a newer one gets no warning unless `library.json`'s number is higher; and there are two recipe shapes (saved settings `recipes/<id>.json`; a made part's `<name>.recipe.json`, whose `format` is the file type, "stl" or "3mf"). The design:
+
+- **The spec**, `docs/LIBRARY_FORMAT.md`: every folder and file, which ones hold your work (keep) and which the app can make again (rebuildable), each JSON file's fields and format number, the ids other files use (`gen:`, `part:`, `comp:`), and the rules: files in `files/<version>/` are never changed; unknown keys are kept; a file with a higher format than the app knows is read but never written. The library's README.txt points to the same rules in short.
+- **One table in the code** (`desktop/core/src/format.rs`) names each kind of JSON file by its path and its current format. `write_json` stamps the format on any file the table names, so no writer can forget it, and Check library reads the same table.
+- **Library format 2.** A library opened by this version is upgraded once: the JSON files it changes are first copied to `backups/format-1-<date>.zip` in the library; every JSON file in the table gets its format; recipes take the one shape below; `library.json` says format 2. An older app then opens the library read-only and says it was made by a newer version (as now for a higher number). A read-only library isn't upgraded. Merge library and Restore upgrade what they bring in the same way.
+- **A file newer than the app:** a recipe, collection, project or its metadata with a higher format than this version knows is shown but can't be changed ("made by a newer version of SCAD Workshop"), and Check library lists it.
+- **One recipe shape (format 1)** for saved settings and made parts: `format`, `kind` ("settings" or "part"), `name`, `model`, `model_name`, `project`, `project_version`, `files_id`, `values`, `edits`, `output` (the file type a made part was saved as, or that saved settings download as: "stl" or "3mf"), `engine`, `made_by`, `created`, `updated`. Saved settings also keep their `id` (the file name); a made part is still known by its file. The upgrade renames saved settings' `version` to `project_version` and a made part's `format` ("stl"/"3mf") to `output` and its `date` to `created`; files_id is added where the project's current version is the one the recipe was made with. Readers accept the old names too, so a recipe copied in by hand still works.
+- **Check library** (Library settings › Check library, and `workshop-cli library-call … library_check`): reads the whole folder against the table and lists what's off, grouped as "Can be repaired" and "To look at":
+  - repaired safely: a JSON file without its format; temporary folders left by an interrupted add (`.adding-*`, `*.tmp-*`); derived data, docs and generated copies for a version that's gone; a missing README or top folder.
+  - listed only: a file that isn't valid JSON; a file newer than the app; a project folder without `source.json`; a version whose files are missing, or a files folder no version lists; a recipe whose model is gone; a made part's recipe without its part, or a part without its recipe; a collection entry or favourite that refers to nothing; metadata for items that are gone.
+  - Nothing under `files/<version>/` and nothing you made is changed or removed by Repair.
+- **CI:** a format-1 library (written by the test from the old shapes) opens as format 2 with its backup, its recipes in the one shape, saved settings and Make again still working; Check library on the library the tests made finds nothing to repair or look at, then finds and repairs a planted temporary folder and lists a planted collection entry that refers to nothing. Rust tests cover the upgrade and the table.
+- **Not changed:** your own and linked projects are read where they are; project files aren't reorganised; folder names stay as they are.
+
+### 0.4.22 notes
+
+Built as planned, except:
+
+- Check library is in Library settings under Backups, and from the command line through `workshop-cli library-call --library <dir> --app-site <dir> library_check` (or `library_repair`) rather than a command of its own.
+- Example parts aren't checked: they're kept by the fingerprint of the files each example uses, not by version, and a later read makes them again.
+- A project not read yet (your own projects are read just after the library opens) has its items left out of "refers to nothing", so Check library run at once doesn't list them.
+- A made part's recipe from before 0.4.20 had no file type: the upgrade takes it from the part beside it.
+- Saved settings now record what made parts' recipes do (the model's name, its project, the files' fingerprint).

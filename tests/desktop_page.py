@@ -1611,6 +1611,34 @@ async def main():
             check("Home lists collections with how many are printed", "Test bench" in home_coll and "2 of 5 printed" in home_coll, home_coll)
             check("a part with one file has Download (size) with its format beside it", bool(one_file) and one_file[0].startswith("Download (") and one_file[1] in ("STL", "3MF"), one_file)
 
+            # (0.4.22) Check library: every file the tests' app wrote is in this version's format;
+            # a planted unfinished copy is repaired, a planted entry that refers to nothing is listed
+            checked = {}
+            try:
+                (library / "sources" / ".adding-99999" / "files").mkdir(parents=True, exist_ok=True)
+                put_coll = "(c) => import('/ui/library.js').then((m) => m.api('collection_put', { collection: c }))"
+                await pg.evaluate(put_coll, {"name": "Planted", "items": [{"id": "x1", "ref": "gen:no-such-project/none", "name": "Nothing", "quantity": 1}]})
+                await pg.goto(B + "#/library-settings")
+                await pg.click("#library-check", timeout=20000)
+                await pg.wait_for_selector("#check-result", timeout=60000)
+                listed = lambda sel: pg.evaluate(f"() => [...document.querySelectorAll('{sel} li')].map((l) => l.dataset.checkPath)")
+                checked["repair"], checked["look"] = await listed("#check-repair"), await listed("#check-look")
+                await pg.screenshot(path=str(out / "lf-01-check.png"))
+                await pg.click("#library-repair", timeout=10000)
+                await pg.wait_for_function("() => !document.querySelector('#library-repair')", timeout=60000)
+                checked["after"] = await listed("#check-look")
+            except Exception as e:
+                print("check library:", e)
+            print("check library:", json.dumps(checked, indent=1))
+            recipe_files = list((library / "recipes").glob("*.json")) + list((library / "local").rglob("*.recipe.json"))
+            shapes = [json.loads(f.read_text()) for f in recipe_files]
+            check("every library file the app wrote says its format; Check library repairs an unfinished copy and lists an entry that refers to nothing",
+                  checked.get("repair") == ["sources/.adding-99999"] and "collections/planted/collection.json" in checked.get("look", [])
+                  and not (library / "sources" / ".adding-99999").exists() and "collections/planted/collection.json" in checked.get("after", [])
+                  and bool(shapes) and all(r.get("format") == 1 and r.get("kind") in ("settings", "part") and "version" not in r and "date" not in r for r in shapes)
+                  and json.loads((library / "library.json").read_text()).get("format") == 2,
+                  (checked, [(f.name, r.get("format"), r.get("kind")) for f, r in zip(recipe_files, shapes) if r.get("format") != 1 or r.get("kind") not in ("settings", "part")]))
+
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"
             backup.parent.mkdir(parents=True, exist_ok=True)
@@ -1660,6 +1688,31 @@ async def main():
     s1, s2 = summary(library), summary(moved)
     check("library opens the same after moving", s1 == s2, f"{len(s1['sources'])} projects, {len(s1['models'])} models")
     (out / "library-summary.json").write_text(json.dumps(s1, indent=1))
+
+    # (0.4.22) a library in format 1 (as 0.4.21 left it) is upgraded when it's opened: its files
+    # backed up first, recipes in one shape, and Check library finds nothing left to repair
+    old = home / "format 1 library"
+    for rel, text in {
+        "library.json": '{"format": 1, "id": "lib-old", "name": "Old", "favourites": []}',
+        "recipes/a1.json": '{"id": "a1", "model": "zip-x/box", "name": "Wide", "values": {"w": 30}, "version": "v1"}',
+        "local/Made parts/Box/Box 2.recipe.json": '{"model": "zip-x/box", "values": {}, "date": "2026-10-01T00:00:00Z", "format": "3mf"}',
+        "local/Made parts/Box/Box 2.3mf": "x",
+        "collections/c/collection.json": '{"id": "c", "name": "C", "items": []}',
+    }.items():
+        (old / rel).parent.mkdir(parents=True, exist_ok=True)
+        (old / rel).write_text(text)
+    r = subprocess.run([a.cli, "library-call", "--library", str(old), "--app-site", a.app_site, "library_check", "{}"], capture_output=True, text=True)
+    try:
+        oc = json.loads(r.stdout)
+    except Exception:
+        oc = {"stdout": r.stdout[-400:], "stderr": r.stderr[-400:]}
+    a1 = json.loads((old / "recipes/a1.json").read_text())
+    box = json.loads((old / "local/Made parts/Box/Box 2.recipe.json").read_text())
+    check("a format 1 library is upgraded when opened: backed up first, recipes in one shape, nothing left to repair",
+          json.loads((old / "library.json").read_text()).get("format") == 2 and len(list((old / "backups").glob("format-1-*.zip"))) == 1
+          and a1.get("project_version") == "v1" and "version" not in a1 and box.get("output") == "3mf" and box.get("created") == "2026-10-01T00:00:00Z"
+          and box.get("name") == "Box 2" and oc.get("repair") == [],
+          (oc, a1, box))
     shutil.make_archive(str(out / "library"), "zip", library)
 
     for c in calls:

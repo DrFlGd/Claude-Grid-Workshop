@@ -193,6 +193,8 @@ pub fn merge(lib: &Library, other: &Path, _prefs: &Prefs) -> Result<Value> {
     }
     mine = lib.update_meta(patch)?;
     let _ = mine;
+    // what came from an older library takes this version's format (backed up first)
+    lib.upgrade_files("merge")?;
     Ok(json!({ "copied": copied, "combined": combined, "recipes": recipes, "collections": collections, "conflicts": conflicts }))
 }
 

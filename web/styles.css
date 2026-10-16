@@ -410,6 +410,9 @@ body.show-help .field .help { display: block; }
 .info-note { padding: 10px 14px; border: 1px solid var(--steel-2); background: var(--panel); border-radius: var(--radius-s); font-size: 14px; } /* a plain note: nothing is wrong (Review 4, UI-29) */
 .ls-offer { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--steel); border-radius: var(--radius-s); margin: 10px 0; }
 .ls-offer p { margin: 0; flex: 1 1 320px; }
+.check-result h3 { margin: 8px 0 4px; }
+.check-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.check-list code { font-size: 12px; color: var(--graphite); overflow-wrap: anywhere; }
 .lic-wrap { overflow-x: auto; }
 .lic-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .lic-table th, .lic-table td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--steel-2); }

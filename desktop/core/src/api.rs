@@ -756,7 +756,7 @@ impl App {
                     "fixed": args["fixed"].as_object().cloned().unwrap_or_default(),
                     "created": library::now(),
                 });
-                crate::config::write_atomic(&dir.join(format!("{pid}.json")), &serde_json::to_vec_pretty(&pin).map_err(|e| e.to_string())?).map_err(e2s)?;
+                crate::config::write_json(&dir.join(format!("{pid}.json")), &pin).map_err(e2s)?;
                 self.invalidate();
                 j(json!({ "key": format!("{src}/{pid}"), "source": src, "id": pid }))
             }
@@ -772,7 +772,7 @@ impl App {
                 let c = self.catalog()?;
                 let comp = c.models.get(pin["component"].as_str().unwrap_or("")).ok_or("its component isn't in any library now")?;
                 pin["from"] = json!({ "library": comp["component"]["library"], "copy": comp["component"]["copy"] });
-                crate::config::write_atomic(&p, &serde_json::to_vec_pretty(&pin).map_err(|e| e.to_string())?).map_err(e2s)?;
+                crate::config::write_json(&p, &pin).map_err(e2s)?;
                 self.invalidate();
                 j(Value::Null)
             }
@@ -1275,14 +1275,19 @@ impl App {
                     }
                 }
                 let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
+                // made again: the recipe keeps when the part was first made
+                let created = std::fs::read(dir.join(format!("{stem}.recipe.json"))).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                    .map(|r| crate::format::recipe_view(r, true, Some(&stem))["created"].clone()).filter(Value::is_string);
                 crate::config::write_atomic(&dir.join(format!("{stem}.{ext}")), &data).map_err(e2s)?;
                 // made again in the other format: the old file goes, so the part has one
                 let _ = std::fs::remove_file(dir.join(format!("{stem}.{}", if ext == "3mf" { "stl" } else { "3mf" })));
+                // the one recipe shape (format.rs): what saved settings have, plus the file it made
+                let now = library::now();
                 let recipe = json!({
-                    "made_by": format!("SCAD Workshop {}", env!("CARGO_PKG_VERSION")),
+                    "format": 1, "kind": "part", "name": stem, "made_by": format!("SCAD Workshop {}", env!("CARGO_PKG_VERSION")),
                     "model": args["model"], "model_name": args["model_name"], "project": args["project"], "project_version": args["project_version"],
                     "files_id": args["files_id"], "category": args["category"], "values": args["values"], "edits": args["edits"],
-                    "engine": self.engine_version_site, "date": library::now(), "format": ext,
+                    "engine": self.engine_version_site, "created": created.unwrap_or_else(|| json!(now)), "updated": now, "output": ext,
                 });
                 crate::config::write_json(&dir.join(format!("{stem}.recipe.json")), &recipe).map_err(e2s)?;
                 j(json!({ "name": stem, "folder": folder, "file": format!("{stem}.{ext}") }))
@@ -1517,6 +1522,30 @@ impl App {
                     let prefs = app.prefs();
                     tokio::task::spawn_blocking(move || crate::merge::merge(&lib2, &from, &prefs)).await?
                 })))
+            }
+            "library_check" | "library_repair" => {
+                // Check library (0.4.22): the folder against docs/LIBRARY_FORMAT.md; Repair fixes what's safe
+                let lib = self.library()?;
+                let c = self.catalog()?;
+                let mut known: std::collections::HashSet<String> =
+                    c.models.keys().map(|k| if k.starts_with('@') { format!("comp:{k}") } else { format!("gen:{k}") }).collect();
+                for (pid, pack) in &c.parts {
+                    known.extend(pack["items"].as_array().into_iter().flatten().filter_map(|it| it["id"].as_str()).map(|it| format!("part:{pid}/{it}")));
+                }
+                // a project not read yet (your own are read just after the library opens): its items aren't known
+                for id in lib.source_ids() {
+                    if lib.source(&id).is_ok_and(|s| s["kind"] != "pinned" && lib.derived(&id, s["version"].as_str().unwrap_or("")).is_none()) {
+                        known.insert(format!("proj:{id}"));
+                    }
+                }
+                let known = Some(known);
+                if cmd == "library_check" {
+                    j(crate::check::check(&lib, &known))
+                } else {
+                    let out = crate::check::repair(&lib, &known).map_err(e2s)?;
+                    self.invalidate();
+                    j(out)
+                }
             }
             "merge_resolve" => {
                 let lib = self.library()?;

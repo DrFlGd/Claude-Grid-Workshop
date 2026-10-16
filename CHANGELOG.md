@@ -23,7 +23,7 @@ The owner ("DrFlGd") tests hands-on, mostly on Windows, and steers by phases. Th
 | Path | What |
 | --- | --- |
 | `web/` | The front end (no build step). `app.js`: routing, model page (form, preview, batch, saved settings), settings and license pages. `web/ui/`: Preact + htm islands (sidebar, browser, inspector, tabs, palette, quick look, dialogs, Library settings, pin dialog and form editor, `sideview.js`: the side viewer for code and documents). `platform.js` / `platform-desktop.js`: the browser vs desktop seam. `ui/index-local.js`: search. |
-| `desktop/core/` | Rust, no GUI: `api.rs` (the app's command table), `render.rs` (native OpenSCAD queue and cache), `library.rs` (library folder), `meta.rs` (layered metadata), `catalog.rs` (catalog from the library), `components.rs` (library modules as forms), `docs.rs` (reference documents: README to HTML, PDFs, text), `ingest.rs` / `sitebuild.rs` / `scan.rs` / `project.rs` (reading projects; also the website build), `sources.rs` (GitHub, ZIP, folder), `merge.rs`. `src/bin/workshop-cli.rs`: CLI and `serve` (the app's backend over HTTP, for tests). |
+| `desktop/core/` | Rust, no GUI: `api.rs` (the app's command table), `render.rs` (native OpenSCAD queue and cache), `library.rs` (library folder; its format is docs/LIBRARY_FORMAT.md), `format.rs` (its JSON files and their format numbers), `check.rs` (Check library), `meta.rs` (layered metadata), `catalog.rs` (catalog from the library), `components.rs` (library modules as forms), `docs.rs` (reference documents: README to HTML, PDFs, text), `ingest.rs` / `sitebuild.rs` / `scan.rs` / `project.rs` (reading projects; also the website build), `sources.rs` (GitHub, ZIP, folder), `merge.rs`. `src/bin/workshop-cli.rs`: CLI and `serve` (the app's backend over HTTP, for tests). |
 | `desktop/src-tauri/` | The Tauri app: a thin layer over `api.rs`, plus dialogs and the `library://` protocol. Version in `tauri.conf.json`. |
 | `catalog/` | Family manifests for the built-in generators (`families/*.json`, with `ui` overlays), parts packs (`libraries/`), start values for components (`components.json`). |
 | `vendor/`, `adapters/`, `sources/` | Third-party OpenSCAD projects, vendored unmodified and hash-checked (`sources/SHA256SUMS`); small adapters; upstream pins. See THIRD_PARTY.md and docs/SOURCE_AUDIT.md. |
@@ -82,6 +82,14 @@ The development sandbox has a network allowlist and is reset between sessions (t
 ---
 
 ## Unreleased
+
+The library format (owner, 2026-10-16), before milestone 6.
+
+- **The library format is written down:** `docs/LIBRARY_FORMAT.md` describes every folder and file in a library, which hold your work and which the app can make again, each JSON file's fields, and the ids collections use. The library's README.txt says the same in short.
+- **Library format 2:** every JSON file the app writes says its `format` (`desktop/core/src/format.rs` names them all, and `write_json` stamps them), and a file written by a newer version is read but never written over. A library from 0.4.21 or before is upgraded when it's opened, after the files it changes are copied as they were to `backups/format-1-<date>.zip`. An older app then opens the library read-only and says why.
+- **One recipe shape** for saved settings and made parts: model, project and its version, the files' fingerprint, changed settings, code edits, file type (`output`), dates. Older names (`version`, a made part's `format` and `date`) are renamed by the upgrade and still read.
+- **Check library** (Library settings): lists what isn't as the app keeps it, as "Can be repaired" (a file not yet in the format, an unfinished copy from an add that stopped, what was made from a version whose files are gone, a missing README) and "To look at" (a file that isn't valid JSON or is newer than the app, a project folder without source.json, missing files, saved settings or a collection entry for something that isn't there). Repair never changes a project's files or anything you made.
+- CI: the files the tests' app wrote all say their format and recipes have one shape; Check library repairs a planted unfinished copy and lists a collection entry that refers to nothing; a format 1 library is upgraded on opening with its backup.
 
 ## 0.4.21 — 2026-10-16 · The logo
 

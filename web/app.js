@@ -835,11 +835,12 @@ async function saveSettings(asNew) {
   try {
     let rec;
     const edits = editsRecord(state.model);
-    // the project version they were made with
-    const version = sourceById(state.model.source_id)?.version || null;
+    // what they were made with, as a made part's recipe records it (one recipe shape, 0.4.22)
+    const m = state.model;
+    const made = { project_version: sourceById(m.source_id)?.version || null, files_id: m.files_id || null, model_name: m.name, project: m.source_id || null };
     if (mode === "rename" && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id) });
-    else if (!asNew && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id), values: changedValues(state.model, state.values), edits, version });
-    else rec = await store.settings.save({ model: key, name: uniqueName(name), values: changedValues(state.model, state.values), edits, version });
+    else if (!asNew && cur) rec = await store.settings.save({ id: cur.id, name: uniqueName(name, cur.id), values: changedValues(state.model, state.values), edits, ...made });
+    else rec = await store.settings.save({ model: key, name: uniqueName(name), values: changedValues(state.model, state.values), edits, ...made });
     dlg.close();
     saved.active = `saved:${rec.id}`;
     await loadSaved();
@@ -1272,7 +1273,7 @@ function applyRecipe(r) {
   renderSettingsPick();
   if (skipped.length) note(skippedText(skipped.length).trim(), "warn");
   state.afterRender = r.again
-    ? { key, values: structuredClone(state.values), run: () => writePart({ name: r.stem, category: r.category, replace: true, folder: r.folder, format: r.format || "stl" }) }
+    ? { key, values: structuredClone(state.values), run: () => writePart({ name: r.stem, category: r.category, replace: true, folder: r.folder, format: r.output || "stl" }) }
     : null;
   generate();
 }

@@ -6,7 +6,7 @@
 //! - [`engine`], [`render`]: the bundled native OpenSCAD, render queue and cache
 //! - [`ingest`], [`sitebuild`]: reading OpenSCAD projects (files, settings, metadata)
 //! - [`config`]: what the app keeps on this computer (open library, preferences)
-//! - [`library`]: the portable library folder; [`meta`]: layered metadata
+//! - [`library`]: the portable library folder; [`format`]: its JSON files' format numbers; [`meta`]: layered metadata
 //! - [`sources`]: adding projects (GitHub, ZIP, folders); [`scan`], [`project`]: reading them
 //! - [`catalog`]: the page's catalog from the library; [`merge`]: merging libraries
 //! - [`docs`]: projects' reference documents (README as HTML, PDF, text)
@@ -16,10 +16,12 @@
 pub mod api;
 pub mod backup;
 pub mod catalog;
+pub mod check;
 pub mod components;
 pub mod config;
 pub mod docs;
 pub mod engine;
+pub mod format;
 pub mod ingest;
 pub mod library;
 pub mod merge;

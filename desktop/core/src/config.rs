@@ -130,9 +130,17 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
 }
 
 /// Pretty JSON with sorted keys and a final newline, so files in a library kept
-/// in git or a sync tool change only where something changed.
+/// in git or a sync tool change only where something changed. A library file (format.rs)
+/// gets its format number, and one written by a newer version isn't written over.
 pub fn write_json(path: &Path, v: &Value) -> Result<()> {
-    let mut bytes = serde_json::to_vec_pretty(&sorted(v))?;
+    let mut v = std::borrow::Cow::Borrowed(v);
+    if let Some(kind) = crate::format::kind_of(path) {
+        if std::fs::read(path).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).is_some_and(|old| crate::format::too_new(kind, &old)) {
+            anyhow::bail!("{} was made by a newer version of SCAD Workshop, so this version doesn't change it. Update the app to change it.", path.display());
+        }
+        crate::format::upgrade(kind, v.to_mut(), Some(path));
+    }
+    let mut bytes = serde_json::to_vec_pretty(&sorted(&v))?;
     bytes.push(b'\n');
     write_atomic(path, &bytes)
 }
