@@ -446,7 +446,7 @@ impl Slicer {
     /// or PrusaSlicer (`Slic3r_PE_model.config`, `Slic3r_PE.config`).
     fn read<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Slicer {
         let mut text = |name: &str| -> Option<String> {
-            let real = zip.file_names().find(|n| n.eq_ignore_ascii_case(name))?.to_string();
+            let real = zip.file_names().flatten().find(|n| n.eq_ignore_ascii_case(name))?.into_owned();
             let mut f = zip.by_name(&real).ok()?;
             if f.size() > 32 << 20 {
                 return None;
@@ -560,8 +560,9 @@ impl<R: Read + std::io::Seek> ThreeMf<R> {
         let want = path.trim_start_matches('/').to_lowercase();
         self.zip
             .file_names()
+            .flatten()
             .find(|n| n.to_lowercase() == want)
-            .map(String::from)
+            .map(|n| n.into_owned())
     }
 
     fn load(&mut self, path: &str) -> Result<()> {

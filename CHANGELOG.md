@@ -94,6 +94,7 @@ Review 6's items (0.4.20).
 - Roadmap: the library format (a written spec, a version in each JSON file, one recipe shape, Check library) comes before milestone 6 (owner, 2026-10-16); see the plan's "Owner direction of 2026-10-14".
 - CI: colours shown and named with STL chosen; a part saved as 3MF; the same Printables files not added twice; one Updated filter; printed copies counted; a collection's model marked when it changed; Home's collections; a one-file part's Download.
 - CI fixes found by 0.4.20's run: the filters check opens the project's Items tab (the About tab, opened earlier, has none), and Windows gets its Edge driver for WebView2's version (or the runner's own) when msedgedriver-tool can't be built (a yanked dependency).
+- The app reads and writes ZIP and 3MF files with version 9 of the `zip` crate: on 2026-10-16 every earlier version was withdrawn from crates.io after symlink and extraction fixes, so builds without a lock file stopped resolving it.
 
 ## 0.4.19 — 2026-10-14 · Milestone 5, last part: multi-colour 3MF from OpenSCAD's own export
 
