@@ -7,6 +7,7 @@ import { ctx, scopeHash } from "./context.js";
 import { plural } from "../lib/util.js";
 import { Icon } from "./icons.js";
 import { addProject, suggestionFacts } from "./library.js";
+import { printedOf } from "./collections.js";
 
 const ago = (t) => {
   const m = Math.round((Date.now() - t) / 60000);
@@ -19,7 +20,7 @@ const ago = (t) => {
 };
 
 export function Home() {
-  const s = useStore(ui, (st) => ({ favs: st.favs, recent: st.recent }));
+  const s = useStore(ui, (st) => ({ favs: st.favs, recent: st.recent, collections: st.collections || [] }));
   const { index, catalog, platform } = ctx;
   const recent = s.recent.map((r) => ({ ...index.get(r.id), t: r.t })).filter((i) => i.id).slice(0, 8);
   const favs = s.favs.map((id) => index.get(id)).filter(Boolean);
@@ -61,6 +62,16 @@ export function Home() {
       ${recent.map((i) => html`<a class="recent" href=${i.href} key=${i.id}>
         <span class="thumb">${i.thumb ? html`<img src=${i.thumb} alt="" loading="lazy" />` : null}</span>
         <span><b>${i.name}</b><span class="muted">${i.project} · ${ago(i.t)}</span></span></a>`)}
+    </div></section>` : null}
+    ${s.collections.length ? html`<section data-home="collections"><h2>Collections</h2><div class="home-recent" id="home-collections">
+      ${s.collections.map((c) => {
+        const total = c.items.reduce((n, e) => n + Math.max(1, e.quantity || 1), 0);
+        const done = c.items.reduce((n, e) => n + printedOf(e), 0);
+        const thumb = c.items.map((e) => index.get(e.ref)?.thumb).find(Boolean);
+        return html`<a class="recent" href=${scopeHash(`coll:${c.id}`)} key=${c.id} data-collection=${c.id}>
+          <span class="thumb">${thumb ? html`<img src=${thumb} alt="" loading="lazy" />` : Icon.stack(22)}</span>
+          <span><b>${c.name}</b><span class="muted">${plural(c.items.length, "item")}${total ? ` · ${done} of ${total} printed` : ""}</span></span></a>`;
+      })}
     </div></section>` : null}
     <section data-home="models"><h2>Parametric Models</h2>${gens ? html`<div class="home-tiles">${categories("generator")}</div>`
       : html`<p class="muted section-note" id="home-no-models">No parametric models yet. ${platform.kind === "desktop"

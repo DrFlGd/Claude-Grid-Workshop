@@ -169,6 +169,7 @@ export function Sidebar() {
         onToggle=${() => setOpen({ ...open, [key]: !inline })} />
       ${inline ? html`<li class="nav-inline"><${Categories} kind=${kind} current=${current} open=${open} toggle=${toggle} depth=${1} /></li>` : null}`;
   };
+  // (Add a project sits under the sections it adds to, not under Collections: Review 6, UI-42)
   return html`${s.navOpen ? html`<div class="nav-backdrop" onClick=${() => ui.set({ navOpen: false })}></div>` : null}
   <nav class=${`sidebar${s.navOpen ? " open" : ""}`} aria-label="Library"
     onKeyDown=${(e) => { if (e.key === "Escape" && ui.get().navOpen) ui.set({ navOpen: false }); }}>
@@ -180,16 +181,16 @@ export function Sidebar() {
     <ul class="nav-list nav-sections">
       ${Object.keys(SECTION).filter((k) => has[k]).map(sectionRow)}
     </ul>
+    ${isDesktop() && !readOnly() ? html`<ul class="nav-list nav-add"><li>
+      <button type="button" class="nav-link" id="add-project" title="Add a project from GitHub, a ZIP or a folder. Its models and parts appear under Parametric Models and the Parts Library."
+        onClick=${() => ui.set({ dialog: { type: "add-project" }, navOpen: false })}><span class="nav-icon">${Icon.plus(15)}</span><span class="nav-label">Add a project</span></button>
+    </li></ul>` : null}
     ${isDesktop() ? html`<ul class="nav-list nav-collections" aria-label="Collections">
       <li class="nav-head"><span>Collections</span>${readOnly() ? null : html`<button type="button" class="nav-head-add" id="new-collection" title="New collection" aria-label="New collection"
         onClick=${() => ui.set({ dialog: { type: "collect", entries: [] }, navOpen: false })}>${Icon.plus(13)}</button>`}</li>
       ${s.collections.map((c) => html`<${Row} scope=${`coll:${c.id}`} label=${c.name} n=${c.items.length} icon=${Icon.stack(15)} current=${current} key=${c.id} />`)}
       ${s.collections.length ? null : html`<li class="nav-empty muted">Lists of parts and models for one use, with quantities.</li>`}
     </ul>` : null}
-    ${isDesktop() && !readOnly() ? html`<ul class="nav-list nav-add"><li>
-      <button type="button" class="nav-link" id="add-project" title="Add a project from GitHub, a ZIP or a folder. Its models and parts appear under Parametric Models and the Parts Library."
-        onClick=${() => ui.set({ dialog: { type: "add-project" }, navOpen: false })}><span class="nav-icon">${Icon.plus(15)}</span><span class="nav-label">Add a project</span></button>
-    </li></ul>` : null}
     <ul class="nav-list nav-foot">
       <li><a class=${`nav-link${page === "settings" ? " active" : ""}`} href="#/settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.gear(15)}</span><span class="nav-label">Settings</span></a></li>
       ${isDesktop() ? html`<li><a class=${`nav-link${page === "library-settings" ? " active" : ""}`} href="#/library-settings" id="nav-library-settings" onClick=${() => ui.set({ navOpen: false })}><span class="nav-icon">${Icon.shelf(15)}</span><span class="nav-label">Library settings</span></a></li>` : null}

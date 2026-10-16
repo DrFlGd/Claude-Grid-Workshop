@@ -45,9 +45,13 @@ export async function addProject(args, label) {
     const problems = (res.read?.problems || []).length;
     const src = sourceById(res.source), name = src?.name || label;
     if (res.version) {
-      // another download of a model page a project has: a version of that project, offered as an update (F-23)
-      const date = src?.update?.latest?.date;
-      ctx.toast(`Added it to ${name} as a new version${date ? `, of ${when(date)}` : ""}. Its page has Use the new version.`);
+      // another download of a model page a project has: a version of that project, offered as an update (F-23),
+      // or only listed under Versions when it's older than the one in use (Review 6, F-26)
+      const v = (src?.versions || []).find((x) => x.id === res.version);
+      const date = res.older ? v?.date : src?.update?.latest?.date;
+      ctx.toast(res.older
+        ? `Added it to ${name} as an earlier version${date ? `, of ${when(date)}` : ""}: it's under Versions on its page.`
+        : `Added it to ${name} as a new version${date ? `, of ${when(date)}` : ""}. Its page has Use the new version.`);
       location.hash = scopeHash(`source:${res.source}`);
       return res;
     }
@@ -199,7 +203,11 @@ function UpdateBanner({ src }) {
         m.added?.length ? `new settings ${m.added.join(", ")}` : "",
         m.removed?.length ? `removed ${m.removed.join(", ")}` : "",
         m.defaults?.length ? `new defaults for ${m.defaults.map((d) => d.name).join(", ")}` : ""].filter(Boolean).join("; ")}</li>`)}
-      ${!ch.added?.length && !ch.removed?.length && !(ch.settings || []).length ? html`<li>No model or setting changes found.</li>` : null}
+      ${ch.parts_added?.length ? html`<li>New parts: ${ch.parts_added.join(", ")}</li>` : null}
+      ${ch.parts_removed?.length ? html`<li>Parts removed: ${ch.parts_removed.join(", ")}</li>` : null}
+      ${ch.parts_changed?.length ? html`<li>Changed parts: ${ch.parts_changed.join(", ")}</li>` : null}
+      ${!ch.added?.length && !ch.removed?.length && !(ch.settings || []).length && !ch.parts_added?.length && !ch.parts_removed?.length && !ch.parts_changed?.length
+        ? html`<li>No changes to models, parts or settings found.</li>` : null}
     </ul>
     <p class="muted">The current version stays until you accept, and your edits are kept either way.</p>
     <div class="button-row"><button type="button" class="primary" disabled=${busy} onClick=${() => act("update_apply", "Updated.")} data-update="apply">Use the new version</button>

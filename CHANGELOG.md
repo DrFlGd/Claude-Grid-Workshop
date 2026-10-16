@@ -83,7 +83,19 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-Multi-colour 3MF (0.4.19).
+Review 6's items (0.4.20).
+
+- **A model's colours show without choosing 3MF** (UI-39): after the preview of a model that calls `color()`, the app makes OpenSCAD's 3MF behind it, shows its colours in the 3D view, and with STL chosen says so ("It has 3 parts in 3 colours: choose 3MF to keep them"). **Show the file's colours** sits in the 3D view for models and parts alike, on unless you untick it; the filament swatches hide while it's on.
+- **Made parts keep the chosen format** (F-28): Save as part, Make several and Make again write a .3mf from OpenSCAD (colours and objects kept) when 3MF is chosen beside Download; the recipe records the format.
+- **Printables downloads** (F-26): the same files downloaded again aren't added as another version ("has these files already"); a download dated before the version in use is only listed under Versions; Read again dates versions from the page's PDF; an update's summary lists parts added, removed and changed.
+- **Collections** (UI-40, F-27): several copies are counted as they're printed ("1 of 3", with − and +), a finished row is quieter rather than struck through, and Notes shows its hint only while typing. A model entry keeps the files it was added with and says "Made from an earlier version" with **Use the current version** when its model changes; Export says how many changed.
+- One **Updated** filter on a Printables project, and **Published** grouped by age (UI-38); a part with one file has **Download (size)** with its format beside it (UI-41); **Add a project** is under the sections in the sidebar, and Home lists collections (UI-42).
+- The library's README describes what `metadata.json` holds and how collections refer to items (F-29).
+- CI: colours shown and named with STL chosen; a part saved as 3MF; the same Printables files not added twice; one Updated filter; printed copies counted; a collection's model marked when it changed; Home's collections; a one-file part's Download.
+
+## 0.4.19 — 2026-10-14 · Milestone 5, last part: multi-colour 3MF from OpenSCAD's own export
+
+Multi-colour 3MF.
 
 - **A model's 3MF keeps its colours and separate parts**: with the app's OpenSCAD, Download as 3MF now asks OpenSCAD for its own 3MF (with lazy union), so each top-level object stays its own object and each `color()` is kept. The status line says what's in it ("The 3MF has 3 parts in 3 colours") and the 3D view shows those colours. Collections export their models' 3MF the same way. With the WebAssembly engine the 3MF is written by the app as before, one object without colours.
 - CI: a model with three coloured objects downloads as a 3MF with three objects and its colours, named in the status line.

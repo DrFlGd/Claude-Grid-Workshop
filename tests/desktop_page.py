@@ -1241,11 +1241,13 @@ async def main():
                   "gear copy.stl" in dup_text.lower() and "made parts" in dup_text.lower(), dup_text)
             latch = await pg.evaluate("() => window.__workshop.index.items.find((i) => i.project === 'Drop test' && i.name === 'Latch')?.href")
             await pg.goto(B + latch)
-            await pg.wait_for_selector("#file-colours", timeout=30000)
-            await pg.click("#file-colours")
+            # (0.4.20, UI-39) its colours are shown unless Show the file's colours is unticked; the swatches hide meanwhile
+            await pg.wait_for_selector("#file-colours-hud:not([hidden])", timeout=30000)
             latch_dims = await pg.evaluate("() => !document.querySelector('#dims').hidden && document.querySelector('#dims').textContent")
+            latch_colours = await pg.evaluate("() => [document.querySelector('#file-colours').checked, document.querySelector('#filament').hidden]")
             await pg.screenshot(path=str(out / "m5-02-3mf-colours.png"))
-            check("a 3MF part shows in 3D at its size, with its own colours when asked", "10 × 10 × 16" in (latch_dims or ""), latch_dims)
+            check("a 3MF part shows in 3D at its size, with its own colours unless unticked", "10 × 10 × 16" in (latch_dims or "") and latch_colours == [True, True],
+                  (latch_dims, latch_colours))
             # into one of your own projects: the one open
             model_files.write_stl(drops / "spacer.stl")
             await pg.goto(B + "#/browse/source/local-blocks")
@@ -1299,15 +1301,21 @@ async def main():
                 "// Label width\nwidth = 20; // [10:40]\ncolor(\"red\") cube([width, 10, 2]);\n"
                 "color(\"white\") translate([2, 2, 2]) cube([5, 5, 1]);\ntranslate([width + 10, 0, 0]) cylinder(h = 5, r = 4);\n")
             await pg.evaluate("import('/ui/library.js').then(async (m) => { await m.rescanLocal(false); await m.rescanLocal(false); })")
-            mc_status, mc_objects, mc_colours = "", 0, []
+            mc_status, mc_objects, mc_colours, mc_stl, mc_part = "", 0, [], [], []
             try:
                 await pg.wait_for_function("() => !!window.__workshop.index.get('gen:local-colours/label')", timeout=120000)
                 await pg.goto(B + "#/m/local-colours/label")
                 await pg.wait_for_function("()=>document.body.dataset.model==='local-colours/label'", timeout=60000)
                 await pg.click("#generate")
                 await pg.wait_for_function("() => !document.querySelector('#download').classList.contains('is-disabled')", timeout=300000)
+                # (0.4.20, UI-39) with STL chosen its colours are made behind the preview: shown, and named
+                await pg.select_option("#download-format", "stl")
+                await pg.wait_for_function("() => /choose 3MF to keep them/.test(document.querySelector('#status')?.textContent || '')", timeout=120000)
+                mc_stl = [await pg.inner_text("#status"), await pg.evaluate("() => !document.querySelector('#file-colours-hud').hidden && document.querySelector('#filament').hidden")]
+                await pg.screenshot(path=str(out / "m6-01-colours-stl.png"))
                 await pg.select_option("#download-format", "3mf")
                 await pg.wait_for_function("() => (document.querySelector('#download').getAttribute('download') || '').endsWith('.3mf') && !document.querySelector('#download').classList.contains('is-disabled')", timeout=120000)
+                await pg.wait_for_function("() => /The 3MF has/.test(document.querySelector('#status')?.textContent || '')", timeout=60000)
                 mc_status = await pg.inner_text("#status")
                 before_3mf = set(saved_stl.glob("*.3mf"))
                 await pg.click("#download")
@@ -1320,12 +1328,29 @@ async def main():
                 mc_objects = len(re.findall(r"<item ", model_xml))
                 mc_colours = sorted(set(c[:7].upper() for c in re.findall(r'displaycolor="([^"]+)"', model_xml)))
                 await pg.screenshot(path=str(out / "m5-05-3mf-colours.png"))
+                # (0.4.20, F-28) saved as a part with 3MF chosen: OpenSCAD's 3MF, its recipe saying so
+                await pg.click("#save-part")
+                await pg.wait_for_selector("#save-part-name", timeout=10000)
+                await pg.fill("#save-part-name", "Label in colour")
+                await pg.click("#save-part-save")
+                for _ in range(120):
+                    if list((library / "local" / "Made parts").glob("*/Label in colour.3mf")):
+                        break
+                    await pg.wait_for_timeout(250)
+                made_3mf = list((library / "local" / "Made parts").glob("*/Label in colour.3mf"))
+                made_xml = zipfile.ZipFile(made_3mf[0]).read("3D/3dmodel.model").decode() if made_3mf else ""
+                made_rec = json.loads(made_3mf[0].with_name("Label in colour.recipe.json").read_text()) if made_3mf else {}
+                mc_part = [len(re.findall(r"<item ", made_xml)), made_rec.get("format"), sorted(p.name for p in made_3mf[0].parent.glob("Label in colour.*")) if made_3mf else []]
                 await pg.select_option("#download-format", "stl")
             except Exception as e:
                 print("multi-colour 3MF:", e)
             check("a model with colours and separate objects downloads as OpenSCAD's own 3MF: each object apart, its colours kept and named in the status line",
                   mc_objects == 3 and "#FF0000" in mc_colours and "#FFFFFF" in mc_colours and "3 parts" in mc_status.lower(),
                   (mc_objects, mc_colours, mc_status))
+            check("a model that calls color() shows its colours after the preview, and with STL chosen says to choose 3MF to keep them",
+                  bool(mc_stl) and "3 parts in 3 colours: choose 3MF to keep them" in mc_stl[0] and mc_stl[1] is True, mc_stl)
+            check("a part saved with 3MF chosen is OpenSCAD's 3MF, objects kept, its recipe naming the format",
+                  mc_part == [3, "3mf", ["Label in colour.3mf", "Label in colour.recipe.json"]], mc_part)
             near = library / "local" / "near"
             near.mkdir(parents=True, exist_ok=True)
             model_files.write_3mf(near / "clip.3mf")
@@ -1437,6 +1462,29 @@ async def main():
                   n_src2 == n_src and len(og_src.get("versions") or []) == 2 and str(waiting.get("date", "")).startswith("2025-10-20")
                   and applied.get("version") == waiting.get("id") and str(applied.get("version_date", "")).startswith("2025-10-20"),
                   (n_src, n_src2, [v.get("date") for v in og_src.get("versions") or []], waiting, applied.get("version")))
+            # (0.4.20, F-26) the same files downloaded again (a ZIP made again, other bytes) aren't another version
+            again_text, again_versions = "", -1
+            try:
+                with zipfile.ZipFile(pz / "opengrid (1).zip") as src_zip, zipfile.ZipFile(pz / "opengrid (2).zip", "w") as z:
+                    for zi in src_zip.infolist():
+                        z.writestr(zipfile.ZipInfo(zi.filename, date_time=(2026, 1, 2, 3, 4, 6)), src_zip.read(zi))
+                await pg.evaluate("(p) => import('/ui/library.js').then((m) => m.addProject({ kind: 'zip', path: p }, 'the same download'))", str(pz / "opengrid (2).zip"))
+                await pg.wait_for_function("() => /has these files already/.test(document.querySelector('#toast')?.textContent || '')", timeout=60000)
+                again_text = await pg.evaluate("() => document.querySelector('#toast').textContent")
+                again_versions = len(json.loads(og_json.read_text()).get("versions") or [])
+            except Exception as e:
+                print("same download:", e)
+            check("the same Printables files downloaded again aren't added as another version",
+                  "has these files already" in again_text and again_versions == 2, (again_text, again_versions))
+            # (0.4.20, UI-38) the page's own Updated isn't a second Updated filter; Published is grouped like Updated
+            og_filters = []
+            try:
+                await pg.goto(B + f"#/browse/source/{og['id']}")
+                await pg.wait_for_selector("[data-filter=updated]", timeout=30000)
+                og_filters = await pg.evaluate("() => [...document.querySelectorAll('[data-filter]')].map((b) => b.dataset.filter)")
+            except Exception as e:
+                print("filters:", e)
+            check("a Printables project has one Updated filter, and Published among its filters", og_filters.count("updated") == 1 and "f:Updated" not in og_filters and "f:Published" in og_filters, og_filters)
             # (0.4.18, F-24) Read again reads the page PDF again: details lost (or never read) come back
             refreshed = {}
             try:
@@ -1518,6 +1566,43 @@ async def main():
             check("Export as ZIP: a file per copy (models made at their settings), and parts.csv with each item's quantity and license",
                   len(stls) == 5 and "parts.csv" in coll_names and "README.txt" in coll_names and "Latch,3," in coll_csv and "Bevel" in coll_csv,
                   (coll_names, coll_csv[:300]))
+            # (0.4.20, UI-40) several copies are counted as they're printed; (F-27) a model entry keeps the files it
+            # was added with, and says when its model has changed; (UI-42) Home lists collections
+            count_text, count_stored, stale, kept_id, home_coll, one_file = "", None, "", None, "", []
+            coll_json = library / "collections/test-bench/collection.json"
+            try:
+                await pg.goto(B + "#/browse/coll/test-bench")
+                await pg.wait_for_selector("#collection-items tbody tr:first-child [data-printed-more]", timeout=20000)
+                await pg.click("#collection-items tbody tr:first-child [data-printed-more]")
+                await pg.wait_for_function("() => document.querySelector('#collection-printed')?.textContent === '2 of 5 printed'", timeout=10000)
+                count_text = await pg.evaluate("() => document.querySelector('#collection-items tbody tr:first-child [data-printed-count]').textContent.replace(/\\s+/g, ' ').trim()")
+                count_stored = json.loads(coll_json.read_text())["items"][0].get("printed")
+                c = json.loads(coll_json.read_text())
+                kept_id = c["items"][2].get("files_id")
+                c["items"][2]["files_id"] = "000000000000"
+                coll_json.write_text(json.dumps(c, indent=2))
+                await pg.evaluate("() => import('/ui/collections.js').then((m) => m.refreshCollections())")
+                await pg.wait_for_selector("[data-stale]", timeout=10000)
+                stale = await pg.inner_text("[data-stale]")
+                await pg.screenshot(path=str(out / "m6-02-collection.png"))
+                await pg.click("[data-use-current]")
+                await pg.wait_for_function("() => !document.querySelector('[data-stale]')", timeout=10000)
+                # (UI-41) a part with one file: Download with its format named beside it
+                made_href = await pg.evaluate("() => window.__workshop.index.items.find((i) => i.kind === 'part' && i.madeFrom && i.files?.length === 1)?.href")
+                await pg.goto(B + made_href)
+                await pg.wait_for_selector("#part-download", timeout=20000)
+                one_file = await pg.evaluate("() => [document.querySelector('#part-download').textContent, document.querySelector('#part-format-label')?.textContent]")
+                await pg.goto(B + "#/")
+                await pg.wait_for_selector("#home-collections", timeout=10000)
+                home_coll = await pg.evaluate("() => document.querySelector('#home-collections').textContent")
+            except Exception as e:
+                print("collections, 0.4.20:", e)
+            now_id = json.loads(coll_json.read_text())["items"][2].get("files_id") if coll_json.is_file() else None
+            check("a collection counts printed copies (1 of 3), and a model entry keeps its files and says when they've changed",
+                  "1 of 3" in count_text and count_stored == 1 and bool(kept_id) and "earlier version" in stale.lower() and now_id == kept_id,
+                  (count_text, count_stored, kept_id, stale, now_id))
+            check("Home lists collections with how many are printed", "Test bench" in home_coll and "2 of 5 printed" in home_coll, home_coll)
+            check("a part with one file has Download (size) with its format beside it", bool(one_file) and one_file[0].startswith("Download (") and one_file[1] in ("STL", "3MF"), one_file)
 
             # 14. (0.4.3) back up the library to a ZIP, then restore it as a new library
             backup = home / "backups" / "library backup.zip"

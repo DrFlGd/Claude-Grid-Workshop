@@ -818,6 +818,10 @@ impl App {
                         // another download of a model site's page a project has: read as a new version
                         // of that project and offered as an update (Review 5, F-23)
                         let read = app.read_project(&id, Some(&version), Some(&job)).await?;
+                        if src["added_older"] == true {
+                            // dated before the version in use: only listed under Versions (Review 6, F-26)
+                            return Ok(json!({ "source": id, "read": read, "duplicates": [], "version": version, "older": true }));
+                        }
                         let mut s = lib.source(&id)?;
                         let summary = changes(&lib, &id, s["version"].as_str().unwrap_or(""), &version);
                         let date = s["versions"].as_array().into_iter().flatten().find(|v| v["id"] == version.as_str()).map(|v| v["date"].clone()).unwrap_or(Value::Null);
@@ -1226,7 +1230,7 @@ impl App {
             }
             "part_save" => {
                 // { model, model_name, project, project_version, name, category?, values, edits?, data, replace?, folder? }:
-                // a part made from a model, kept in the library (milestone 4): local/Made parts/<model>/<name>.stl
+                // a part made from a model, kept in the library (milestone 4): local/Made parts/<model>/<name>.stl (or .3mf)
                 // and <name>.recipe.json beside it, saying how it was made so it can be made again
                 let lib = self.library()?;
                 lib.writable().map_err(e2s)?;
@@ -1259,24 +1263,29 @@ impl App {
                 }
                 let dir = lib.root().join("local").join(project::MADE_PARTS).join(&folder);
                 std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+                // the format chosen beside Download: OpenSCAD's 3MF keeps colours and objects (Review 6, F-28)
+                let ext = if args["format"] == "3mf" { "3mf" } else { "stl" };
+                let taken = |s: &str| ["stl", "3mf"].iter().any(|e| dir.join(format!("{s}.{e}")).exists());
                 let mut stem = name.clone();
                 if args["replace"] != true {
                     let mut n = 2;
-                    while dir.join(format!("{stem}.stl")).exists() {
+                    while taken(&stem) {
                         stem = format!("{name} {n}");
                         n += 1;
                     }
                 }
                 let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
-                crate::config::write_atomic(&dir.join(format!("{stem}.stl")), &data).map_err(e2s)?;
+                crate::config::write_atomic(&dir.join(format!("{stem}.{ext}")), &data).map_err(e2s)?;
+                // made again in the other format: the old file goes, so the part has one
+                let _ = std::fs::remove_file(dir.join(format!("{stem}.{}", if ext == "3mf" { "stl" } else { "3mf" })));
                 let recipe = json!({
                     "made_by": format!("SCAD Workshop {}", env!("CARGO_PKG_VERSION")),
                     "model": args["model"], "model_name": args["model_name"], "project": args["project"], "project_version": args["project_version"],
                     "files_id": args["files_id"], "category": args["category"], "values": args["values"], "edits": args["edits"],
-                    "engine": self.engine_version_site, "date": library::now(),
+                    "engine": self.engine_version_site, "date": library::now(), "format": ext,
                 });
                 crate::config::write_json(&dir.join(format!("{stem}.recipe.json")), &recipe).map_err(e2s)?;
-                j(json!({ "name": stem, "folder": folder }))
+                j(json!({ "name": stem, "folder": folder, "file": format!("{stem}.{ext}") }))
             }
             "thumb_put" => {
                 let lib = self.library()?;
@@ -1765,8 +1774,19 @@ pub fn changes(lib: &Library, id: &str, old: &str, new: &str) -> Value {
             settings.push(json!({ "model": old_m["name"], "added": p_added, "removed": p_removed, "defaults": defaults }));
         }
     }
+    // parts too: a ZIP of print files changes only its parts (Review 6, F-26). Changed: their files'
+    // names or sizes differ
+    let parts = |d: &Value| -> BTreeMap<String, Value> {
+        d["parts"].as_array().into_iter().flatten().filter_map(|p| Some((p["id"].as_str()?.to_string(), p.clone()))).collect()
+    };
+    let (pa, pb) = (parts(&a), parts(&b));
+    let files = |p: &Value| -> Vec<(Value, Value)> { p["files"].as_array().into_iter().flatten().map(|f| (f["path"].clone(), f["bytes"].clone())).collect() };
+    let parts_added: Vec<Value> = pb.iter().filter(|(k, _)| !pa.contains_key(*k)).map(|(_, p)| p["name"].clone()).collect();
+    let parts_removed: Vec<Value> = pa.iter().filter(|(k, _)| !pb.contains_key(*k)).map(|(_, p)| p["name"].clone()).collect();
+    let parts_changed: Vec<Value> = pa.iter().filter(|(k, p)| pb.get(*k).is_some_and(|q| files(p) != files(q))).map(|(_, p)| p["name"].clone()).collect();
     let problems_new = b["problems"].as_array().map(|p| p.len()).unwrap_or(0);
-    json!({ "added": added, "removed": removed, "settings": settings, "problems": problems_new })
+    json!({ "added": added, "removed": removed, "settings": settings, "problems": problems_new,
+        "parts_added": parts_added, "parts_removed": parts_removed, "parts_changed": parts_changed })
 }
 
 fn decode_data_url(s: &str) -> Result<Vec<u8>> {

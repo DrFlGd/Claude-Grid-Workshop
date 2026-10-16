@@ -397,6 +397,7 @@ pub fn refresh_site_details(lib: &Library, id: &str) -> Result<bool> {
     let Some((d, rel)) = site_details(&root) else { return Ok(false) };
     let before = src.clone();
     site_into(&mut src, &d, &rel);
+    date_from_pages(lib, &mut src);
     if src != before {
         lib.save_source(&src)?;
     }
@@ -466,6 +467,28 @@ fn site_into(src: &mut Value, d: &crate::pdf::Details, rel: &str) {
 }
 
 /// When a site's page says its model was last updated (else published), as a timestamp.
+/// Versions dated the day they were added (a ZIP added before 0.4.18) take the date of their page's
+/// PDF instead, as a newer download is dated (Review 6, F-26). The version in use's date follows.
+fn date_from_pages(lib: &Library, src: &mut Value) {
+    let in_use = src["version"].as_str().unwrap_or("").to_string();
+    let snapshot = src.clone();
+    let mut use_date = None;
+    for v in src["versions"].as_array_mut().into_iter().flatten() {
+        if !v["date"].is_null() && v["date"] != v["added"] {
+            continue;
+        }
+        let vid = v["id"].as_str().unwrap_or("").to_string();
+        let Some(date) = lib.version_dir(&snapshot, &vid).ok().and_then(|dir| site_details(&dir)).and_then(|(d, _)| site_date(&d)) else { continue };
+        v["date"] = json!(date);
+        if vid == in_use {
+            use_date = Some(date);
+        }
+    }
+    if let Some(d) = use_date {
+        src["version_date"] = json!(d);
+    }
+}
+
 fn site_date(d: &crate::pdf::Details) -> Option<String> {
     d.updated.as_ref().or(d.published.as_ref()).map(|day| format!("{day}T00:00:00Z"))
 }
@@ -558,19 +581,35 @@ pub fn add(lib: &Library, req: &AddRequest, role: &str, token: Option<String>) -
                 std::fs::rename(&staging, tmp).context("couldn't move the unpacked files into place")?;
                 Ok(n)
             };
-            if let Some((id, _)) = page.as_ref().and_then(|(u, _)| same_origin(lib, |s| s["origin"]["site"]["page"] == u.as_str())) {
+            if let Some((id, name)) = page.as_ref().and_then(|(u, _)| same_origin(lib, |s| s["origin"]["site"]["page"] == u.as_str())) {
                 // another download of the same model: a version of that project, offered as an update
+                // when it's newer. The same files again (a site's ZIP needn't be the same bytes twice)
+                // aren't added again (Review 6, F-26)
+                let fp = scan::fingerprint(&staging);
+                let mut had = lib.source(&id)?;
+                let before = had.clone();
+                date_from_pages(lib, &mut had);
+                if had != before {
+                    lib.save_source(&had)?;
+                }
+                if let Some(v) = had["versions"].as_array().into_iter().flatten().find(|v| v["content"] == fp.as_str()) {
+                    let _ = std::fs::remove_dir_all(&staging);
+                    let when = v["date"].as_str().map(|d| format!(", as the version of {}", human_date(d))).unwrap_or_default();
+                    bail!("{name} has these files already{when}.");
+                }
                 let date = page.as_ref().and_then(|(_, d)| d.clone()).unwrap_or_else(|| now.clone());
                 let r = install_version(lib, &id, &version, move_in);
                 let _ = std::fs::remove_dir_all(&staging);
                 let (_, n) = r?;
                 let mut src = lib.source(&id)?;
                 let mut versions = src["versions"].as_array().cloned().unwrap_or_default();
-                versions.push(json!({ "id": version, "sha256": sha, "date": date, "added": now, "files": n, "file": file_name }));
+                versions.push(json!({ "id": version, "sha256": sha, "date": date, "added": now, "files": n, "file": file_name, "content": fp }));
                 src["versions"] = Value::Array(versions);
                 lib.save_source(&src)?;
-                // (not saved: tells the caller to read this version and offer it as an update)
+                // (not saved: tells the caller to read this version, and to offer it as an update only when
+                // it isn't dated before the one in use; an older download is just listed under Versions)
                 src["added_version"] = json!(version);
+                src["added_older"] = json!(src["version_date"].as_str().is_some_and(|cur| date.as_str() < cur));
                 return Ok(src);
             }
             let id = lib.new_source_id(&format!("zip {stem}"));
@@ -1255,9 +1294,26 @@ pub fn short(s: &str) -> String {
     slug(s)
 }
 
+/// "2025-10-20T00:00:00Z" as "Oct 20, 2025", as the page writes dates.
+fn human_date(iso: &str) -> String {
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let mut it = iso.get(..10).unwrap_or(iso).split('-');
+    match (it.next(), it.next().and_then(|m| m.parse::<usize>().ok()), it.next().and_then(|d| d.parse::<u32>().ok())) {
+        (Some(y), Some(m @ 1..=12), Some(d)) => format!("{} {d}, {y}", MONTHS[m - 1]),
+        _ => iso.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dates_as_the_page_writes_them() {
+        assert_eq!(human_date("2025-10-20T00:00:00Z"), "Oct 20, 2025");
+        assert_eq!(human_date("2026-01-05"), "Jan 5, 2026");
+        assert_eq!(human_date("soon"), "soon");
+    }
 
     #[test]
     fn release_tags_compare_as_versions() {

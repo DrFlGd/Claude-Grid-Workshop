@@ -3,7 +3,7 @@
 // status (to print / printed), notes and the format to use; a model keeps the settings it was added
 // with. Stored in the library as collections/<id>/collection.json. A collection's page lists its
 // entries with a printed count and exports them as one ZIP with a parts list and credits.
-import { html, useState } from "../lib/html.js";
+import { html, useState, useEffect } from "../lib/html.js";
 import { useStore } from "../lib/store.js";
 import { ui } from "./state.js";
 import { ctx } from "./context.js";
@@ -35,6 +35,29 @@ async function putCollection(c) {
 }
 
 const newEntryId = () => Math.random().toString(36).slice(2, 10);
+
+/** Which files a model entry means (Review 6, F-27): the fingerprint of the files the model used and its
+ * project's version, as a made part's recipe keeps them. Nothing for a part or a component. */
+function madeWith(ref) {
+  const it = ctx.index?.get(ref);
+  if (!it || it.kind !== "generator" || !it.filesId) return {};
+  const version = (ctx.catalog?.sources || []).find((s) => s.id === it.sourceId)?.version || null;
+  return { files_id: it.filesId, project_version: version };
+}
+/** An entry's model has other files since it was added ("Made from an earlier version"). */
+const changedSince = (e, it) => !!(it && it.kind === "generator" && e.files_id && it.filesId && e.files_id !== it.filesId);
+
+/** Copies printed (UI-40): `printed`, a count up to the quantity; an entry written before 0.4.20 has only
+ * its status, "printed" meaning all of them. */
+export const printedOf = (e) => {
+  const q = Math.max(1, e.quantity || 1);
+  return Math.min(q, Math.max(0, Number.isFinite(e.printed) ? e.printed : e.status === "printed" ? q : 0));
+};
+const withPrinted = (e, n) => {
+  const q = Math.max(1, e.quantity || 1);
+  const printed = Math.max(0, Math.min(q, n));
+  return { printed, status: printed >= q ? "printed" : "to print" };
+};
 const sameSettings = (a, b) => (a.settings || null) === (b.settings || null) && JSON.stringify(a.values || {}) === JSON.stringify(b.values || {});
 
 /**
@@ -48,7 +71,7 @@ export async function addToCollection(entries, { id = null, name = "" }) {
   for (const e of entries) {
     const same = c.items.find((i) => i.ref === e.ref && sameSettings(i, e));
     if (same) same.quantity = (same.quantity || 1) + 1;
-    else c.items.push({ id: newEntryId(), ref: e.ref, name: e.name || "", settings: e.settings || null, values: e.values || null, quantity: 1, status: "to print", notes: "", format: null });
+    else c.items.push({ id: newEntryId(), ref: e.ref, name: e.name || "", settings: e.settings || null, values: e.values || null, quantity: 1, status: "to print", printed: 0, notes: "", format: null, ...madeWith(e.ref) });
   }
   return putCollection(c);
 }
@@ -119,10 +142,17 @@ export function CollectionPage({ id }) {
   useStore(ui, (s) => s.catalogVersion);
   const [busy, setBusy] = useState(null); // { text, cancel }
   const [renaming, setRenaming] = useState(false);
+  // entries added before 0.4.20 take the files their model has now, once (F-27)
+  useEffect(() => {
+    if (!c || readOnly() || !ctx.index) return;
+    const fill = c.items.filter((e) => !e.files_id && madeWith(e.ref).files_id);
+    if (fill.length) putCollection({ ...c, items: c.items.map((e) => (e.files_id ? e : { ...e, ...madeWith(e.ref) })) }).catch(() => {});
+  }, [c?.id, c?.updated]);
   if (!c) return html`<div class="collection-page"><p class="empty">This collection isn't in the library.</p></div>`;
   const ro = readOnly();
   const total = c.items.reduce((n, e) => n + (e.quantity || 1), 0);
-  const printed = c.items.reduce((n, e) => n + (e.status === "printed" ? e.quantity || 1 : 0), 0);
+  const printed = c.items.reduce((n, e) => n + printedOf(e), 0);
+  const changed = c.items.filter((e) => changedSince(e, ctx.index.get(e.ref))).length;
   const change = (eid, patch) => putCollection({ ...c, items: c.items.map((e) => (e.id === eid ? { ...e, ...patch } : e)) }).catch((err) => ctx.toast(String(err.message || err)));
   const remove = async (eid) => {
     const before = c;
@@ -142,7 +172,8 @@ export function CollectionPage({ id }) {
     setBusy({ text: "Starting…", cancel: () => { stop.cancelled = true; } });
     try {
       const r = await exportCollection(c, (text) => setBusy({ text, cancel: () => { stop.cancelled = true; } }), stop);
-      ctx.toast(r.saved === null ? "Not saved." : `Exported ${plural(r.files, "file")} for ${plural(r.entries, "item")}${r.missing ? ` (${r.missing} no longer in the library)` : ""}${r.saved ? ` to ${r.saved}` : ""}.`);
+      ctx.toast(r.saved === null ? "Not saved." : `Exported ${plural(r.files, "file")} for ${plural(r.entries, "item")}${r.missing ? ` (${r.missing} no longer in the library)` : ""}${r.saved ? ` to ${r.saved}` : ""}.`
+        + (changed && r.saved !== null ? ` ${changed === 1 ? "One model has" : `${changed} models have`} changed since ${changed === 1 ? "it was" : "they were"} added: made from the current version.` : ""));
     } catch (err) {
       ctx.toast(err.cancelled ? "Export cancelled." : `Couldn't export: ${err.message || err}`);
     } finally { setBusy(null); }
@@ -185,16 +216,26 @@ export function CollectionPage({ id }) {
         const formats = formatsOf(it);
         const href = it ? it.href : null;
         const extra = it && it.kind !== "part" ? settingsText(e) : "";
-        return html`<tr data-entry=${e.id} data-ref=${e.ref} class=${e.status === "printed" ? "printed" : ""}>
+        const q = Math.max(1, e.quantity || 1), done = printedOf(e);
+        const stale = changedSince(e, it);
+        return html`<tr data-entry=${e.id} data-ref=${e.ref} class=${done >= q ? "printed" : ""}>
           <td class="collection-thumb">${it?.thumb ? html`<img src=${it.thumb} alt="" />` : html`<span class="thumb-none">${(e.name || "?").slice(0, 2)}</span>`}</td>
           <td><div class="collection-name">${href ? html`<a href=${href}>${it.name}</a>` : html`<span>${e.name}</span>`}</div>
-            <div class="muted">${it ? [it.sub || it.project, extra].filter(Boolean).join(" · ") : "No longer in the library"}</div></td>
+            <div class="muted">${it ? [it.sub || it.project, extra].filter(Boolean).join(" · ") : "No longer in the library"}</div>
+            ${stale ? html`<div class="collection-stale" data-stale>Made from an earlier version.
+              <button type="button" class="link-btn" disabled=${ro} onClick=${() => change(e.id, madeWith(e.ref))} data-use-current>Use the current version</button></div>` : null}</td>
           <td>${formats.length > 1 ? html`<select class="format-pick" aria-label="Format" data-format disabled=${ro} value=${formatFor(e, it)} onChange=${(ev) => change(e.id, { format: ev.target.value })}>
               ${formats.map((f) => html`<option value=${f}>${FORMAT_LABEL[f] || f.toUpperCase()}</option>`)}</select>` : html`<span>${formats[0] ? FORMAT_LABEL[formats[0]] || formats[0].toUpperCase() : ""}</span>`}</td>
           <td><input type="number" class="collection-qty" min="1" max="999" step="1" aria-label="Quantity" data-qty value=${e.quantity || 1} disabled=${ro}
-            onChange=${(ev) => change(e.id, { quantity: Math.max(1, Math.min(999, Math.round(Number(ev.target.value) || 1))) })} /></td>
-          <td><input type="checkbox" aria-label="Printed" data-printed checked=${e.status === "printed"} disabled=${ro}
-            onChange=${(ev) => change(e.id, { status: ev.target.checked ? "printed" : "to print" })} /></td>
+            onChange=${(ev) => { const quantity = Math.max(1, Math.min(999, Math.round(Number(ev.target.value) || 1))); change(e.id, { quantity, ...withPrinted({ ...e, quantity }, done) }); }} /></td>
+          <td>${q === 1
+            ? html`<label class="collection-done"><input type="checkbox" aria-label="Printed" data-printed checked=${done >= 1} disabled=${ro}
+                onChange=${(ev) => change(e.id, withPrinted(e, ev.target.checked ? 1 : 0))} /></label>`
+            : html`<span class="collection-count" data-printed-count>
+                <button type="button" class="ghost" aria-label="One fewer printed" disabled=${ro || done <= 0} onClick=${() => change(e.id, withPrinted(e, done - 1))} data-printed-less>−</button>
+                <span>${done >= q ? "✓ " : null}${done} of ${q}</span>
+                <button type="button" class="ghost" aria-label="One more printed" disabled=${ro || done >= q} onClick=${() => change(e.id, withPrinted(e, done + 1))} data-printed-more>+</button>
+              </span>`}</td>
           <td><input class="collection-notes" aria-label="Notes" data-notes value=${e.notes || ""} placeholder="PETG, 0.2 mm…" disabled=${ro}
             onChange=${(ev) => change(e.id, { notes: ev.target.value })} /></td>
           <td><button type="button" class="ghost" aria-label="Remove from the collection" title="Remove from the collection" data-remove disabled=${ro}
@@ -256,7 +297,7 @@ export async function exportCollection(c, progress, stop) {
   progress("Writing the parts list…");
   const lic = (it) => (it?.license?.spdx && it.license.spdx !== "NOASSERTION" ? it.license.spdx : "Not stated");
   const csv = [["Item", "Quantity", "Printed", "Format", "Files", "Project", "Authors", "License", "Notes"].join(",")]
-    .concat(rows.map(({ e, it, names, fmt }) => [e.name || it?.name || e.ref, e.quantity || 1, e.status === "printed" ? "yes" : "no", fmt || "", names.join("; "),
+    .concat(rows.map(({ e, it, names, fmt }) => [e.name || it?.name || e.ref, e.quantity || 1, printedOf(e), fmt || "", names.join("; "),
       it?.project || "", (it?.authors || []).join("; "), it ? lic(it) : "", e.notes || ""].map(csvCell).join(","))).join("\r\n") + "\r\n";
   const readme = [`${c.name}`, "", c.summary || "", `Exported from SCAD Workshop on ${new Date().toISOString().slice(0, 10)}: ${plural(rows.length, "item")}, ${plural(files.length, "file")}.`,
     "parts.csv lists each item with its quantity, files, project and license.", "", "Credits and licenses (each item keeps its own):", "",

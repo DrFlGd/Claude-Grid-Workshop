@@ -388,6 +388,7 @@ async function openModel(key, shareCode = null, savedId = null, made = null) {
   $("#log").hidden = true;
   $("#param-search").value = "";
   renderModelHeader(detail);
+  state.usesColour = (await checkUsesColour(detail)) ? key : null;
   const kept = !shareCode && tabStates.get(key);
   if (kept) {
     // back to an open tab: its settings and last result, no new render
@@ -1024,24 +1025,25 @@ async function applyDownloadFormat() {
   const job = ++formatJob;
   const last = state.lastStl;
   let blob = last?.blob || null, name = last?.name || "model.stl";
+  // OpenSCAD's own 3MF, made at the same settings: each object apart and its colours kept (0.4.19). Made
+  // for a 3MF download, and after the preview of a model that calls color(), to show its colours (UI-39)
+  const wantOwn = !!blob && (fmt === "3mf" || (state.usesColour && state.usesColour === state.model?.key));
   let own = null, info = null;
   if (blob && fmt === "3mf") {
     try {
-      // OpenSCAD's own 3MF, made at the same settings: each object apart and its colours kept (0.4.19);
-      // else (the WebAssembly engine, or the code edited since) the app writes one from the render
+      // (the WebAssembly engine, or the code edited since: the app writes one from the render)
       a.classList.add("is-disabled");
       a.textContent = "Making the 3MF…";
-      own = await native3mf().catch(() => null);
+      const r = await colour3mf().catch(() => null);
       if (job !== formatJob) return;
+      own = r?.blob || null;
+      info = r?.info || null;
       blob = own || new Blob([await platform.apiBytes("to_3mf", { data: await dataUrl(blob), name: state.model?.name || "Model" })], { type: "model/3mf" });
       name = name.replace(/\.stl$/i, ".3mf");
-      if (own) info = await platform.api("mesh_info", { data: await dataUrl(own), name }).catch(() => null);
     } catch (e) {
       toast(`Couldn't make the 3MF: ${e?.message || e}`);
     }
   }
-  if (job !== formatJob) return;
-  await show3mf(own, info, name);
   if (job !== formatJob) return;
   if (state.downloadUrl) URL.revokeObjectURL(state.downloadUrl);
   state.downloadUrl = blob ? URL.createObjectURL(blob) : null;
@@ -1050,7 +1052,18 @@ async function applyDownloadFormat() {
   a.classList.toggle("is-disabled", !blob);
   if (blob) a.removeAttribute("aria-disabled"); else a.setAttribute("aria-disabled", "true");
   a.textContent = downloadText(fmt);
+  if (fmt === "3mf" || !wantOwn) {
+    await showColours(own, info, fmt);
+    if (job !== formatJob) return;
+    updateStatusForEdits();
+    return;
+  }
+  // STL chosen: its download is ready now; the 3MF is made behind it, to show and name the colours
   updateStatusForEdits();
+  const r = await colour3mf().catch(() => null);
+  if (job !== formatJob) return;
+  await showColours(r?.blob || null, r?.info || null, fmt);
+  if (job === formatJob) updateStatusForEdits();
 }
 /** OpenSCAD's own 3MF of the last render (desktop), or null when it can't be made the same way. */
 async function native3mf() {
@@ -1060,23 +1073,60 @@ async function native3mf() {
   if (editsKey(sent.edits) !== (state.renderedEdits || "")) return null;
   return (await state.engine.render({ ...sent, format: "3mf", browser: false }, renderValues(m, state.lastResultValues)).promise).blob;
 }
+/** OpenSCAD's 3MF of the last render and what's in it ({ blob, info: { objects, colours, triangles } }), made
+ * once for each render and shared by the 3D view, the 3MF download and Save as part (UI-39, F-28). */
+function colour3mf() {
+  const k = JSON.stringify([state.model?.key, state.lastResultValues, state.renderedEdits || ""]);
+  if (state.own3mf?.k !== k) {
+    const promise = native3mf().then(async (blob) => blob
+      ? { blob, info: await platform.api("mesh_info", { data: await dataUrl(blob), name: "model.3mf" }).catch(() => null) } : null);
+    promise.catch(() => { if (state.own3mf?.k === k) state.own3mf = null; });
+    state.own3mf = { k, promise };
+  }
+  return state.own3mf.promise;
+}
 
-/** What the 3MF holds, said in the status line ("The 3MF has 3 parts in 2 colours"), and its colours in the 3D view
- * while 3MF is chosen; back to the render's own look otherwise (0.4.19). */
-async function show3mf(own, info, name) {
+/** Whether a model calls color() in its own file (comments aside): its preview then shows its colours (UI-39). */
+async function checkUsesColour(detail) {
+  const sha = detail?.files?.[detail.entry];
+  if (platform.kind !== "desktop" || !sha || detail.kind === "component") return false;
+  try {
+    const src = (await platform.modelFile(sha)).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    return /\bcolou?r\s*\(/.test(src);
+  } catch { return false; }
+}
+
+/** What OpenSCAD's 3MF holds, said in the status line ("It has 3 parts in 2 colours: choose 3MF to keep them",
+ * or "The 3MF has…" with 3MF chosen), and its colours in the 3D view (UI-39). */
+async function showColours(own, info, fmt) {
   const parts = info ? [info.objects > 1 ? `${info.objects} parts` : "", info.colours > 1 ? `${info.colours} colours` : ""].filter(Boolean) : [];
-  state.formatNote = parts.length ? `The 3MF has ${parts.join(" in ")}${info.colours > 1 ? ", shown in the 3D view" : ""}.` : "";
+  state.formatNote = !parts.length ? "" : fmt === "3mf" ? `The 3MF has ${parts.join(" in ")}.` : `It has ${parts.join(" in ")}: choose 3MF to keep them.`;
   const coloured = !!(own && info?.colours > 1);
   if (coloured === !!state.viewColoured) return;
   state.viewColoured = coloured;
   try {
-    const bytes = coloured ? await platform.apiBytes("mesh_coloured", { data: await dataUrl(own), name }) : null;
+    const bytes = coloured ? await platform.apiBytes("mesh_coloured", { data: await dataUrl(own), name: "model.3mf" }) : null;
     const url = URL.createObjectURL(coloured ? new Blob([bytes], { type: "model/stl" }) : state.lastResult.blob);
-    state.viewer.setFileColours(coloured);
+    fileColoursAvailable(coloured);
     await state.viewer.load(url);
     URL.revokeObjectURL(url);
   } catch { /* the plain render stays in view */ }
 }
+
+/** Show the file's colours (a 3MF's, a coloured model's): on unless unticked, one setting for parts and models,
+ * kept on this computer. The box shows only when the view has colours; the filament swatches hide while they're shown. */
+const fileColoursOn = () => store.prefs.get("gw-file-colours") !== false;
+function fileColoursAvailable(on) {
+  const hud = $("#file-colours-hud"), box = $("#file-colours");
+  hud.hidden = !on;
+  box.checked = fileColoursOn();
+  state.viewer.setFileColours(on && fileColoursOn());
+  $("#filament").hidden = on && fileColoursOn();
+}
+$("#file-colours").addEventListener("change", (e) => {
+  store.prefs.set("gw-file-colours", e.target.checked);
+  fileColoursAvailable(true);
+});
 
 /** "Download", with the format named only when there's no picker beside it to name it (UI-33). */
 function downloadText(fmt = "stl") {
@@ -1126,16 +1176,21 @@ const dataUrl = (blob) => new Promise((resolve, reject) => {
 });
 
 /** Write one made part and its recipe to the library (local/Made parts/<model>/). Resolves to { name, folder }. */
-async function savePartFile(m, blob, values, { name, category = null, replace = false, folder = null }) {
+async function savePartFile(m, blob, values, { name, category = null, replace = false, folder = null, format = "stl" }) {
   return platform.api("part_save", {
     model: m.key, model_name: m.name, project: m.source_id || null, project_version: sourceById(m.source_id)?.version || null,
-    files_id: m.files_id || null, name, category, values: changedValues(m, values), edits: editsRecord(m), data: await dataUrl(blob), replace, folder });
+    files_id: m.files_id || null, name, category, values: changedValues(m, values), edits: editsRecord(m), data: await dataUrl(blob), replace, folder, format });
+}
+
+/** Whether made parts are kept as OpenSCAD's own 3MF (3MF chosen beside Download, the app's OpenSCAD there; F-28). */
+function partsAs3mf() {
+  return state.downloadFormat === "3mf" && platform.kind === "desktop" && !!state.engine?.info?.engine;
 }
 
 /** After saving: read Made parts again and find a saved part's page (`#/parts/<pack>/<part>`). */
-async function madePartHref({ name, folder }) {
+async function madePartHref({ name, folder, file }) {
   await rescanLocal(true);
-  const rel = `${folder}/${name}.stl`;
+  const rel = `${folder}/${file || `${name}.stl`}`;
   const lib = state.libraries.find((l) => l.items.some((i) => i.made_from && i.files[0]?.path === rel));
   const it = lib?.items.find((i) => i.made_from && i.files[0]?.path === rel);
   return it ? `#/parts/${lib.id}/${it.id}` : null;
@@ -1143,11 +1198,19 @@ async function madePartHref({ name, folder }) {
 
 /** Write the last render and its recipe to the library, read Made parts again, and say where it went. */
 async function writePart(opts) {
-  const m = state.model, blob = state.lastResult?.blob;
+  const m = state.model;
+  let blob = state.lastResult?.blob;
   if (!m || !blob) return;
   try {
     setStatus("busy", "Saving the part…");
-    const r = await savePartFile(m, blob, state.lastResultValues, opts);
+    // in the format chosen beside Download, or the one it was made in (Make again); a 3MF from OpenSCAD
+    // itself, so its colours and objects are kept (Review 6, F-28)
+    let format = "stl";
+    if ((opts.format || (partsAs3mf() ? "3mf" : "stl")) === "3mf") {
+      const own = (await colour3mf().catch(() => null))?.blob;
+      if (own) { blob = own; format = "3mf"; }
+    }
+    const r = await savePartFile(m, blob, state.lastResultValues, { ...opts, format });
     const href = await madePartHref(r);
     if (state.model === m) updateStatusForEdits();
     toast(opts.replace ? `Made ${r.name} again.` : `Saved ${r.name} to the Parts Library.`,
@@ -1196,7 +1259,7 @@ function madeRecipe({ part, again }, key) {
   if (!it?.made_from || it.made_from.model !== key) return null;
   const rel = it.files[0]?.path || "";
   const at = rel.lastIndexOf("/");
-  return { ...it.made_from, again, stem: rel.slice(at + 1).replace(/\.stl$/i, ""), folder: at > 0 ? rel.slice(0, at) : null };
+  return { ...it.made_from, again, stem: rel.slice(at + 1).replace(/\.(stl|3mf)$/i, ""), folder: at > 0 ? rel.slice(0, at) : null };
 }
 
 /** Set the form to a recipe's settings and code, and make it (Make again: then replace the part's files). */
@@ -1209,7 +1272,7 @@ function applyRecipe(r) {
   renderSettingsPick();
   if (skipped.length) note(skippedText(skipped.length).trim(), "warn");
   state.afterRender = r.again
-    ? { key, values: structuredClone(state.values), run: () => writePart({ name: r.stem, category: r.category, replace: true, folder: r.folder }) }
+    ? { key, values: structuredClone(state.values), run: () => writePart({ name: r.stem, category: r.category, replace: true, folder: r.folder, format: r.format || "stl" }) }
     : null;
   generate();
 }
@@ -1280,7 +1343,7 @@ async function showResult(result, values, restoring = false, ek = state.rendered
   try {
     const url = URL.createObjectURL(result.blob);
     state.viewColoured = false; // (the render itself: a 3MF's colours are shown again once it's made)
-    state.viewer.setFileColours(false);
+    fileColoursAvailable(false);
     const dims = await state.viewer.load(url);
     URL.revokeObjectURL(url);
     state.rendered = JSON.stringify(values);
@@ -1523,6 +1586,9 @@ async function runBatch(keep) {
   run.cancel = function () { this.cancelled = true; for (const j of this.jobs) j.cancel(); };
   const width = Math.max(1, Math.min(state.engine.concurrency || 1, combos.length));
   const results = new Array(combos.length);
+  // 3MF chosen beside Download: each made as OpenSCAD's own 3MF, colours and objects kept (F-28)
+  const as3mf = partsAs3mf();
+  const ext = as3mf ? "3mf" : "stl";
   let next = 0, done = 0;
   const progress = () => {
     bar.style.width = `${(done / combos.length) * 100}%`;
@@ -1534,13 +1600,15 @@ async function runBatch(keep) {
       if (run.cancelled) throw Object.assign(new Error("Batch cancelled."), { cancelled: true });
       const i = next++;
       const { values } = combos[i];
-      const job = state.engine.render(forRender(model), renderValues(model, values));
+      const job = state.engine.render(as3mf ? { ...forRender(model), format: "3mf", browser: false } : forRender(model), renderValues(model, values));
       run.jobs.add(job);
       try { results[i] = { values, result: await job.promise }; } finally { run.jobs.delete(job); }
       done++;
       progress();
     }
   };
+  // the preview shows the last one: made as an STL too when the parts are 3MFs
+  const previewOf = async (r) => as3mf ? { values: r.values, result: await state.engine.render(forRender(model), renderValues(model, r.values)).promise } : r;
   try {
     progress();
     await Promise.all(Array.from({ length: width }, worker));
@@ -1550,13 +1618,13 @@ async function runBatch(keep) {
       for (let i = 0; i < combos.length; i++) {
         if (run.cancelled) throw Object.assign(new Error("Batch cancelled."), { cancelled: true });
         text.textContent = `Saving ${i + 1} of ${combos.length} to the Parts Library…`;
-        const r = await savePartFile(model, results[i].result.blob, results[i].values, { name: combos[i].part, category: model.kind === "component" ? null : model.category || null });
+        const r = await savePartFile(model, results[i].result.blob, results[i].values, { name: combos[i].part, category: model.kind === "component" ? null : model.category || null, format: ext });
         first ||= r;
       }
       const href = await madePartHref(first);
       text.textContent = `Done: ${plural(combos.length, "part")} saved to the Parts Library under Made parts › ${first.folder}, in ${Math.round((Date.now() - started) / 1000)} s.`;
       toast(`Saved ${plural(combos.length, "part")} to the Parts Library.`, href ? { label: "Show", run: () => { $("#batch").close(); location.hash = href; } } : null);
-      const last = results[combos.length - 1];
+      const last = await previewOf(results[combos.length - 1]);
       state.viewerOwner = "model";
       await showResult(last.result, last.values, true, editsKey(editsOf(model.key)));
       bar.style.width = "100%";
@@ -1568,9 +1636,9 @@ async function runBatch(keep) {
       name = name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 140);
       while (names.has(name)) name += "_";
       names.add(name);
-      files.push({ name: `${name}.stl`, data: new Uint8Array(await results[i].result.blob.arrayBuffer()) });
+      files.push({ name: `${name}.${ext}`, data: new Uint8Array(await results[i].result.blob.arrayBuffer()) });
     }
-    const last = results[combos.length - 1];
+    const last = await previewOf(results[combos.length - 1]);
     state.viewerOwner = "model";
     await showResult(last.result, last.values, true, editsKey(editsOf(model.key)));
     bar.style.width = "100%";
@@ -1715,6 +1783,14 @@ async function showPart(lib, item) {
     show(sel.value);
     dl.replaceChildren(el("span", { class: "download-pick" }, link, sel));
     dl.classList.remove("many");
+  } else if (item.files.length === 1 && !item.files[0].label) {
+    // one file: the same Download, with its format named beside it (Review 6, UI-41)
+    const f = item.files[0];
+    const name = f.path.split("/").pop();
+    dl.replaceChildren(el("span", { class: "download-pick" },
+      el("a", { class: "button primary", id: "part-download", href: f.url, download: name, title: name, text: `Download (${bytes(f.bytes)})` }),
+      el("span", { class: "format-label", id: "part-format-label", text: FORMAT_LABEL[f.format] || f.format.toUpperCase() })));
+    dl.classList.remove("many");
   } else {
     dl.replaceChildren(...item.files.map((f, i) => el("a", {
       class: `button ${i === 0 && !["step", "shapr"].includes(f.format) ? "primary" : "secondary"}`, href: f.url,
@@ -1736,17 +1812,13 @@ async function showPart(lib, item) {
   empty.hidden = true;
   try {
     const url = platform.kind === "browser" ? item.preview_url : URL.createObjectURL(await (await platform.fetch(item.preview_url)).blob());
-    state.viewer.setFileColours(!!store.prefs.get("gw-file-colours"));
+    fileColoursAvailable(false);
     const d = await state.viewer.load(url);
     if (url !== item.preview_url) URL.revokeObjectURL(url);
     if (state.viewerOwner === "library") {
       showDims(d);
-      // a 3MF with colours of its own: drawn in the filament colour unless asked (milestone 5)
-      if (d.coloured) {
-        const box = el("input", { type: "checkbox", id: "file-colours", checked: !!store.prefs.get("gw-file-colours"),
-          onchange: (e) => { store.prefs.set("gw-file-colours", e.target.checked); state.viewer.setFileColours(e.target.checked); } });
-        status.append(el("label", { class: "check-row file-colours" }, box, " Show the file's colours"));
-      }
+      // a 3MF with colours of its own: shown unless Show the file's colours is unticked (UI-39)
+      fileColoursAvailable(!!d.coloured);
     }
   } catch (e) {
     empty.textContent = `Preview unavailable: ${e.message}`;

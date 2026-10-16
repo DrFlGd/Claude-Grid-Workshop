@@ -405,8 +405,12 @@ export function Browser() {
         ${res.facets.status?.broken || s.filters.status?.length ? html`<${FilterMenu} name="status" label="Status" values=${res.facets.status}
           render=${(v) => STATUS_TEXT[v] || v} order=${Object.keys(STATUS_TEXT)} selected=${s.filters.status || []} onChange=${setFilter("status")} />` : null}
         ${typed.map(([k, vals]) => html`<span class="chip-btn on typed">${k}:${vals.join(",")}</span>`)}
-        ${Object.entries(res.facets.fields || {}).sort(([a], [b]) => a.localeCompare(b)).slice(0, 8).map(([k, vals]) => html`<${FilterMenu} name=${`f:${k}`} label=${k}
-          values=${vals} selected=${s.filters[`f:${k}`] || []} onChange=${setFilter(`f:${k}`)} />`)}
+        ${Object.entries(res.facets.fields || {}).sort(([a], [b]) => a.localeCompare(b)).slice(0, 8).map(([k, vals]) => {
+          // a field of dates ("Published") is grouped as Updated is (UI-38)
+          const dates = Object.keys(vals).every((v) => v in AGE_TEXT);
+          return html`<${FilterMenu} name=${`f:${k}`} label=${k} values=${vals} selected=${s.filters[`f:${k}`] || []} onChange=${setFilter(`f:${k}`)}
+            render=${dates ? (v) => AGE_TEXT[v] || v : undefined} order=${dates ? Object.keys(AGE_TEXT) : undefined} />`;
+        })}
         ${s.layout === "table" ? html`<${ColumnChooser} columns=${s.columns} />` : null}
         ${res.hidden || s.showHidden ? html`<label class="chip-btn hidden-toggle" title="Items and projects you hid">
           <input type="checkbox" checked=${!!s.showHidden} onChange=${(e) => ui.set({ showHidden: e.target.checked })} data-show-hidden />

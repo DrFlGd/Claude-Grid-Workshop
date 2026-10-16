@@ -31,6 +31,12 @@ function ageBucket(date) {
   return days <= 31 ? "month" : days <= 92 ? "quarter" : days <= 366 ? "year" : "older";
 }
 
+/** A metadata field's value for its filter: a date (a site's "Published") in the Updated filter's groups (UI-38). */
+const DAY = /^\d{4}-\d{2}-\d{2}/;
+export const fieldValue = (v) => (DAY.test(String(v)) ? ageBucket(String(v)) : String(v));
+/** Fields that would repeat a filter of the library's own: the page's "Updated" is the version's date (UI-38). */
+export const SAME_AS_FILTER = new Set(["Updated", "Kind", "Category", "Project", "License", "Status", "Type"]);
+
 const words = (s) => (s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9.]+/).filter(Boolean);
 
 /** Levenshtein distance up to 1 (enough for a typo in a word of 5+ letters). */
@@ -189,7 +195,7 @@ export class LocalIndex {
       has("license", [i.licenseStatus, LICENSE_TEXT[i.licenseStatus], i.license.spdx], skip) &&
       has("updated", [ageBucket(i.updated), AGE_TEXT[ageBucket(i.updated)]], skip) &&
       has("status", [i.broken ? "broken" : "works", STATUS_TEXT[i.broken ? "broken" : "works"]], skip) &&
-      customKeys.every((k) => has(k, [String(i.fields[k.slice(2)] ?? "")], skip));
+      customKeys.every((k) => has(k, [String(i.fields[k.slice(2)] ?? ""), fieldValue(i.fields[k.slice(2)] ?? "")], skip));
 
     const scored = [];
     const exactName = words(parsed.text).join(" ");
@@ -216,9 +222,10 @@ export class LocalIndex {
       const age = ageBucket(item.updated);
       if (pass(item, "updated")) facets.updated[age] = (facets.updated[age] || 0) + 1;
       for (const [k, v] of Object.entries(item.fields)) {
-        if (!pass(item, `f:${k}`)) continue;
+        if (SAME_AS_FILTER.has(k) || !pass(item, `f:${k}`)) continue;
         const f = (facets.fields[k] ||= {});
-        f[String(v)] = (f[String(v)] || 0) + 1;
+        const fv = fieldValue(v);
+        f[fv] = (f[fv] || 0) + 1;
       }
     }
     let hits = scored.filter(({ item }) => pass(item));
