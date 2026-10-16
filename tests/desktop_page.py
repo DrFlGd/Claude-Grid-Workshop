@@ -472,8 +472,8 @@ async def main():
             check("the Code tab edits a model: Generate uses the edits; saved as a variant with the settings; Defaults is the original code; the file is untouched",
                   "Code changed" in stale and "23.8 × 31.8 × 9.6" in dims_edit and "width = 3;" in entry_edit.get("text", "")
                   and len(entry_edit.get("base") or "") == 64 and rec.get("values") == {"height": 1}
-                  # (0.4.8) the project version it was saved with; its edit based on the project's file, not the app's copy
-                  and rec.get("version") == bricks_version and entry_edit.get("base") == hashlib.sha256(plate.encode()).hexdigest() and len(entry_edit.get("copy") or "") == 64
+                  # (0.4.8) the project version it was saved with (project_version since 0.4.22); its edit based on the project's file, not the app's copy
+                  and rec.get("project_version") == bricks_version and entry_edit.get("base") == hashlib.sha256(plate.encode()).hexdigest() and len(entry_edit.get("copy") or "") == 64
                   and "15.8 × 31.8 × 3.2" in dims_default and "23.8 × 31.8 × 9.6" in dims_variant
                   and "Three wide · code edited" in listed and len(items_after) == 1
                   and (library / "local/bricks/examples/plate.scad").read_text() == plate,
@@ -1346,7 +1346,7 @@ async def main():
                 made_3mf = list((library / "local" / "Made parts").glob("*/Label in colour.3mf"))
                 made_xml = zipfile.ZipFile(made_3mf[0]).read("3D/3dmodel.model").decode() if made_3mf else ""
                 made_rec = json.loads(made_3mf[0].with_name("Label in colour.recipe.json").read_text()) if made_3mf else {}
-                mc_part = [len(re.findall(r"<item ", made_xml)), made_rec.get("format"), sorted(p.name for p in made_3mf[0].parent.glob("Label in colour.*")) if made_3mf else []]
+                mc_part = [len(re.findall(r"<item ", made_xml)), made_rec.get("output"), sorted(p.name for p in made_3mf[0].parent.glob("Label in colour.*")) if made_3mf else []]
                 await pg.select_option("#download-format", "stl")
             except Exception as e:
                 print("multi-colour 3MF:", e)

@@ -90,6 +90,7 @@ The library format (owner, 2026-10-16), before milestone 6.
 - **One recipe shape** for saved settings and made parts: model, project and its version, the files' fingerprint, changed settings, code edits, file type (`output`), dates. Older names (`version`, a made part's `format` and `date`) are renamed by the upgrade and still read.
 - **Check library** (Library settings): lists what isn't as the app keeps it, as "Can be repaired" (a file not yet in the format, an unfinished copy from an add that stopped, what was made from a version whose files are gone, a missing README) and "To look at" (a file that isn't valid JSON or is newer than the app, a project folder without source.json, missing files, saved settings or a collection entry for something that isn't there). Repair never changes a project's files or anything you made.
 - CI: the files the tests' app wrote all say their format and recipes have one shape; Check library repairs a planted unfinished copy and lists a collection entry that refers to nothing; a format 1 library is upgraded on opening with its backup.
+- CI fix found by the first run: two checks read a recipe's old names (`version`, a made part's `format`); they read `project_version` and `output`.
 
 ## 0.4.21 — 2026-10-16 · The logo
 
