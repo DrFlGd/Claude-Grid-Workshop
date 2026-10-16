@@ -83,7 +83,9 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-The logo.
+## 0.4.21 — 2026-10-16 · The logo
+
+The logo (93 of 93 checks).
 
 - **The app has its logo** (owner's design, 2026-10-16): a drawing sheet with a dimensioned cube. The app icon, installer and window use it, drawn again as a vector (`desktop/src-tauri/icons/src/logo.svg`) with a simpler form for 16 to 48 pixels (`logo-small.svg`: no grid, dimensions or hidden lines, a larger cube). The sidebar shows the small form in the skin's colour, and it's the favicon. `tools/make_icons.py` makes the icon files from the two drawings.
 - CI: the logo is in the sidebar and is the favicon.
