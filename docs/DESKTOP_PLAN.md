@@ -621,6 +621,9 @@ Items 1, 2 and 9 of the requests of 2026-10-12 (pictures, your own content, seve
 - **2D models:** a model whose output is flat (`projection()`, `square()`, `polygon()` and so on at the top level) is shown as a 2D drawing and downloads as SVG or DXF. This explains at least some of the models that show nothing at their defaults today; the check on import treats a 2D result as a success.
 - **No suggested projects in Add a project:** the Suggested row goes.
 - **A single .scad file as a project:** Add a project accepts one file as well as a folder or ZIP; it becomes a project of its own (copied in, as folders are).
+- **Notes** on a project and on each model: a Notes tab on the project's page and on the model's page for free-form comments, kept in the project's `metadata.json` (so they stay with the library, survive updates, and are found by search).
+- **One Code button:** on a model's page the Code button sits in the header beside README; the tab strip along the right edge of the 3D view doesn't repeat it. The code panel still opens on the right when asked for.
+- **Edit form shows the real values:** each field (Label, Help, Section, Default, Min, Max, Step, Choices, Show when) is filled in with what was read from the file, editable as text, rather than a greyed hint that vanishes when you start typing. Only a field you change is saved as an override; Reset puts back what was read.
 
 ### Decisions later the same evening
 
