@@ -10,7 +10,7 @@ Status (2026-10-05):
 - **Phase 2 done:** the portable library, adding projects, update checks, metadata editing; see "Phase 2 notes" at the end.
 - **0.2.x (Phase 2 follow-ups):** numbered releases, the left menu by category (Parametric Models and Parts Library), Library settings, hide / delete / flag as broken, the trash; see "0.2 notes" at the end.
 - **Phase 3 done (0.3):** bundled libraries and their modules as **Components**, pinning, the form editor; see "Components" in section 2 and "0.3 notes" at the end.
-- **Next (owner, 2026-10-14):** five milestones and a review after each; see "Owner direction of 2026-10-14". Milestones 1 to 5 are done (0.4.4 to 0.4.19, Review 6's items in 0.4.20); next is the library format (owner, 2026-10-16), then milestone 6.
+- **Next (owner, 2026-10-14):** five milestones and a review after each; see "Owner direction of 2026-10-14". Milestones 1 to 5 are done (0.4.4 to 0.4.19, Review 6's items in 0.4.20); next is the library format (owner, 2026-10-16), then reading settings reliably, then milestone 6; future features of 2026-10-16 are listed under the library format.
 - **Phase 4 (0.4) started:** the side viewer (a model's code, a project's reference documents) in 0.4.0; see "Reference documents and the side viewer" in section 5. Next: importing ready-made models and Printables ZIPs, one item per file name, 3MF export, collections.
 
 ## Goal
@@ -605,6 +605,22 @@ Items 1, 2 and 9 of the requests of 2026-10-12 (pictures, your own content, seve
 - **One recipe shape:** saved settings (`recipes/<id>.json`) and a made part's `<name>.recipe.json` share the same fields (model, project and its version, files fingerprint, values, code edits, format), so either can be made again the same way.
 - **Check library** in Library settings: reads the whole folder against the spec and lists anything off it (a missing file, an unknown version, a recipe whose model is gone, a collection entry that refers to nothing), with Repair for what can be repaired safely. Nothing in `files/<version>/` is ever changed: projects stay exactly as they came, which is what update checks and hash checks rely on.
 - **Not changed:** your own and linked projects keep being read where they are, and the project files themselves aren't reorganised.
+
+**Added 2026-10-16 (owner), after the library format: reading settings reliably.** Each author writes the Customizer comments differently, and many BOSL2 components have no defaults or defaults that don't render. Instead of guessing from the comment style, each setting is checked when a project is added, and the owner's failed edge cases become CI tests:
+
+- **OpenSCAD's own parameter list** where the bundled build offers it, with the app's comment reader filling in what it lacks.
+- **Types from evaluation:** the file is run once with every top-level setting echoed, so a default written as an expression (`w = 2*pitch`) gets its real value and type.
+- **Defaults that fail are repaired** from the project itself: its `.json` parameter sets, its `examples/` files, and for BOSL2 the `// Example:` blocks in its documentation, which are working calls.
+- **Choices instead of free text:** a text setting whose values form a known set (from the code's comparisons, such as `if (style == "round")`, or from the examples) becomes a drop-down; you can also turn any text field into a drop-down, or back, on the model's page, kept in the project's `metadata.json`.
+- **Uncertain settings are marked** for you to check; what you correct is kept in the project's description so the next update doesn't guess again.
+
+**Added 2026-10-16 (owner), future features:**
+
+- **Show in folder** on a model, part or project: opens the original files in Explorer (or the system's file manager), so they're quick to find.
+- **"Make several" becomes "Batch generate"** wherever it appears.
+- **2D models:** a model whose output is flat (`projection()`, `square()`, `polygon()` and so on at the top level) is shown as a 2D drawing and downloads as SVG or DXF. This explains at least some of the models that show nothing at their defaults today; the check on import treats a 2D result as a success.
+- **No suggested projects in Add a project:** the Suggested row goes.
+- **A single .scad file as a project:** Add a project accepts one file as well as a folder or ZIP; it becomes a project of its own (copied in, as folders are).
 
 ### Decisions later the same evening
 
