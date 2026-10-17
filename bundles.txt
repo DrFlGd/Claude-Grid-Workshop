@@ -1,0 +1,4 @@
+total 55460
+drwxr-xr-x 1 runneradmin 197121        0 Oct 17 16:28 .
+drwxr-xr-x 1 runneradmin 197121        0 Oct 17 16:28 ..
+-rwxr-xr-x 1 runneradmin 197121 56784896 Oct 17 16:28 SCAD Workshop_0.4.26_x64-setup.exe
