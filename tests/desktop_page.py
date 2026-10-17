@@ -578,11 +578,13 @@ async def main():
             checks_file, rechecked = library / f"sources/{v76}/checks.json", {}
             for _ in range(600):
                 rechecked = json.loads(checks_file.read_text()) if checks_file.is_file() else {}
-                if rechecked.get("version") == after and len(rechecked.get("models", {})) >= n_models:
+                # (a thumbnail can be written just after its model's check)
+                fresh = [m for m, r in rechecked.get("models", {}).items() if r.get("ok")
+                         and (library / f"sources/{v76}/thumbs/{m}.webp").is_file() and (library / f"sources/{v76}/thumbs/{m}.webp").stat().st_mtime >= t_apply]
+                if rechecked.get("version") == after and len(rechecked.get("models", {})) >= n_models \
+                        and len(fresh) == len([r for r in rechecked["models"].values() if r.get("ok")]):
                     break
                 await pg.wait_for_timeout(1000)
-            fresh = [m for m, r in rechecked.get("models", {}).items() if r.get("ok")
-                     and (library / f"sources/{v76}/thumbs/{m}.webp").is_file() and (library / f"sources/{v76}/thumbs/{m}.webp").stat().st_mtime >= t_apply]
             check("after an update its models are rendered at their defaults again, and their thumbnails remade",
                   rechecked.get("version") == after and len(rechecked.get("models", {})) >= n_models
                   and len(fresh) == len([r for r in rechecked.get("models", {}).values() if r.get("ok")]),

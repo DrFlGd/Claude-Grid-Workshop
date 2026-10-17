@@ -1051,7 +1051,9 @@ impl App {
                 let t = self.doc_target(&args).map_err(e2s)?;
                 let id = arg(&args, "doc").map_err(e2s)?;
                 let d = t.docs.iter().find(|d| d["id"] == id).ok_or_else(|| format!("no document {id}"))?;
-                let stored = d["file"].as_str().and_then(|f| library::rel_inside(f).ok()).map(|f| t.file_root.join(f)).filter(|p| p.is_file());
+                // content you added (milestone 6) is under sources/<id>/attachments/, whatever the document's level
+                let stored = if d["attachment"] == true { d["path"].as_str().map(PathBuf::from) } else { d["file"].as_str().and_then(|f| library::rel_inside(f).ok()).map(|f| t.file_root.join(f)) }
+                    .filter(|p| p.is_file());
                 let src = d["src"].as_str().and_then(|f| library::rel_inside(f).ok()).map(|f| t.src_root.join(f));
                 let read_text = |p: &std::path::Path| -> Result<String, String> {
                     let b = std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
@@ -1087,7 +1089,7 @@ impl App {
                         j(json!({ "kind": "text", "text": read_text(&p)? }))
                     }
                     "pdf" => {
-                        let p = stored.or(src).ok_or_else(|| format!("document {id} has no file"))?;
+                        let p = if d["attachment"] == true { stored } else { src }.ok_or_else(|| format!("document {id} has no file"))?;
                         std::fs::read(&p).map(Reply::Bytes).map_err(|e| format!("{}: {e}", p.display()))
                     }
                     k => Err(format!("unknown kind of document: {k}")),

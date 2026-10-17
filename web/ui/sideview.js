@@ -547,6 +547,7 @@ function AttachmentView({ refObj, doc, info }) {
     if (!confirm(`Remove ${doc.title}? ${doc.url ? "" : "Its file goes to the library's backups/removed folder."}`)) return;
     try {
       await ctx.platform.api("attachment_remove", { source: refObj.source, level: doc.level, target: doc.target, index: doc.index });
+      setPref({ side: { ...(ui.get().side || {}), open: false } }); // (rather than showing another document in its place)
       await ctx.reloadCatalog();
       ctx.toast(`Removed ${doc.title}.`);
     } catch (e) { ctx.toast(`Couldn't remove it: ${e?.message || e}`); }

@@ -90,6 +90,7 @@ Milestone 6: pictures and your own content (owner's items 1 and 2 of 2026-10-12)
 - A part's page has a ⋯ menu beside Add to collection.
 - The library format: `pictures/` and `attachments/` in a project's folder, `icon` and `attachments` in `metadata.json`; Check library lists content or a picture whose file is gone (`docs/LIBRARY_FORMAT.md`).
 - CI: a project's picture from its files and one you add; a PDF and a link added to a model, and Remove.
+- Fixes found by the first run: a PDF you added didn't open in the side panel; removing content left the side panel open over the page; the update check waits for the last thumbnail, which can be written just after its model's check.
 
 ## 0.4.24 — 2026-10-17 · Reading settings reliably
 
