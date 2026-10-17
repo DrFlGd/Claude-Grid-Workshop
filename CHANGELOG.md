@@ -95,6 +95,7 @@ The future features of 2026-10-16 (owner); details in the plan's "0.4.23 notes".
 - Several libraries open at once moves to the backlog (owner, 2026-10-17).
 - CI: a 2D model, notes, Show in folder and the header-only Code button are checked; the Add a project check fills in a GitHub link itself now there are no suggestions.
 - CI fix found by the first run: the notes check read the project's `metadata.json` while the model's "Notes saved." toast was still showing; it waits for the file itself.
+- Fix found by the second run: a project's notes typed while the library was being read again (just after saving a model's notes) were put back to what was saved before, and weren't saved. What you type is kept, and saved when the Notes tab closes too.
 
 ## 0.4.22 — 2026-10-16 · The library format
 

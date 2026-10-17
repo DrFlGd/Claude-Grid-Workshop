@@ -2,7 +2,7 @@
 // documents, files, versions, updates), project problems (shown in Library settings), thumbnails for newly
 // read models, and the library section of Settings. On the website none of
 // this shows (there is no library there).
-import { html, useState, useEffect, useMemo } from "../lib/html.js";
+import { html, useState, useEffect, useMemo, useRef } from "../lib/html.js";
 import { useStore } from "../lib/store.js";
 import { ui, addJob } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
@@ -415,19 +415,28 @@ export function SourcePanel({ id }) {
 function ProjectNotes({ src, ro }) {
   const saved = src.meta?.my_notes || "";
   const [text, setText] = useState(saved);
-  useEffect(() => setText(saved), [src.id, saved]);
-  const save = async () => {
-    if (text === saved) return;
+  // what's typed is also saved when the tab closes before the box lost focus, and isn't replaced when the
+  // library is read again meanwhile
+  const last = useRef({ text: saved, shown: saved });
+  useEffect(() => {
+    if (last.current.text === last.current.shown) { last.current.text = saved; setText(saved); }
+    last.current.shown = saved;
+  }, [src.id, saved]);
+  last.current = { ...last.current, id: src.id, saved };
+  const save = async (t = text) => {
+    if (t === last.current.saved || t === last.current.sent) return;
+    last.current.sent = last.current.shown = t;
     try {
-      await api("meta_set", { source: src.id, level: "project", patch: { my_notes: text.trim() ? text : null } });
+      await api("meta_set", { source: last.current.id, level: "project", patch: { my_notes: t.trim() ? t : null } });
       await ctx.reloadCatalog();
-      ctx.toast(text.trim() ? "Notes saved." : "Notes removed.");
+      ctx.toast(t.trim() ? "Notes saved." : "Notes removed.");
     } catch (e) { ctx.toast(String(e.message || e)); }
   };
+  useEffect(() => () => save(last.current.text), []);
   return html`<div class="own-notes" id="project-notes">
     <p class="muted">Your notes on this project: what you printed, settings that worked, what to change next time. They're kept with the project in the library, and search finds its models by them. Saved when you click away.</p>
     <textarea id="project-notes-text" rows="12" aria-label="Your notes" value=${text} disabled=${ro}
-      onInput=${(e) => setText(e.target.value)} onBlur=${save}></textarea>
+      onInput=${(e) => { last.current.text = e.target.value; setText(e.target.value); }} onBlur=${(e) => save(e.target.value)}></textarea>
   </div>`;
 }
 
