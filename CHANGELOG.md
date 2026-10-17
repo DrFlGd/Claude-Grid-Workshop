@@ -83,7 +83,9 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-The UI review after milestone 6 (owner, 2026-10-17: check the UI isn't overengineered); the review is in the plan's "UI review after milestone 6".
+## 0.4.26 — 2026-10-17 · The UI review
+
+Released with 101 of 101 checks after two CI fixes. The UI review after milestone 6 (owner, 2026-10-17: check the UI isn't overengineered); the review is in the plan's "UI review after milestone 6".
 
 - **Fewer controls where they can't matter:** a project of 12 items or fewer shows no view, sort, grouping, Condense, size or filter controls; a filter whose one value every item shares is hidden; the details panel shows only while something is selected; no "desktop" badge in the desktop app; a collection's "Copies in the ZIP" only when a quantity is above 1.
 - **One way to do each thing:** Choose picture… replaces the details panel's "Use as the group's icon"; the Grouped view goes (Group and Condense do it); Reset all settings goes (choose Defaults); About this model is a button beside Code and README.
