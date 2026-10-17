@@ -83,7 +83,16 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-Milestone 6: pictures and your own content (owner's items 1 and 2 of 2026-10-12); details in the plan's "0.4.25 notes".
+The UI review after milestone 6 (owner, 2026-10-17: check the UI isn't overengineered); the review is in the plan's "UI review after milestone 6".
+
+- **Fewer controls where they can't matter:** a project of 12 items or fewer shows no view, sort, grouping, Condense, size or filter controls; a filter whose one value every item shares is hidden; the details panel shows only while something is selected; no "desktop" badge in the desktop app; a collection's "Copies in the ZIP" only when a quantity is above 1.
+- **One way to do each thing:** Choose picture… replaces the details panel's "Use as the group's icon"; the Grouped view goes (Group and Condense do it); Reset all settings goes (choose Defaults); About this model is a button beside Code and README.
+- **Leftovers gone:** Home's "Projects to start with" and the Add a project tile in a condensed list.
+- CI: a small project has no browse controls, no details panel without a selection, three views, About this model in the header, no Reset all; the condensed-group picture is chosen with Choose picture….
+
+## 0.4.25 — 2026-10-17 · Pictures and your own content
+
+Milestone 6: pictures and your own content (owner's items 1 and 2 of 2026-10-12), released with 100 of 100 checks after one fix; details in the plan's "0.4.25 notes".
 
 - **Choose picture…** (a project's ⋯ menu, a model's ⋯ menu, a part's ⋯ menu): the render, a picture from the project's files, an item's thumbnail (for a project), or one of your own, copied into the library. It replaces Edit details' Icon list.
 - **Add content…** (the same menus): a file (an assembly guide, a build video, photos) copied into the library, or a link. It's shown in the side panel beside the project's documents, and Remove sets the file aside in `backups/removed/`.

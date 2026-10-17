@@ -9,7 +9,7 @@ export const ui = createStore({
   scope: "home",           // home | all | cat:<id> | project:<id> | parts | lib:<id> | favs | recent
   q: "",                   // search text (may contain typed filters)
   filters: {},             // chip filters: { kind: [], cat: [], project: [], license: [] }
-  layout: "grid",          // grid | list | table | grouped
+  layout: "grid",          // grid | list | table
   size: "m",               // thumbnail size in the grid: s | m | l
   sort: "default",
   group: "none",           // none | project | cat | kind | license
@@ -82,7 +82,7 @@ export function setPref(patch) {
 /** The view (grid, list, table, grouped) is remembered per place. */
 export function layoutFor(scope) {
   const s = ui.get();
-  if (s.layouts?.[scope]) return s.layouts[scope];
+  if (s.layouts?.[scope] && s.layouts[scope] !== "grouped") return s.layouts[scope]; // (Grouped went in 0.4.26)
   return scope === "parts" || scope.startsWith("lib:") ? "grid" : "grid";
 }
 export function setLayout(layout) {

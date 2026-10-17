@@ -1,4 +1,4 @@
-// The browser: toolbar, filter chips, four views (grid, list, table, grouped),
+// The browser: toolbar, filter chips, three views (grid, list, table),
 // selection and keyboard handling, and the inspector panel.
 import { html, useState, useEffect, useMemo, useRef, useCallback } from "../lib/html.js";
 import { useStore } from "../lib/store.js";
@@ -9,11 +9,11 @@ import { Icon } from "./icons.js";
 import { Inspector } from "./inspector.js";
 import { Home } from "./home.js";
 import { LICENSE_TEXT, AGE_TEXT, KINDS, STATUS_TEXT } from "./index-local.js";
-import { SourcePanel, isDesktop, sourceById, readOnly } from "./library.js";
+import { SourcePanel, isDesktop, sourceById } from "./library.js";
 import { CollectionPage } from "./collections.js";
 import { plural } from "../lib/util.js";
 
-const LAYOUTS = [["grid", "Grid", Icon.grid], ["list", "List", Icon.list], ["table", "Table", Icon.table], ["grouped", "Grouped", Icon.grouped]];
+const LAYOUTS = [["grid", "Grid", Icon.grid], ["list", "List", Icon.list], ["table", "Table", Icon.table]];
 const SORTS = [["default", "Best match / project"], ["name", "Name"], ["project", "Project"], ["updated", "Recently updated"], ["settings", "Most settings"], ["license", "License"], ["kind", "Kind"]];
 const GROUPS = [["none", "No grouping"], ["project", "Project"], ["cat", "Category"], ["kind", "Kind"], ["license", "License"]];
 export const COLUMNS = {
@@ -78,7 +78,7 @@ function Badges({ item, favs }) {
   return html`${favs.includes(item.id) ? html`<span class="badge-fav" title="Favourite">${Icon.star(12, true)}</span>` : null}
     ${item.broken ? html`<span class="badge-mini broken" title=${item.broken.note ? `Flagged as broken: ${item.broken.note}` : "Flagged as broken"}>broken</span>` : null}
     ${item.hidden ? html`<span class="badge-mini hidden" title="Hidden">hidden</span>` : null}
-    ${item.desktopOnly ? html`<span class="badge-mini" title="Needs native OpenSCAD (desktop app)">desktop</span>` : null}
+    ${item.desktopOnly && !isDesktop() ? html`<span class="badge-mini" title="Needs native OpenSCAD (desktop app)">desktop</span>` : null}
     ${item.kind === "part" ? html`<span class="badge-mini">part</span>` : null}
     ${item.needs?.length ? html`<span class="badge-mini" title=${`Set ${item.needs.join(", ")} first`}>needs values</span>` : null}`;
 }
@@ -95,14 +95,15 @@ function useDismiss(open, setOpen, ref) {
   }, [open]);
 }
 
-function FilterMenu({ name, label, values, selected, render = (v) => v, order = null, onChange }) {
+function FilterMenu({ name, label, values, selected, render = (v) => v, order = null, onChange, total = Infinity }) {
   const [open, setOpen] = useState(false);
   const ref = useRef();
   useDismiss(open, setOpen, ref);
   const entries = Object.entries(values).sort(order
     ? (a, b) => order.indexOf(a[0]) - order.indexOf(b[0])      // a fixed order, e.g. newest first
     : (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  if (!entries.length && !selected.length) return null;
+  // a value every item has can't narrow anything (UI review, 0.4.26)
+  if ((!entries.length || (entries.length === 1 && entries[0][1] >= total)) && !selected.length) return null;
   const toggle = (v) => onChange(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);
   return html`<div class="filter" ref=${ref}>
     <button type="button" class=${`chip-btn${selected.length ? " on" : ""}`} aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}
@@ -192,18 +193,6 @@ function TableView({ items, sel, favs, columns: wanted, sort, onSort, onPick, on
   </table></div>`;
 }
 
-function GroupedView({ items, group, sel, onPick, onOpen }) {
-  const groups = groupItems(items, group === "none" ? "project" : group);
-  return html`<div class="grouped-view">${groups.map((g) => {
-    const authors = [...new Set(g.items.flatMap((i) => i.authors))].slice(0, 3).join(", ");
-    return html`<div class="grouped-row" key=${g.key}>
-      <div class="grouped-head"><h2>${g.key}</h2><p>${g.items.length} ${g.items.length === 1 ? "item" : "items"}${authors && group !== "license" ? `, by ${authors}` : ""}</p></div>
-      <div class="grouped-items">${g.items.map((it) => html`<button type="button" class="chip" data-item=${it.id} key=${it.id}
-        aria-pressed=${sel.includes(it.id) ? "true" : "false"} onClick=${(e) => onPick(it, e)} onDblClick=${() => onOpen(it)}>${it.name}</button>`)}</div>
-    </div>`;
-  })}</div>`;
-}
-
 /** The icon chosen for a group (a project's or a category's), if any. */
 function groupIcon(group, g) {
   const first = g.items[0];
@@ -232,12 +221,6 @@ function CondensedView({ groups, group, size }) {
         <span class="card-sub">${plural(g.items.length, "item")}</span>
       </button>`;
     })}
-    ${projects && !readOnly() ? html`<button type="button" class="card group-tile add-tile" id="add-project-tile"
-      onClick=${() => ui.set({ dialog: { type: "add-project" } })}>
-      <span class="thumb add-thumb">${Icon.plus(30)}</span>
-      <span class="card-name">Add a project</span>
-      <span class="card-sub">From GitHub, a ZIP or a folder</span>
-    </button>` : null}
   </div>`;
 }
 
@@ -354,7 +337,11 @@ export function Browser() {
       ui.set({ openGroup: null, sourceTab: "items" });
     }
   };
-  return html`<div class=${`browser${s.inspector ? " with-inspector" : ""}`}>
+  // the inspector is shown while something is selected (UI review, 0.4.26)
+  const inspecting = s.inspector && s.selection.length > 0;
+  // a project with a few items needs no sorting, grouping or filters (UI review, 0.4.26)
+  const few = !!info.source && !s.q && items.length <= 12 && !Object.values(s.filters).some((v) => v?.length) && !res.hidden && !s.showHidden;
+  return html`<div class=${`browser${inspecting ? " with-inspector" : ""}`}>
     <div class="browse-main">
       <div class="browse-head">
         <div class="browse-title">
@@ -362,10 +349,10 @@ export function Browser() {
           <span class="browse-count">${countText}${s.q ? ` · ${res.ms < 1 ? "<1" : Math.round(res.ms)} ms` : ""}</span>
         </div>
         <div class="browse-views">
-          <div class="seg" role="group" aria-label="View">
+          ${few ? null : html`<div class="seg" role="group" aria-label="View">
             ${LAYOUTS.map(([v, l, ic]) => html`<button type="button" aria-pressed=${s.layout === v ? "true" : "false"} title=${`${l} view`}
               aria-label=${`${l} view`} data-layout=${v} onClick=${() => setLayout(v)}>${ic(16)}</button>`)}
-          </div>
+          </div>`}
           <button type="button" class="tool-btn inspector-btn" aria-pressed=${s.inspector ? "true" : "false"} title="Show or hide the inspector"
             aria-label="Inspector" onClick=${() => setPref({ inspector: !s.inspector })}>${Icon.panel(16)}</button>
         </div>
@@ -374,7 +361,7 @@ export function Browser() {
         onClick=${() => ui.set({ openGroup: null, selection: [], anchor: null, sourceTab: "items" })}>‹ All ${noun}</button> / <b>${s.openGroup}</b></p>` : null}
       ${panelSource ? html`<${SourcePanel} id=${panelSource} key=${panelSource} />` : null}
       ${info.note ? html`<p class="browse-note">${info.note}</p>` : null}
-      ${sourceHidden ? null : html`<div class="browse-tools">
+      ${sourceHidden || few ? null : html`<div class="browse-tools">
         <label class="tool-select"><span class="visually-hidden">Sort</span>
           <select value=${s.sort} onChange=${(e) => setPref({ sort: e.target.value })} aria-label="Sort">
             ${SORTS.map(([v, l]) => html`<option value=${v}>${v === "default" ? "Sort: " + (s.q ? "best match" : "default") : "Sort: " + l}</option>`)}
@@ -391,24 +378,24 @@ export function Browser() {
             title=${{ s: "Small", m: "Medium", l: "Large" }[k] + " thumbnails"}>${k.toUpperCase()}</button>`)}
         </div>` : null}
       </div>`}
-      ${sourceHidden ? null : html`<div class="filters">
-        ${!info.query.kind ? html`<${FilterMenu} name="kind" label="Kind" values=${res.facets.kind} selected=${s.filters.kind || []}
+      ${sourceHidden || few ? null : html`<div class="filters">
+        ${!info.query.kind ? html`<${FilterMenu} total=${items.length} name="kind" label="Kind" values=${res.facets.kind} selected=${s.filters.kind || []}
           render=${(v) => KINDS[v] || v} onChange=${setFilter("kind")} />` : null}
-        ${!info.query.category ? html`<${FilterMenu} name="cat" label=${info.query.kind === "component" ? "Topic" : "Category"} values=${res.facets.cat} selected=${s.filters.cat || []} onChange=${setFilter("cat")} />` : null}
-        ${!info.query.project ? html`<${FilterMenu} name="project" label=${info.query.kind === "component" ? "Library" : "Project"} values=${res.facets.project} selected=${s.filters.project || []} onChange=${setFilter("project")} />` : null}
-        <${FilterMenu} name="license" label="License" values=${res.facets.license} selected=${s.filters.license || []}
+        ${!info.query.category ? html`<${FilterMenu} total=${items.length} name="cat" label=${info.query.kind === "component" ? "Topic" : "Category"} values=${res.facets.cat} selected=${s.filters.cat || []} onChange=${setFilter("cat")} />` : null}
+        ${!info.query.project ? html`<${FilterMenu} total=${items.length} name="project" label=${info.query.kind === "component" ? "Library" : "Project"} values=${res.facets.project} selected=${s.filters.project || []} onChange=${setFilter("project")} />` : null}
+        <${FilterMenu} total=${items.length} name="license" label="License" values=${res.facets.license} selected=${s.filters.license || []}
           render=${(v) => LICENSE_TEXT[v] || v} onChange=${setFilter("license")} />
-        ${Object.keys(res.facets.sub || {}).length > 1 || s.filters.sub?.length ? html`<${FilterMenu} name="sub" label="Type" values=${res.facets.sub}
+        ${Object.keys(res.facets.sub || {}).length > 1 || s.filters.sub?.length ? html`<${FilterMenu} total=${items.length} name="sub" label="Type" values=${res.facets.sub}
           selected=${s.filters.sub || []} onChange=${setFilter("sub")} />` : null}
-        <${FilterMenu} name="updated" label="Updated" values=${res.facets.updated} selected=${s.filters.updated || []}
+        <${FilterMenu} total=${items.length} name="updated" label="Updated" values=${res.facets.updated} selected=${s.filters.updated || []}
           render=${(v) => AGE_TEXT[v] || v} order=${Object.keys(AGE_TEXT)} onChange=${setFilter("updated")} />
-        ${res.facets.status?.broken || s.filters.status?.length ? html`<${FilterMenu} name="status" label="Status" values=${res.facets.status}
+        ${res.facets.status?.broken || s.filters.status?.length ? html`<${FilterMenu} total=${items.length} name="status" label="Status" values=${res.facets.status}
           render=${(v) => STATUS_TEXT[v] || v} order=${Object.keys(STATUS_TEXT)} selected=${s.filters.status || []} onChange=${setFilter("status")} />` : null}
         ${typed.map(([k, vals]) => html`<span class="chip-btn on typed">${k}:${vals.join(",")}</span>`)}
         ${Object.entries(res.facets.fields || {}).sort(([a], [b]) => a.localeCompare(b)).slice(0, 8).map(([k, vals]) => {
           // a field of dates ("Published") is grouped as Updated is (UI-38)
           const dates = Object.keys(vals).every((v) => v in AGE_TEXT);
-          return html`<${FilterMenu} name=${`f:${k}`} label=${k} values=${vals} selected=${s.filters[`f:${k}`] || []} onChange=${setFilter(`f:${k}`)}
+          return html`<${FilterMenu} total=${items.length} name=${`f:${k}`} label=${k} values=${vals} selected=${s.filters[`f:${k}`] || []} onChange=${setFilter(`f:${k}`)}
             render=${dates ? (v) => AGE_TEXT[v] || v : undefined} order=${dates ? Object.keys(AGE_TEXT) : undefined} />`;
         })}
         ${s.layout === "table" ? html`<${ColumnChooser} columns=${s.columns} />` : null}
@@ -427,11 +414,10 @@ export function Browser() {
             <${ListView} items=${g.items} ...${props} /></section>`) : null}
           ${(!condensing || s.openGroup) && s.layout === "table" && items.length ? html`<${TableView} items=${shownItems} columns=${s.columns} sort=${s.sort}
             onSort=${(k) => setPref({ sort: k })} ...${props} />` : null}
-          ${(!condensing || s.openGroup) && s.layout === "grouped" && items.length ? html`<${GroupedView} items=${shownItems} group=${s.group} ...${props} />` : null}
         </div>
       </div>`}
     </div>
-    ${s.inspector ? html`<${Inspector} />` : null}
+    ${inspecting ? html`<${Inspector} />` : null}
   </div>`;
 }
 

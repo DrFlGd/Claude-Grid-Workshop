@@ -101,7 +101,7 @@ try:
     if "native" not in report["engine"]:
         failures.append(f"engine label: {report['engine']}")
 
-    # the library: every generator (desktop-only ones too) with a thumbnail, in all four views
+    # the library: every generator (desktop-only ones too) with a thumbnail, in all three views
     d.execute_script("location.hash = '#/browse/all'")
     wait("document.querySelector('.results [data-item]')", 30, "the generator list")
     shown = d.execute_script("return document.querySelectorAll('.results [data-item]').length")
@@ -115,7 +115,7 @@ try:
     if thumbs < shown:
         failures.append(f"thumbnails: {thumbs} of {shown}")
     shot("00-library-grid")
-    for layout in ("list", "table", "grouped"):
+    for layout in ("list", "table"):
         d.execute_script(f"document.querySelector('button[data-layout=\"{layout}\"]').click()")
         if wait(f"document.querySelector('.results[data-layout=\"{layout}\"] [data-item]')", 10, f"{layout} view"):
             n = d.execute_script("return document.querySelectorAll('.results [data-item]').length")

@@ -608,15 +608,16 @@ async def main():
             ok = all(i["license"] == ("MIT" if i["id"] == other else "CC-BY-SA-4.0") for i in gens)
             check("project license applies to all items but the one with its own", ok, [(i["id"].split("/")[-1], i["license"]) for i in gens])
 
-            # 8. a condensed group shows the icon chosen for it
+            # 8. a condensed group shows the picture chosen for its project (Choose picture… since 0.4.26)
             await pg.goto(B + "#/browse/all")
             await pg.wait_for_selector(".results [data-item]")
             await pg.select_option("select[aria-label=Group]", "project")
             await pg.click("[data-condense]")
             name = await pg.evaluate(f"() => window.__workshop.catalog.sources.find((s) => s.id === '{v76}').name")
             await pg.locator(".group-tile", has_text=name).first.click()
-            await pg.locator(".results [data-item]").first.click()
-            await pg.click("[data-act=group-icon]")
+            await pg.click("#source-more summary")
+            await pg.click("[data-act=picture]")
+            await pg.click('.pic-tile[data-pic^="item:"]')
             await pg.wait_for_function(f"() => !!window.__workshop.catalog.sources.find((s) => s.id === '{v76}').icon", timeout=20000)
             await pg.click(".group-crumb .link-btn")
             tile = pg.locator(".group-tile", has_text=name).first
@@ -642,7 +643,7 @@ async def main():
             await pg.click("[data-condense]")
             await pg.wait_for_selector(".group-tile")
             on_group = await pg.eval_on_selector("select[aria-label=Group]", "e => e.value")
-            on_empty = await pg.locator(".inspector .insp-empty").count() == 1
+            on_empty = await pg.locator(".inspector").count() == 0  # (shown only with a selection, 0.4.26)
             # the biggest group, so arrow keys have room to run past it
             await pg.evaluate("""() => { const t = [...document.querySelectorAll('.group-tile[data-group]')].sort((a, b) => parseInt(b.querySelector('.card-sub').textContent) - parseInt(a.querySelector('.card-sub').textContent))[0]; t.click(); }""")
             await pg.wait_for_selector(".group-crumb")
@@ -659,7 +660,7 @@ async def main():
             await pg.wait_for_selector(".results [data-item]")
             off_group = await pg.eval_on_selector("select[aria-label=Group]", "e => e.value")
             kept = await pg.evaluate(sel_q)
-            insp = await pg.locator(".inspector .insp-empty").count() == 0
+            insp = await pg.locator(".inspector .insp-title").count() == 1
             check("Condense: on clears the selection and groups by project; arrow keys and Ctrl+A stay in an open group; off goes back to no grouping, keeping the selection",
                   len(ranged) == 3 and on_group == "project" and on_empty and walked == [in_group[-1]] and sorted(all_sel) == sorted(in_group)
                   and off_group == "none" and kept == [keep] and insp,
@@ -1146,6 +1147,25 @@ async def main():
                   "file:pics/front.png" in m6.get("tiles", []) and m6.get("file") == "file:pics/front.png" and m6.get("added") == ["picture:my photo.png", True]
                   and m6.get("listed") == [{"name": "Guide", "file": "Guide.pdf", "url": None}, {"name": "Build video", "file": None, "url": "https://example.com/build-video"}]
                   and m6.get("left") == ["Build video"] and True in m6.get("set_aside", []), m6)
+            # (0.4.26, the UI review) a small project has no browse controls; no details panel without a selection; no
+            # Grouped view; About this model is a header button; Reset all settings is gone
+            lean = {}
+            try:
+                await pg.goto(B + "#/browse/all")
+                await pg.wait_for_selector(".results [data-item]")
+                lean["inspector"] = await pg.locator(".inspector").count()
+                lean["layouts"] = await pg.eval_on_selector_all("button[data-layout]", "bs => bs.map((b) => b.dataset.layout)")
+                small = await pg.evaluate("() => window.__workshop.catalog.sources.find((s) => s.name === 'Settings cases')?.id")
+                await pg.goto(B + f"#/browse/source/{small}")
+                await pg.wait_for_selector(".results [data-item]")
+                lean["small"] = await pg.locator(".browse-tools, .filters, button[data-layout]").count()
+                await pg.goto(B + "#/m/@bosl2/bevel_gear")
+                await pg.wait_for_selector("#model-about:not([hidden])", timeout=60000)
+                lean["reset"] = await pg.locator("#reset-all").count()
+            except Exception as e:
+                print("UI review:", e)
+            check("a small project has no browse controls; no details panel until something is selected; no Grouped view; About this model in the header; no Reset all",
+                  lean.get("inspector") == 0 and lean.get("layouts") == ["grid", "list", "table"] and lean.get("small") == 0 and lean.get("reset") == 0, lean)
             await pg.goto(B + "#/settings")
             await pg.wait_for_selector("#ls-appearance")
             toc = await pg.eval_on_selector_all("#about-body .ls-toc a", "els => els.map((e) => e.textContent)")
@@ -1676,11 +1696,15 @@ async def main():
             try:
                 await pg.goto(B + f"#/browse/source/{og['id']}")
                 await pg.click("[data-source-tab=items]", timeout=20000)    # the About tab, opened above, has no filters
-                await pg.wait_for_selector("[data-filter=updated]", timeout=30000)
+                await pg.wait_for_selector(".results [data-item]", timeout=30000)
+                # (0.4.26) a project of 12 items or fewer shows no filters; the whole library's list has them
+                if not await pg.locator(".filters").count():
+                    await pg.goto(B + "#/browse/all")
+                    await pg.wait_for_selector(".results [data-item]", timeout=30000)
                 og_filters = await pg.evaluate("() => [...document.querySelectorAll('[data-filter]')].map((b) => b.dataset.filter)")
             except Exception as e:
                 print("filters:", e)
-            check("a Printables project has one Updated filter, and Published among its filters", og_filters.count("updated") == 1 and "f:Updated" not in og_filters and "f:Published" in og_filters, og_filters)
+            check("a Printables project's Updated is one filter, and Published is among the filters", og_filters.count("updated") == 1 and "f:Updated" not in og_filters and "f:Published" in og_filters, og_filters)
             # (0.4.18, F-24) Read again reads the page PDF again: details lost (or never read) come back
             refreshed = {}
             try:

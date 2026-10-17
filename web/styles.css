@@ -603,11 +603,6 @@ body.show-help .field .help { display: block; }
 .table-view tr[aria-selected="true"] { background: var(--sel); }
 .td-name { font-weight: 700; }
 
-.grouped-view { display: grid; }
-.grouped-row { display: grid; grid-template-columns: minmax(180px, 280px) 1fr; gap: 6px 24px; padding: 12px 4px; border-bottom: 1px solid var(--steel-2); align-items: start; }
-.grouped-head h2 { font-size: 15px; }
-.grouped-head p { font-size: 13px; color: var(--graphite); }
-.grouped-items { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip[aria-pressed="true"] { border-color: var(--tool); background: var(--sel); box-shadow: 0 0 0 1px var(--tool); }
 
 /* inspector */
@@ -745,8 +740,7 @@ body.show-help .field .help { display: block; }
   .browse-scroll { padding: 2px 12px 24px; }
   .home { padding: 20px 14px 40px; }
   .row-tags, .row-cat { display: none; }
-  .grouped-row { grid-template-columns: 1fr; }
-  .statusbar .status-engine { display: none; }
+    .statusbar .status-engine { display: none; }
 }
 @media (max-width: 560px) {
   .brand span { display: none; }
@@ -1398,14 +1392,6 @@ svg g[data-sk] { display: none; }
 /* "Parametric Models [87]" in Overpass needs a little more room than Archivo */
 @media (min-width: 901px) { :root[data-skin="drafting"] .sidebar { width: 226px; } }
 
-/* Home in a new library: projects to start with (catalog/suggested.json) */
-.home-suggested { margin-top: 14px; max-width: 720px; }
-.home-suggested h3 { margin: 0 0 4px; font-size: 15px; }
-.home-suggested ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
-.home-suggested li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--steel); border-radius: var(--radius-s); }
-.home-suggested li > span { display: flex; flex-direction: column; min-width: 0; }
-.home-suggested li > span .small { font-size: 12px; }
-.add-suggested .chips { margin-top: 4px; }
 .made-from { display: grid; gap: 6px; }
 .made-from .made-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 0; }
 .made-from .made-actions .button { padding: 6px 12px; font-size: 13.5px; }

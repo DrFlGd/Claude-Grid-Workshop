@@ -201,11 +201,11 @@ export function CollectionPage({ id }) {
     <div class="collection-progress" aria-label="Printed">
       <div class="collection-bar"><span style=${`width:${total ? (printed / total) * 100 : 0}%`}></span></div>
       <span id="collection-printed">${printed} of ${total} printed</span>
-      <label class="tool-select collection-copies"><span>Copies in the ZIP</span>
+      ${c.items.some((e) => (e.quantity || 1) > 1) ? html`<label class="tool-select collection-copies"><span>Copies in the ZIP</span>
         <select id="collection-copies" value=${c.copies || "each"} disabled=${ro} onChange=${(e) => putCollection({ ...c, copies: e.target.value })}>
           <option value="each">A file for each copy</option>
           <option value="count">One file, the count in its name</option>
-        </select></label>
+        </select></label>` : null}
     </div>
     ${busy ? html`<p class="collection-busy" id="collection-busy">${busy.text} <button type="button" class="link-btn" onClick=${busy.cancel}>Cancel</button></p>` : null}
     ${!c.items.length ? html`<p class="empty">Nothing in it yet. Select parts or models and use Add to collection… in the inspector, or on a part's or model's page.</p>` : html`

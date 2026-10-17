@@ -784,12 +784,6 @@ export async function rescanLocal(quiet = true) {
 }
 
 /** "A", "A and B", "A, B and 3 more" */
-/** What adding a suggested project brings: "19 models · License CC-BY-NC-SA-3.0, personal use only". */
-export function suggestionFacts(p) {
-  const nc = /(^|-)NC(-|$)/i.test(p.license || "");
-  return [p.models, p.license ? `License ${p.license}${nc ? ", personal use only" : ""}` : "License not stated"].filter(Boolean).join(" · ");
-}
-
 export function listText(names) {
   if (names.length <= 2) return names.join(" and ");
   if (names.length <= 4) return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;

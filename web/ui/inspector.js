@@ -12,21 +12,6 @@ import { SideButtons } from "./sideview.js";
 
 const canEdit = () => isDesktop() && !readOnly();
 
-/** "Use as the group's icon" when the browser is grouped by project or category. */
-async function useAsGroupIcon(it, group) {
-  const name = it.kind === "part" ? `part-${it.key.split("/")[1]}` : it.key.split("/")[1];
-  try {
-    if (group === "project") {
-      await api("meta_set", { source: it.projectId, level: "project", target: null, patch: { icon: `item:${it.sourceId}/${name}` } });
-      ctx.toast(`Icon set for ${it.project}.`);
-    } else {
-      await api("category_set", { id: it.category, icon: `item:${it.sourceId}/${name}` });
-      ctx.toast(`Icon set for ${it.categoryLabel}.`);
-    }
-    await ctx.reloadCatalog();
-  } catch (e) { ctx.toast(String(e.message || e)); }
-}
-
 function SavedSettings({ item }) {
   const [rows, setRows] = useState(null);
   useEffect(() => {
@@ -160,8 +145,6 @@ export function Inspector() {
     </section>` : null}
     ${canEdit() ? html`<div class="insp-actions">
       <button type="button" class="ghost" data-act="edit" onClick=${() => ui.set({ dialog: { type: "edit", level: "item", item: it.id } })}>${Icon.edit(15)} Edit details</button>
-      ${it.thumb && (s.group === "project" || s.group === "cat") ? html`<button type="button" class="ghost" data-act="group-icon" onClick=${() => useAsGroupIcon(it, s.group)}
-        title=${`Show this item's thumbnail for ${s.group === "project" ? it.project : it.categoryLabel} when groups are condensed`}>Use as the group's icon</button>` : null}
     </div>
     <${ItemActions} items=${[it]} />` : null}
   </aside>`;

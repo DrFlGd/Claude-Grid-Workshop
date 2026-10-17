@@ -24,7 +24,6 @@ function commands() {
     { label: "Switch to Grid view", run: () => setLayout("grid") },
     { label: "Switch to List view", run: () => setLayout("list") },
     { label: "Switch to Table view", run: () => setLayout("table") },
-    { label: "Switch to Grouped view", run: () => setLayout("grouped") },
     ...SKINS.map(([id, label]) => ({ label: `Skin: ${label}`, run: () => setSkin(id) })),
     ...THEMES.map(([id, label]) => ({ label: id === "system" ? "Theme: follow the system" : `Theme: ${label}`, run: () => setTheme(id) })),
     { label: ui.get().inspector ? "Hide the inspector" : "Show the inspector", run: () => setPref({ inspector: !ui.get().inspector }) },

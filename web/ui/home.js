@@ -6,7 +6,6 @@ import { ui } from "./state.js";
 import { ctx, scopeHash } from "./context.js";
 import { plural } from "../lib/util.js";
 import { Icon } from "./icons.js";
-import { addProject, suggestionFacts } from "./library.js";
 import { printedOf } from "./collections.js";
 
 const ago = (t) => {
@@ -32,7 +31,6 @@ export function Home() {
   const gens = shown.filter((i) => i.kind === "generator").length;
   const parts = shown.filter((i) => i.kind === "part").length;
   const comps = shown.filter((i) => i.kind === "component").length;
-  const suggested = platform.kind === "desktop" && !catalog.library?.read_only && !gens ? (catalog.suggested || []).filter((p) => !p.added) : [];
   const where = platform.kind === "desktop" ? "on this computer" : "right here in your browser";
   const counts = [gens && plural(gens, "parametric model"), comps && plural(comps, "component"), parts && plural(parts, "part")].filter(Boolean);
   const intro = `Pick a model, set the sizes and save a print-ready file, made ${where} with OpenSCAD. ` + (counts.length
@@ -76,11 +74,7 @@ export function Home() {
     <section data-home="models"><h2>Parametric Models</h2>${gens ? html`<div class="home-tiles">${categories("generator")}</div>`
       : html`<p class="muted section-note" id="home-no-models">No parametric models yet. ${platform.kind === "desktop"
         ? "Add a project from a GitHub link, a ZIP file or a folder, or put your own .scad files in a folder inside the library's local/ folder." : ""}</p>
-        ${suggested.length ? html`<div class="home-suggested" id="home-suggested"><h3>Projects to start with</h3>
-          <p class="muted">Each comes from GitHub, so the app can check it for updates.</p>
-          <ul>${suggested.map((p) => html`<li key=${p.url}><span><b>${p.name}</b><span class="muted">${p.summary}</span><span class="muted small">${suggestionFacts(p)}</span></span>
-            <button type="button" class="ghost small" data-suggested=${p.name}
-              onClick=${() => addProject({ kind: "github", url: p.url }, p.name)}>${Icon.plus(14)} Add</button></li>`)}</ul></div>` : null}`}</section>
+`}</section>
     ${comps ? html`<section data-home="components"><h2>Components</h2>
       <p class="muted section-note">Modules from ${(catalog.component_libraries || []).filter((l) => l.active).map((l) => l.name).join(", ")}, as forms. Search for one (“bevel gear”, “threaded rod”) or pick a topic.</p>
       <div class="home-tiles">${categories("component")}</div></section>` : null}

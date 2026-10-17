@@ -1259,3 +1259,29 @@ Built as designed above, with these details:
 - Choose picture… replaces Edit details' Icon list. A `file:` picture or `picture:` one whose file is gone shows the render again, and Check library lists it. Names in `icon` and `attachments` are read only inside their folder.
 - Content you add is a document in the side viewer like the project's own; a model's shows only on that model's page, a part's on that part's, a project's everywhere in it. Its name is the file's without the extension unless you give one. Remove asks first, as the app's other deletions do.
 - A part's page gets a ⋯ menu (Choose picture…, Add content…, Show in folder) beside its buttons.
+
+## UI review after milestone 6 (0.4.26)
+
+The owner asked (2026-10-17) for a review checking the UI isn't overengineered: https://claude.ai/artifact/Mrc79MwmEvqBLmmhnSqK9X. What the owner asked for stays; the changes remove scaffolding around it. Ten items (three more were proposed and dropped on a closer look, below):
+
+**Hide what can't matter.**
+1. A project of 12 items or fewer shows no view, sort, grouping, Condense, size or filter controls (unless it has hidden items, or a filter or search is on). Any list hides a filter whose one value every item shares.
+2. The details panel (inspector) shows only while something is selected; its button still turns it off.
+3. No "desktop" badge in the desktop app.
+4. A collection's "Copies in the ZIP" shows only when a row's quantity is above 1.
+
+**One way to do each thing.**
+5. Choose picture… is how a project gets a picture; the inspector's "Use as the group's icon" goes (categories keep Image… in Library settings).
+6. The Grouped view goes; the Group select and Condense group the list. A saved Grouped choice shows as Grid.
+7. Reset all settings goes from a model's ⋯ menu: Defaults in the settings drop-down does it.
+8. About this model is a header button beside Code and README, shown when the author wrote notes. (Your notes already show above the form once written; ⋯ › Your notes is for writing the first.)
+
+**Cut leftovers.**
+9. Home's "Projects to start with" goes (suggestions left Add a project on 2026-10-16).
+10. The Add a project tile in a condensed list goes.
+
+**Dropped on a closer look.** Read again shows once already (the review misread it). Settings › Downloads stays: it's how STEP is preferred where a part has one. "Save as project file" and "Treat as a library" stay in a project's ⋯: moving them would add a menu to Library settings' rows.
+
+### 0.4.26 notes
+
+Built as listed above. The Settings cases project in the acceptance test has 3 items, so it checks that a small project shows no browse controls; the Printables filters check reads the whole library's filters when its project is that small.

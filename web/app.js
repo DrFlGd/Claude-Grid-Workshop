@@ -274,14 +274,14 @@ function renderModelHeader(detail) {
     $("#model-summary").textContent = first.length > 180 ? `${first.slice(0, 177).trimEnd()}…` : first;
   }
   $("#model-notes-body").replaceChildren(...holder.childNodes);
-  // the author's notes open from ⋯ › About this model
+  // the author's notes open from About this model, beside Code and README (0.4.26)
   $("#model-notes").hidden = true;
   $("#model-notes").open = false;
   $("#model-about").hidden = !hasNotes;
 }
 
 /** The row above the form: the side viewer (Code, README), then ⋯ with this item's own actions (in the
- * app: edit the form; a component's code and pin) above About, Batch, Help and Reset all. */
+ * app: edit the form; a component's code and pin) above Batch generate and Help. */
 function renderModelExtra(detail) {
   const box = $("#model-extra");
   if (!box) return;
@@ -703,13 +703,6 @@ function setAllValues(values) {
   applyConditions();
   updateStatusForEdits();
 }
-
-$("#reset-all").addEventListener("click", () => {
-  if (!state.model) return;
-  setAllValues({});
-  saved.active = null;
-  renderSettingsPick();
-});
 
 $("#param-search").addEventListener("input", (e) => {
   const q = e.target.value.trim().toLowerCase();

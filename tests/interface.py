@@ -71,7 +71,7 @@ async def main():
         check("all parametric models listed", n == len(gens), f"{n} of {len(gens)}")
         thumbs = await pg.locator(".results .card img").count()
         check("models have thumbnails", thumbs == n, f"{thumbs} of {n}")
-        for layout in ["grid", "list", "table", "grouped"]:
+        for layout in ["grid", "list", "table"]:
             await pg.click(f'button[data-layout="{layout}"]')
             await pg.wait_for_selector(f'.results[data-layout="{layout}"] [data-item]')
             got = await items(pg)
