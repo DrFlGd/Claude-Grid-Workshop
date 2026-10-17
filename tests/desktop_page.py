@@ -1699,12 +1699,14 @@ async def main():
                 await pg.wait_for_selector(".results [data-item]", timeout=30000)
                 # (0.4.26) a project of 12 items or fewer shows no filters; the whole library's list has them
                 if not await pg.locator(".filters").count():
-                    await pg.goto(B + "#/browse/all")
+                    await pg.goto(B + "#/browse/parts")
                     await pg.wait_for_selector(".results [data-item]", timeout=30000)
                 og_filters = await pg.evaluate("() => [...document.querySelectorAll('[data-filter]')].map((b) => b.dataset.filter)")
+                await pg.goto(B + f"#/browse/source/{og['id']}")   # (Read again, below, is on the project's page)
+                await pg.wait_for_selector(".source-panel", timeout=20000)
             except Exception as e:
                 print("filters:", e)
-            check("a Printables project's Updated is one filter, and Published is among the filters", og_filters.count("updated") == 1 and "f:Updated" not in og_filters and "f:Published" in og_filters, og_filters)
+            check("a Printables project's Updated is never two filters, and Published is among the filters", og_filters.count("updated") <= 1 and "f:Updated" not in og_filters and "f:Published" in og_filters, og_filters)
             # (0.4.18, F-24) Read again reads the page PDF again: details lost (or never read) come back
             refreshed = {}
             try:

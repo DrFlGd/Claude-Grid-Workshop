@@ -89,6 +89,7 @@ The UI review after milestone 6 (owner, 2026-10-17: check the UI isn't overengin
 - **One way to do each thing:** Choose picture… replaces the details panel's "Use as the group's icon"; the Grouped view goes (Group and Condense do it); Reset all settings goes (choose Defaults); About this model is a button beside Code and README.
 - **Leftovers gone:** Home's "Projects to start with" and the Add a project tile in a condensed list.
 - CI: a small project has no browse controls, no details panel without a selection, three views, About this model in the header, no Reset all; the condensed-group picture is chosen with Choose picture….
+- CI fix found by the first run: the Printables filters check reads the Parts Library's filters when its project is small, then goes back to the project's page for Read again.
 
 ## 0.4.25 — 2026-10-17 · Pictures and your own content
 
