@@ -83,7 +83,18 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-The future features of 2026-10-16 (owner); details in the plan's "0.4.23 notes".
+Reading settings reliably (owner, 2026-10-17); details in the plan's "0.4.24 notes".
+
+- **Choices read from the code:** a text setting the model compares with words (`style == "round"`) is a drop-down of those words, the default first. If reading them goes wrong the model keeps OpenSCAD's list and the project lists a "reading" problem.
+- **Typed in:** clear a setting's Choices in Edit form and it becomes a field you type in, and stays one when the project is read again.
+- **Arithmetic as numbers:** a component's setting written as arithmetic (`2*3`, `[10, 20/2]`) is a number or a list of numbers, not text.
+- **Defaults that don't render:** a model's page shows its first preset that does, and says so; Check defaults records it as rendering with that preset.
+- `tests/settings/`: models that were read wrongly, each with what should be read; `cargo test` reads them all. Add a case there when one turns up.
+- CI: a word-compared setting is a drop-down; cleared in Edit form it's typed in; a model whose defaults fail shows its preset.
+
+## 0.4.23 — 2026-10-17 · Future features
+
+The future features of 2026-10-16 (owner), released with 98 of 98 checks after a CI fix and a fix; details in the plan's "0.4.23 notes".
 
 - **Show in folder** for a model (its .scad file), a part (its file) and a project (its folder), so the original files are quick to find.
 - **2D models:** a model that makes a flat shape is shown as a drawing and downloads as SVG or DXF; its thumbnail is the drawing and Check defaults counts it as rendering. Save as part is off for drawings for now.

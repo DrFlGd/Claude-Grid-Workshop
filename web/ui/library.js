@@ -604,15 +604,21 @@ export async function makeThumbnails({ components = false, source = null, unchec
           const t0 = performance.now();
           const check = (ok, message) => api("defaults_put", { source: it.sourceId, model: it.key.split("/")[1], ok, message, seconds: (performance.now() - t0) / 1000 }).catch(() => {});
           try {
-            const r = await ctx.engine.render(detail, values, () => {}).promise;
+            let r = await ctx.engine.render(detail, values, () => {}).promise.catch((e) => ({ error: e }));
+            // its defaults don't render: it works if one of its first three presets does (0.4.24)
+            for (const ps of r.error ? (detail.presets || []).slice(0, 3) : []) {
+              const tried = await ctx.engine.render(detail, { ...values, ...ps.values }, () => {}).promise.catch(() => null);
+              if (tried) { r = { ...tried, preset: ps.label }; break; }
+            }
+            if (r.error) throw r.error;
             blob = r.blob;
             flat = r.format === "svg"; // a 2D model: its drawing (0.4.23)
+            await check(true, r.preset ? `Renders with its preset “${r.preset}”, not its defaults.` : undefined);
           } catch (e) {
             failed++;
             await check(false, renderMessage(e));
             throw e;
           }
-          await check(true);
           if (it.thumb && checking) { made++; continue; } // checking only: its thumbnail is kept
         } else {
           // a 3MF's own picture (the one its slicer saved), when it has one (milestone 5)

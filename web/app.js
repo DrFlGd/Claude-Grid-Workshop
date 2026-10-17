@@ -1378,7 +1378,36 @@ function generate() {
     setStatus("error", err.message);
     offerBrokenFlag(model, err.message);
     if (err.logs?.length) { $("#log-text").textContent = err.logs.join("\n"); $("#log").hidden = false; }
+    // at its defaults: the project's own presets are tried instead (0.4.24)
+    // (once per model, so choosing Defaults afterwards shows why)
+    if (!Object.keys(changedValues(model, values)).length && !ek && model.presets?.length && !presetsTried.has(model.key)) {
+      presetsTried.add(model.key);
+      presetInstead(model, values, err.message);
+    }
   });
+}
+
+const presetsTried = new Set();
+/** A model whose defaults don't render: its first three presets (a project's parameter sets, a component's
+ * examples) are tried in turn, and the first that renders is chosen, with a note. Nothing else changes. */
+async function presetInstead(model, values, message) {
+  for (const [i, ps] of model.presets.slice(0, 3).entries()) {
+    const v = { ...values, ...ps.values };
+    if (same(v, values)) continue;
+    if (state.model !== model || state.job) return;
+    setStatus("busy", `Its defaults don't render; trying the preset “${ps.label}”…`);
+    try {
+      await state.engine.render(forRender(model), renderValues(model, v)).promise;
+    } catch (e) {
+      if (e.cancelled) return;
+      continue;
+    }
+    if (state.model !== model || state.job) return;
+    chooseSettings(`preset:${i}`);
+    note(`Its defaults don't render, so its preset “${ps.label}” is shown. Choose Defaults to see why.`, "warn");
+    return;
+  }
+  if (state.model === model && !state.job) setStatus("error", message);
 }
 
 /** After a failed render (desktop): "Flag as broken", with the error as the note. */

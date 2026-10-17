@@ -1035,6 +1035,44 @@ async def main():
                   and meta.get("items", {}).get("sign-plate", {}).get("my_notes") == "Cut from 3 mm birch ply"
                   and meta.get("project", {}).get("my_notes") == "Fits the shed door"
                   and any("sign-plate" in i for i in flat.get("found", [])) and str(flat.get("reveal", "")).endswith("Sign Plate.scad"), flat)
+            # (0.4.24) reading settings: a text setting the code compares with words is a drop-down, and Edit form can
+            # make it typed in again; a model whose defaults don't render shows its first preset that does
+            reading = {}
+            try:
+                cases = outside / "Settings cases"
+                cases.mkdir(exist_ok=True)
+                (cases / "Box.scad").write_text('style = "round";\nlabel = "Box";\nif (style == "square") cube(10);\n'
+                    'else if (style == "hex") cylinder(d = 10, h = 10, $fn = 6);\nelse cylinder(d = 10, h = 10);\n')
+                (cases / "Bad.scad").write_text('size = 0; // [0:50]\nassert(size > 0, "size must be over 0");\ncube(size);\n')
+                (cases / "Bad.json").write_text('{ "fileFormatVersion": "1", "parameterSets": { "Small": { "size": "10" } } }\n')
+                await pg.goto(B + "#/")
+                await pg.click("#add-project")
+                await pg.click("[data-add-tab=folder]")
+                urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(cases)}).encode(), method="POST"))
+                await pg.click("#add-pick")
+                await pg.wait_for_function("(p) => document.querySelector('#add-path')?.textContent === p", arg=str(cases))
+                await pg.click("#add-go")
+                await pg.wait_for_function("() => location.hash.includes('/source/')", timeout=180000)
+                sid = (await pg.evaluate("location.hash")).split("/source/")[1]
+                await pg.goto(B + f"#/m/{sid}/box")
+                await pg.wait_for_selector("#p-style")
+                reading["choices"] = await pg.eval_on_selector_all("select#p-style option", "o => o.map((x) => x.value)")
+                reading["label"] = await pg.evaluate("document.querySelector('#p-label').tagName")
+                await pg.click("#model-more summary")
+                await pg.click("#edit-form")
+                await pg.click("[data-fe=style] .fe-name")
+                await pg.fill("[data-form='style.choices']", "")
+                await pg.click(".form-editor button.primary")
+                await pg.wait_for_function("() => document.querySelector('#p-style')?.tagName === 'INPUT'", timeout=10000)
+                reading["typed"] = json.loads((library / f"sources/{sid}/metadata.json").read_text())["items"]["box"]["form"]
+                await pg.goto(B + f"#/m/{sid}/bad")
+                await pg.wait_for_function(f"() => document.body.dataset.model === '{sid}/bad' && /Preview matches/.test(document.querySelector('#status').textContent)", timeout=120000)
+                reading["preset"] = [await pg.input_value("#settings-pick"), await pg.input_value("#p-size")]
+            except Exception as e:
+                print("reading settings:", e)
+            check("a text setting the code compares with words is a drop-down; cleared in Edit form it's typed in; defaults that fail show a preset that works",
+                  reading.get("choices") == ["round", "square", "hex"] and reading.get("label") == "INPUT"
+                  and reading.get("typed") == {"ui": {"style": {"options": []}}} and reading.get("preset") == ["preset:0", "10"], reading)
             await pg.goto(B + "#/settings")
             await pg.wait_for_selector("#ls-appearance")
             toc = await pg.eval_on_selector_all("#about-body .ls-toc a", "els => els.map((e) => e.textContent)")

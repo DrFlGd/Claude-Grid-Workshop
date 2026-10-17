@@ -138,7 +138,9 @@ function formFrom(params, rows, presets) {
     if (differs("description")) u.description = r.description.trim();
     if (differs("axes") && r.axes.trim()) u.axes = r.axes.split(",").map((s) => s.trim()).filter(Boolean);
     for (const k of ["min", "max", "step"]) { const v = num(String(r[k]).trim()); if (differs(k) && v !== undefined && !Number.isNaN(v)) u[k] = v; }
-    if (differs("choices") && r.choices.trim()) {
+    // choices cleared where the file or its code gave some: typed in (0.4.24)
+    if (differs("choices") && !r.choices.trim()) u.options = [];
+    else if (differs("choices") && r.choices.trim()) {
       u.options = r.choices.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
         const m = l.match(/^(.*?)\s=\s(.*)$/);
         return m ? { value: parseValue(m[1].trim()), label: m[2].trim() || m[1].trim() } : { value: parseValue(l), label: l.replace(/^"|"$/g, "") };
@@ -226,7 +228,7 @@ export function FormEditor({ spec }) {
               <label><span>Max</span>${input(p.name, "max")}</label>
               <label><span>Step</span>${input(p.name, "step")}</label></div>` : null}
             ${Array.isArray(p.default) ? html`<label><span>Box names</span>${input(p.name, "axes")}</label>` : null}
-            <label><span>Choices <small class="muted">one per line: value = label</small></span><textarea rows="3" value=${r.choices}
+            <label><span>Choices <small class="muted">${p.choices_from === "code" ? "read from the code; clear them to type values in" : "one per line: value = label; none to type values in"}</small></span><textarea rows="3" value=${r.choices}
               onInput=${(e) => set(p.name, "choices", e.target.value)} data-form=${`${p.name}.choices`}></textarea></label>
             <label><span>Show when <small class="muted">such as style == "round"</small></span>${input(p.name, "when", { class: "expr" })}</label>
             <label><span>Printer profile</span><select value=${r.profile} onChange=${(e) => set(p.name, "profile", e.target.value)} data-form=${`${p.name}.profile`}>

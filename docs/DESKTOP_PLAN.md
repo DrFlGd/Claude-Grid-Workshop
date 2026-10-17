@@ -1200,3 +1200,53 @@ Built as listed under "Added 2026-10-16 (owner), future features", with these ch
 - **Edit form:** each field is filled with what was read (the label falls back to the setting's name made readable), and Put back restores a field you changed.
 - **A single .scad file** chosen under Add a project › File becomes a project of its own, named after the file. The Suggested row is gone.
 - The library's README says Batch generate and lists `my_notes`.
+
+## Reading settings reliably: design (0.4.24)
+
+The owner's direction of 2026-10-16 ("Added 2026-10-16 (owner), after the library format: reading settings reliably") and of 2026-10-17 ("It's worth having a fallback if this new type of parsing yields errors"). A survey of how settings are read today (2026-10-17):
+
+- **Models** already take their settings from OpenSCAD's own parameter list (`--export-format=param`, `render.rs` `export_params`, then `ingest::convert_params`): names, types from the values, ranges and drop-downs from the Customizer comments. A text setting is a drop-down only when its comment lists the choices (`// [round, square]`). Values typed into calls become settings in a generated copy (`components::lift_call_values`).
+- **Components** (library modules) are read from the text alone: the module's signature, its documentation (BOSL2's `Arguments:` and `Example:` blocks) and the first example that is a plain call as start values. A default written as arithmetic (`1/3`, `[10, 10, 10] / 2`) is shown as typed-in code, not a number.
+- Nothing tries other values when the defaults don't render: the page shows the error, Check defaults marks the model.
+
+The design, each step falling back to today's reading if it fails:
+
+1. **Choices read from the code.** A model's text setting with no choices of its own becomes a drop-down when its file (and the project's files it includes) compares it with two or more different words: `style == "round"`, `"square" != style`. Its default is kept as a choice if the code doesn't name it. The empty word doesn't count (`label == ""` is a test for "no label", not a choice), and nothing changes for a setting the comment already gave choices, or one compared with fewer than two words. Such a setting is marked as read from the code (Edit form says so). The library's own files aren't read for this: only the project's.
+2. **Typed in, or back.** In Edit form, clearing a setting's Choices makes it a typed-in field even when the file or the code gave it choices (saved as `options: []` in the model's form); typing choices into any field makes it a drop-down, as today.
+3. **Arithmetic is a number.** A component's default or example value written as arithmetic of numbers (`1/3`, `-0.5*4`, `[1/2, 0, 3]`) is read as its value, so the field is a number or a vector instead of typed-in code. Defaults that refer to the library (`CENTER`, another argument) stay typed-in code; evaluating those needs OpenSCAD run on the library, which is left for the owner's edge cases to justify.
+4. **Defaults that don't render are repaired from the project's own presets.** On a model's page, when a render at the defaults fails and the model has presets (a project's `.json` parameter sets, a component's documented examples), each preset is tried in turn (at most three); the first that renders is chosen in the Defaults list, with a note: "Its defaults don't render; showing the preset <name> instead." Check defaults does the same and counts a model that renders with a preset as working (its thumbnail is that render). Nothing is written over the model's defaults: choosing Defaults again shows the failure.
+5. **The fallback.** Each new step runs on its own: an error in one (a file it can't read, a pattern it doesn't expect) leaves that model's settings as today's reader made them, and the project's problems list says which step was skipped and why. Steps 2 and 4 are choices you make or retries of today's renders, so they have nothing to fall back from.
+6. **Edge cases as tests.** `tests/settings/` holds small `.scad` files with the reading each should give (`<name>.expect.json`), read by a Rust test; the owner's failed edge cases go there as they arrive.
+
+Not now: OpenSCAD runs that echo each setting's evaluated value (OpenSCAD's own list already has every setting a Customizer would show; computed values aren't settings), and marking uncertain settings on the model's form itself (Edit form shows where a setting's choices came from instead, which keeps the form plain).
+
+### 0.4.24 notes
+
+Built as designed above, with these details:
+
+- Choices from the code: `ingest::choices_from_code`, run on a model's settings after OpenSCAD's list is read (`project.rs`), over the model's own .scad files (not the libraries'). The read is caught whole: if it errors or stops, the model keeps OpenSCAD's list and the project's problems get a "reading" entry. Choices keep the code's order, the default first when the code doesn't name it.
+- Typed in: a form's `ui.<setting>.options: []` (Edit form with Choices cleared) makes the setting a typed-in field and stops the code's choices coming back on the next read (`typed_in`).
+- Arithmetic: `components::folded` (literals, numbers written as arithmetic, vectors of them) replaces `parse_literal` where a component's settings are typed.
+- Presets for failing defaults: on a model's page, once per model while the app is open (so choosing Defaults afterwards shows the error); Check defaults records "Renders with its preset …" as a pass.
+- `tests/settings/`: three cases to start (compared words, a ternary inside a module, comparisons in comments), read by `settings_edge_cases`.
+
+## Milestone 6 design: pictures and your own content (0.4.25)
+
+Items 1 and 2 of the owner's requests of 2026-10-12; item 9 (several libraries) is in the backlog (owner, 2026-10-17). Kept small on purpose, since a UI review for overengineering follows: one new action on each page, one dialog each, no new settings.
+
+**Pictures (item 1).** Today a project's picture can be one of its items' thumbnails (Edit details › Icon); a model or part always shows its render.
+
+- **Choose picture…** in the ⋯ menu of a model's page, beside a part's Show in folder, and in a project's ⋯ menu (Edit details' Icon list goes; this replaces it). One dialog shows the choices as pictures: **The render** (the default), every picture in the project's files (PNG, JPEG, WebP, GIF; at most 200, the project's folders named under each), for a project its items' thumbnails, and **Add a picture…** (a file you choose, copied into the library so the folder stays portable).
+- **Stored** as the level's `icon` in `metadata.json`, as today: `item:<project>/<item>` (a thumbnail, as now), `file:<path>` (a picture in the project's files, found in whichever version is in use; a picture an update removes falls back to the render), or `picture:<name>` (one you added, in `sources/<id>/pictures/`, a "keep" folder in the format).
+- **Shown** wherever the item's thumbnail is (cards, the inspector, tabs, collections); the render is still made, for the 3D view and as the fallback.
+
+**Your own content (item 2).** Documents today are the project's own (its README, PDFs, readme.txt).
+
+- **Add content…** on a model's page (⋯), a part's page and a project's page (⋯): files you choose (PDF, pictures, video, text, anything) are copied into `sources/<id>/attachments/` (a "keep" folder), and a web link can be added as an entry of its own. Each is listed in `metadata.json` under the level it belongs to as `attachments: [{ name, file | url, added }]`.
+- **Shown** in the side viewer next to the project's documents, as their own tabs, named by you: PDFs, pictures and text as documents are now, a video with the system's player in the panel, a link opening in the browser, anything else opening in its own app. A model's content shows when that model is open, a project's whenever the project is.
+- **Removed** from the same tab (Remove, with an in-page confirmation); the file is moved to `backups/removed/` rather than deleted, so a mistake can be undone by hand.
+- Your notes (0.4.23) stay a Notes tab of their own: they're text you write, not a file.
+
+**Format.** New keys in `metadata.json` (`attachments`, new `icon` forms) and two new folders: library format stays 2, since an older app keeps keys it doesn't know (rule 4) and ignores folders it doesn't know. `docs/LIBRARY_FORMAT.md` lists them; Check library lists an attachment or picture whose file is missing.
+
+**Tests.** Choosing a project's picture and an added picture changes the card's picture and survives reading the project again; adding a PDF and a link to a model lists them in the side viewer, opens the PDF, and Remove moves the file to `backups/removed/`.

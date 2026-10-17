@@ -563,6 +563,20 @@ pub async fn ingest(
             Ok(raw) => {
                 fam["models"].as_array_mut().unwrap().push(model.clone());
                 let (_, mut detail) = sitebuild::assemble_model(&fam, &model, &key, &format!("/{entry}"), &fmap, &editor, &raw, input_bytes)?;
+                // text settings the code compares with words become drop-downs (0.4.24); if that fails, the
+                // settings stay as OpenSCAD's list gave them and the project's problems say so
+                let texts: Vec<String> = fmap.keys().filter(|f| !f.starts_with("/libraries/") && f.to_lowercase().ends_with(".scad"))
+                    .filter_map(|f| library::rel_inside(f).ok()).map(|r| root.join(r))
+                    .filter(|p| std::fs::metadata(p).is_ok_and(|m| m.len() < 2_000_000))
+                    .filter_map(|p| std::fs::read(p).ok()).map(|b| String::from_utf8_lossy(&b).into_owned()).collect();
+                if let Some(params) = detail["parameters"].as_array_mut() {
+                    let before = params.clone();
+                    let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ingest::choices_from_code(params, &texts)));
+                    if let Some(e) = match read { Ok(Ok(_)) => None, Ok(Err(e)) => Some(format!("{e:#}")), Err(_) => Some("it stopped unexpectedly".into()) } {
+                        *params = before;
+                        problems.push(json!({ "kind": "reading", "model": key, "message": format!("{entry}: choices weren't read from the code ({e}); its settings are as OpenSCAD lists them") }));
+                    }
+                }
                 detail["folder"] = json!(ingest::dirname(&format!("/{entry}")).trim_start_matches('/'));
                 if examples_as == "parts" && in_examples(&entry) {
                     detail["as_part"] = json!(true); // made once at its defaults and listed as a part (F-15)

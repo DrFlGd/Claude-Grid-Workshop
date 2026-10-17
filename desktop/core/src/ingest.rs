@@ -324,6 +324,40 @@ pub fn convert_params(raw: &Value) -> (Vec<Value>, Vec<String>) {
     (params, groups)
 }
 
+/// Choices read from the code (0.4.24): a text setting without choices of its own becomes a drop-down
+/// when the files compare it with two or more different words (`style == "round"`, `"flat" != style`).
+/// The empty word doesn't count, and the default stays a choice. Returns the names it changed.
+pub fn choices_from_code(params: &mut [Value], texts: &[String]) -> Result<Vec<String>> {
+    let code: Vec<String> = texts.iter().map(|t| strip_comments(t)).collect();
+    let mut changed = vec![];
+    for p in params.iter_mut() {
+        let plain_text = p["type"] == "string" && p["widget"] == "text" && p.get("options").is_none_or(Value::is_null) && p["typed_in"] != true;
+        let Some(name) = p["name"].as_str().filter(|_| plain_text).map(String::from) else { continue };
+        let n = regex::escape(&name);
+        let word = r#""((?:[^"\\]|\\.)*)""#;
+        let re = Regex::new(&format!(r"(?:\b{n}\s*(?:==|!=)\s*{word})|(?:{word}\s*(?:==|!=)\s*{n}\b)"))
+            .with_context(|| format!("reading {name}'s comparisons"))?;
+        let mut words: Vec<String> = vec![];
+        for c in code.iter().flat_map(|t| re.captures_iter(t)) {
+            let w = c.get(1).or_else(|| c.get(2)).map(|m| m.as_str().to_string()).unwrap_or_default();
+            if !w.is_empty() && !words.contains(&w) {
+                words.push(w);
+            }
+        }
+        if words.len() < 2 {
+            continue;
+        }
+        if let Some(d) = p["default"].as_str().filter(|d| !d.is_empty() && !words.iter().any(|w| w == d)) {
+            words.insert(0, d.to_string());
+        }
+        p["widget"] = json!("dropdown");
+        p["options"] = json!(words.iter().map(|w| json!({ "value": w, "label": w })).collect::<Vec<_>>());
+        p["choices_from"] = json!("code");
+        changed.push(name);
+    }
+    Ok(changed)
+}
+
 /// The same step rule for settings read by an app before 0.4.6 (Review 3, F-13): a plain number whose
 /// step of 1 doesn't fit its fractional default steps by its last decimal. Returns whether any changed.
 pub fn fit_plain_steps(params: &mut [Value]) -> bool {
@@ -638,7 +672,14 @@ pub fn apply_metadata(params: &[Value], groups: &[String], fam: &Value, model: &
                 p.insert(k.into(), v.clone());
             }
         }
-        if let Some(opts) = m.get("options").and_then(Value::as_array) {
+        if m.get("options").and_then(Value::as_array).is_some_and(Vec::is_empty) {
+            // no choices: typed in, even where the file or its code gave some (0.4.24)
+            p.shift_remove("options");
+            p.shift_remove("choices_from");
+            let number = p.get("type").and_then(Value::as_str) == Some("number");
+            p.insert("widget".into(), json!(if number { "number" } else { "text" }));
+            p.insert("typed_in".into(), json!(true));
+        } else if let Some(opts) = m.get("options").and_then(Value::as_array) {
             p.insert("widget".into(), json!("dropdown"));
             let list: Vec<Value> = opts
                 .iter()
@@ -784,6 +825,57 @@ mod tests {
         assert_eq!(p[2]["type"], json!("number[]"));
         assert_eq!(p[2]["default"], json!([1, 2.5]));
         assert_eq!(p.len(), 3);
+    }
+
+    #[test]
+    fn choices_read_from_the_code() {
+        let mut p = vec![
+            json!({ "name": "style", "type": "string", "widget": "text", "default": "round" }),
+            json!({ "name": "label", "type": "string", "widget": "text", "default": "Hi" }),
+            json!({ "name": "shape", "type": "string", "widget": "text", "default": "a" }),
+            json!({ "name": "lid", "type": "string", "widget": "dropdown", "default": "x", "options": [{ "value": "x", "label": "x" }] }),
+        ];
+        let code = "if (style == \"square\") cube(1);\nelse if (\"hex\" != style) sphere(1);\n// style == \"commented\"\n\
+                    if (label == \"\") echo(); my_style = \"no\" == my_style;\nx = shape == \"b\" ? 1 : 2;";
+        let changed = choices_from_code(&mut p, &[code.to_string()]).unwrap();
+        assert_eq!(changed, vec!["style"]);
+        assert_eq!(p[0]["options"], json!([{ "value": "round", "label": "round" }, { "value": "square", "label": "square" }, { "value": "hex", "label": "hex" }]));
+        assert_eq!(p[0]["widget"], "dropdown");
+        assert_eq!(p[1]["widget"], "text"); // only the empty word: no choices
+        assert_eq!(p[2]["widget"], "text"); // one word besides its default
+        assert_eq!(p[3]["options"].as_array().unwrap().len(), 1); // its own choices stay
+    }
+
+    /// tests/settings/: models read wrongly before, with what reading them should give (0.4.24)
+    #[test]
+    fn settings_edge_cases() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/settings");
+        let assign = Regex::new(r#"(?m)^([A-Za-z_]\w*)\s*=\s*"([^"]*)"\s*;"#).unwrap();
+        let mut n = 0;
+        for e in std::fs::read_dir(&dir).unwrap().flatten() {
+            let path = e.path();
+            if path.extension().is_none_or(|x| x != "scad") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let expect: Value = serde_json::from_str(&std::fs::read_to_string(path.with_extension("expect.json")).unwrap()).unwrap();
+            // the text settings OpenSCAD's list would give: top-level words
+            let mut params: Vec<Value> = assign.captures_iter(&strip_comments(&text))
+                .map(|c| json!({ "name": &c[1], "type": "string", "widget": "text", "default": &c[2] })).collect();
+            choices_from_code(&mut params, &[text]).unwrap();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            for (k, want) in expect["choices"].as_object().unwrap() {
+                let p = params.iter().find(|p| p["name"] == k.as_str()).unwrap_or_else(|| panic!("{name}: no setting {k}"));
+                let got: Vec<&Value> = p["options"].as_array().map(|o| o.iter().map(|o| &o["value"]).collect()).unwrap_or_default();
+                assert_eq!(json!(got), *want, "{name}: {k}'s choices");
+            }
+            for k in expect["typed"].as_array().unwrap() {
+                let p = params.iter().find(|p| p["name"] == *k).unwrap_or_else(|| panic!("{name}: no setting {k}"));
+                assert_eq!(p["widget"], "text", "{name}: {k} should stay typed in");
+            }
+            n += 1;
+        }
+        assert!(n >= 3, "the edge cases weren't found in {}", dir.display());
     }
 
     #[test]

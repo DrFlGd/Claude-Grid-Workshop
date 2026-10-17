@@ -1385,7 +1385,7 @@ impl App {
                 let ok = args["ok"].as_bool().unwrap_or(false);
                 let message: String = args["message"].as_str().unwrap_or("").chars().take(600).collect();
                 let result = json!({
-                    "ok": ok, "message": if ok || message.is_empty() { Value::Null } else { json!(message) },
+                    "ok": ok, "message": if message.is_empty() { Value::Null } else { json!(message) },
                     "seconds": args["seconds"].as_f64().map(|s| (s * 10.0).round() / 10.0), "date": library::now(),
                 });
                 lib.put_check(id, version, &self.engine_version_site, model, result).map_err(e2s)?;

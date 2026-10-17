@@ -1218,6 +1218,23 @@ pub fn parse_literal(s: &str) -> Option<Value> {
     None
 }
 
+/// A value as written in a signature or an example: a literal, or arithmetic of numbers (`1/3`,
+/// `[1/2, 0, 3]`) as the number it comes to (0.4.24). None for anything that needs OpenSCAD to work out.
+pub fn folded(s: &str) -> Option<Value> {
+    let s = s.trim();
+    if let Some(v) = parse_literal(s) {
+        return Some(v);
+    }
+    if let Some(inner) = s.strip_prefix('[').and_then(|r| r.strip_suffix(']')) {
+        if inner.contains(':') || inner.trim_start().starts_with("for") || inner.trim().is_empty() {
+            return None;
+        }
+        let items: Option<Vec<Value>> = split_top(inner, b',').iter().map(|x| folded(x).filter(|v| v.is_number())).collect();
+        return items.map(Value::Array);
+    }
+    const_number(s).filter(|f| f.is_finite()).map(|f| ingest::int_if_whole(&json!(f)))
+}
+
 /// A JSON value as OpenSCAD source.
 pub fn to_scad(v: &Value) -> String {
     match v {
@@ -2180,9 +2197,9 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
             continue;
         }
         let doc = c.arg_docs.get(name).cloned().unwrap_or_default();
-        let sig_lit = sig.as_deref().and_then(parse_literal);
+        let sig_lit = sig.as_deref().and_then(folded);
         let ex_texts: Vec<&String> = calls.iter().filter_map(|c| c.2.get(name)).collect();
-        let ex_lits: Vec<Option<Value>> = ex_texts.iter().map(|t| parse_literal(t)).collect();
+        let ex_lits: Vec<Option<Value>> = ex_texts.iter().map(|t| folded(t)).collect();
         let first_text = first.and_then(|v| v.get(name));
         let group = if bosl && ["anchor", "spin", "orient"].contains(&name.as_str()) {
             "Position"
@@ -2252,7 +2269,7 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
                 opts.push(json!({ "value": null, "label": label }));
             }
             opts.extend(values.iter().map(|v| json!({ "value": v, "label": v })));
-            let d = first_text.and_then(|t| parse_literal(t)).or_else(|| sig_s.as_ref().map(|s| json!(s))).unwrap_or(Value::Null);
+            let d = first_text.and_then(|t| folded(t)).or_else(|| sig_s.as_ref().map(|s| json!(s))).unwrap_or(Value::Null);
             p.insert("type".into(), json!("string"));
             p.insert("widget".into(), json!("dropdown"));
             p.insert("options".into(), Value::Array(opts));
@@ -2267,7 +2284,7 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
             let numeric_vec = |v: &Value| v.as_array().is_some_and(|a| !a.is_empty() && a.iter().all(Value::is_number));
             let sig_is_expr = sig.is_some() && sig_lit.is_none();
             if !sig_is_expr && is(Value::is_number) {
-                let d = first_text.and_then(|t| parse_literal(t)).or(sig_val.clone()).unwrap_or(Value::Null);
+                let d = first_text.and_then(|t| folded(t)).or(sig_val.clone()).unwrap_or(Value::Null);
                 p.insert("type".into(), json!("number"));
                 p.insert("widget".into(), json!("number"));
                 if sig_val.is_none() {
@@ -2276,20 +2293,20 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
                 p.insert("default".into(), d);
                 base.insert(name.clone(), sig_val.clone().unwrap_or(Value::Null));
             } else if !sig_is_expr && is(Value::is_boolean) && sig_val.is_some() {
-                let d = first_text.and_then(|t| parse_literal(t)).or(sig_val.clone()).unwrap_or(json!(false));
+                let d = first_text.and_then(|t| folded(t)).or(sig_val.clone()).unwrap_or(json!(false));
                 p.insert("type".into(), json!("boolean"));
                 p.insert("widget".into(), json!("checkbox"));
                 p.insert("default".into(), d);
                 base.insert(name.clone(), sig_val.clone().unwrap_or(Value::Null));
             } else if !sig_is_expr && (is(Value::is_boolean) || sig_val.is_none() && ex_texts.is_empty() && looks_bool(&doc.doc)) {
-                let d = first_text.and_then(|t| parse_literal(t)).unwrap_or(Value::Null);
+                let d = first_text.and_then(|t| folded(t)).unwrap_or(Value::Null);
                 p.insert("type".into(), json!("boolean"));
                 p.insert("widget".into(), json!("dropdown"));
                 p.insert("options".into(), json!([{ "value": null, "label": "Default" }, { "value": true, "label": "Yes" }, { "value": false, "label": "No" }]));
                 p.insert("default".into(), d);
                 base.insert(name.clone(), Value::Null);
             } else if !sig_is_expr && is(Value::is_string) {
-                let d = first_text.and_then(|t| parse_literal(t)).or(sig_val.clone()).unwrap_or(Value::Null);
+                let d = first_text.and_then(|t| folded(t)).or(sig_val.clone()).unwrap_or(Value::Null);
                 p.insert("type".into(), json!("string"));
                 p.insert("widget".into(), json!("text"));
                 if sig_val.is_none() {
@@ -2298,7 +2315,7 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
                 p.insert("default".into(), d);
                 base.insert(name.clone(), sig_val.clone().unwrap_or(Value::Null));
             } else if !sig_is_expr && sig_val.as_ref().is_some_and(numeric_vec) && is(numeric_vec) && kinds.iter().all(|v| v.as_array().map(|a| a.len()) == sig_val.as_ref().and_then(|s| s.as_array()).map(|a| a.len())) {
-                let d = first_text.and_then(|t| parse_literal(t)).or(sig_val.clone()).unwrap_or(Value::Null);
+                let d = first_text.and_then(|t| folded(t)).or(sig_val.clone()).unwrap_or(Value::Null);
                 p.insert("type".into(), json!("number[]"));
                 p.insert("widget".into(), json!("vector"));
                 p.insert("default".into(), d);
@@ -2358,7 +2375,7 @@ pub fn component_model(lib: &ComponentLibrary, c: &Component) -> Value {
         for p in &params {
             let name = p["name"].as_str().unwrap_or("");
             if let Some(t) = values.get(name) {
-                let v = if raw.iter().any(|r| r == name) { json!(t) } else { parse_literal(t).unwrap_or_else(|| json!(t)) };
+                let v = if raw.iter().any(|r| r == name) { json!(t) } else { folded(t).unwrap_or_else(|| json!(t)) };
                 vals.insert(name.into(), v);
             }
         }
@@ -2468,6 +2485,16 @@ pub fn components_of(lib: &ComponentLibrary) -> Vec<Component> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arithmetic_is_a_value() {
+        assert_eq!(folded("1/4"), Some(json!(0.25)));
+        assert_eq!(folded("-0.5*4"), Some(json!(-2)));
+        assert_eq!(folded("[1/2, 0, 3]"), Some(json!([0.5, 0, 3])));
+        assert_eq!(folded("\"a\""), Some(json!("a")));
+        assert_eq!(folded("2*r"), None);
+        assert_eq!(folded("[CENTER, 1]"), None);
+    }
 
     #[test]
     fn literals() {
