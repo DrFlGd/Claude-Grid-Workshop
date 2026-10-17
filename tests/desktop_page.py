@@ -1028,6 +1028,10 @@ async def main():
                     await asyncio.sleep(0.25)
                 await pg.fill("#global-search", "birch")
                 await pg.wait_for_function("()=>/ms$/.test(document.querySelector('.browse-count')?.textContent || '')")
+                try:  # (the library may still be reading the notes just saved)
+                    await pg.wait_for_selector('.results [data-item*="sign-plate"]', timeout=15000)
+                except Exception:
+                    pass
                 flat["found"] = await pg.eval_on_selector_all(".results [data-item]", "els=>els.map(e=>e.dataset.item)")
                 await pg.fill("#global-search", "")
                 flat["reveal"] = await pg.evaluate("(s) => window.__TAURI__.core.invoke('api', { cmd: 'reveal_path', args: { source: s, rel: 'Sign Plate.scad' } })", sid)
