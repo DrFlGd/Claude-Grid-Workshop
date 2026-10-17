@@ -1,0 +1,8 @@
+serving on http://127.0.0.1:8790/ (home /home/runner/work/_temp/p2home)
+render jmvcm2lf71b (local-defaults/broken): ERROR: Assertion '(size < 5)' failed: "size must be under 5" in file broken.scad, line 2
+render jmvcm2m0z1d (local-defaults/broken): ERROR: Assertion '(size < 5)' failed: "size must be under 5" in file broken.scad, line 2
+render jmvcm2mef1e (local-defaults/broken): ERROR: Assertion '(size < 5)' failed: "size must be under 5" in file broken.scad, line 2
+render jmvcm2t6c1o (folder-settings-cases/bad): ERROR: Assertion '(size > 0)' failed: "size must be over 0" in file Bad.scad, line 2
+render jmvcm2txg1t (folder-settings-cases/bad): ERROR: Assertion '(size > 0)' failed: "size must be over 0" in file Bad.scad, line 2
+render jmvcmam027y (local-bevel/bevel-gear): OpenSCAD produced no geometry. These settings may not be valid for this model.
+render jmvcmavwc83 (local-bevel/bevel-gear): OpenSCAD produced no geometry. These settings may not be valid for this model.
