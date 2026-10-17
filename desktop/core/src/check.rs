@@ -88,6 +88,17 @@ fn findings(lib: &Library, known: &Known) -> (usize, Vec<Finding>) {
             add("A folder in sources without its source.json, so it isn't a project the app can read.".into(), rel(lib, &sp), None);
             continue;
         };
+        // content you added and pictures you added (milestone 6): their files are there
+        for d in crate::content::docs(lib, &id, "").iter().filter(|d| d["missing"] == true) {
+            add(format!("\"{}\", content you added, has lost its file.", d["title"].as_str().unwrap_or("?")), rel(lib, &sp.join(d["file"].as_str().unwrap_or(""))), None);
+        }
+        let meta = lib.metadata(&id);
+        let levels = std::iter::once(&meta["project"]).chain(["items", "parts", "folders"].iter().flat_map(|k| meta[*k].as_object().into_iter().flat_map(|m| m.values())));
+        for pic in levels.filter_map(|l| l["icon"].as_str()?.strip_prefix("picture:")) {
+            if !sp.join("pictures").join(pic).is_file() {
+                add(format!("A picture you chose ({pic}) has lost its file; the render is shown instead."), rel(lib, &sp.join("pictures")), None);
+            }
+        }
         let kind = src["kind"].as_str().unwrap_or("");
         let current = src["version"].as_str().unwrap_or("");
         if kind == "linked" {

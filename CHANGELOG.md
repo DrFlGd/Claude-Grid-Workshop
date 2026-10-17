@@ -83,7 +83,17 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
-Reading settings reliably (owner, 2026-10-17); details in the plan's "0.4.24 notes".
+Milestone 6: pictures and your own content (owner's items 1 and 2 of 2026-10-12); details in the plan's "0.4.25 notes".
+
+- **Choose picture…** (a project's ⋯ menu, a model's ⋯ menu, a part's ⋯ menu): the render, a picture from the project's files, an item's thumbnail (for a project), or one of your own, copied into the library. It replaces Edit details' Icon list.
+- **Add content…** (the same menus): a file (an assembly guide, a build video, photos) copied into the library, or a link. It's shown in the side panel beside the project's documents, and Remove sets the file aside in `backups/removed/`.
+- A part's page has a ⋯ menu beside Add to collection.
+- The library format: `pictures/` and `attachments/` in a project's folder, `icon` and `attachments` in `metadata.json`; Check library lists content or a picture whose file is gone (`docs/LIBRARY_FORMAT.md`).
+- CI: a project's picture from its files and one you add; a PDF and a link added to a model, and Remove.
+
+## 0.4.24 — 2026-10-17 · Reading settings reliably
+
+Reading settings reliably (owner, 2026-10-17), with 99 of 99 checks; details in the plan's "0.4.24 notes".
 
 - **Choices read from the code:** a text setting the model compares with words (`style == "round"`) is a drop-down of those words, the default first. If reading them goes wrong the model keeps OpenSCAD's list and the project lists a "reading" problem.
 - **Typed in:** clear a setting's Choices in Edit form and it becomes a field you type in, and stays one when the project is read again.

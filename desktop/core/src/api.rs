@@ -942,6 +942,88 @@ impl App {
                 let file = args["rel"].as_str().filter(|r| !r.is_empty()).and_then(|r| library::rel_inside(r).ok()).map(|r| root.join(r));
                 j(json!(file.filter(|f| f.exists()).unwrap_or(root).display().to_string()))
             }
+            // { source }: pictures to choose from (milestone 6): those in its files, and those you added
+            "pictures_list" => {
+                let id = arg(&args, "source").map_err(e2s)?;
+                let lib = self.library()?;
+                let src = lib.source(id).map_err(e2s)?;
+                let c = self.catalog()?;
+                let dir = match c.derived.get(id) {
+                    Some((_, dir)) => dir.clone(),
+                    None => lib.version_dir(&src, src["version"].as_str().unwrap_or("")).map_err(e2s)?,
+                };
+                let mut v = crate::content::pictures(&lib, id, &dir);
+                // each as { value (the icon), url }
+                let files_rel = folder_rel(&lib, id, &src, &dir).unwrap_or_else(|| format!("sources/{id}/files/{}", src["version"].as_str().unwrap_or("")));
+                let url = |rel: &str| format!("{}{}", self.paths.library_url, rel.split('/').map(catalog::urlencode).collect::<Vec<_>>().join("/"));
+                v["files"] = json!(v["files"].as_array().into_iter().flatten().filter_map(Value::as_str)
+                    .map(|p| json!({ "value": format!("file:{p}"), "path": p, "url": url(&format!("{files_rel}/{p}")) })).collect::<Vec<_>>());
+                v["added"] = json!(v["added"].as_array().into_iter().flatten().filter_map(Value::as_str)
+                    .map(|n| json!({ "value": format!("picture:{n}"), "path": n, "url": url(&format!("sources/{id}/pictures/{n}")) })).collect::<Vec<_>>());
+                j(v)
+            }
+            // { source, path }: a picture you chose, copied into sources/<id>/pictures/ -> { icon }
+            "picture_add" => {
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let id = arg(&args, "source").map_err(e2s)?;
+                lib.source(id).map_err(e2s)?;
+                let from = PathBuf::from(arg(&args, "path").map_err(e2s)?);
+                let ext = from.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                if !crate::content::PICTURE_EXTS.contains(&ext.as_str()) {
+                    return Err("Choose a PNG, JPEG, WebP or GIF picture.".into());
+                }
+                let name = crate::content::copy_in(&lib.source_dir(id).map_err(e2s)?.join("pictures"), &from).map_err(e2s)?;
+                j(json!({ "icon": format!("picture:{name}") }))
+            }
+            // { source, level, target?, path | url, name? }: content you add (milestone 6), copied into
+            // sources/<id>/attachments/ and listed under its level in metadata.json
+            "attachment_add" => {
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let id = arg(&args, "source").map_err(e2s)?;
+                lib.source(id).map_err(e2s)?;
+                let (section, key) = level_key(&args)?;
+                let entry = match (args["path"].as_str().filter(|p| !p.is_empty()), args["url"].as_str().map(str::trim).filter(|u| !u.is_empty())) {
+                    (Some(p), _) => {
+                        let file = crate::content::copy_in(&lib.source_dir(id).map_err(e2s)?.join("attachments"), Path::new(p)).map_err(e2s)?;
+                        let name = args["name"].as_str().map(str::trim).filter(|n| !n.is_empty()).map(String::from).unwrap_or_else(|| file.rsplit_once('.').map_or(file.as_str(), |(s, _)| s).to_string());
+                        json!({ "name": name, "file": file, "added": library::now() })
+                    }
+                    (None, Some(u)) if u.starts_with("https://") || u.starts_with("http://") => {
+                        let name = args["name"].as_str().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(u);
+                        json!({ "name": name, "url": u, "added": library::now() })
+                    }
+                    (None, Some(_)) => return Err("A link starts with https:// or http://.".into()),
+                    _ => return Err("Choose a file or give a link.".into()),
+                };
+                let mut m = lib.metadata(id);
+                crate::content::list_mut(&mut m, section, key.as_deref()).push(entry.clone());
+                lib.save_metadata(id, &m).map_err(e2s)?;
+                self.invalidate();
+                j(entry)
+            }
+            // { source, level, target?, index }: take one off the list; its file goes to backups/removed/
+            "attachment_remove" => {
+                let lib = self.library()?;
+                lib.writable().map_err(e2s)?;
+                let id = arg(&args, "source").map_err(e2s)?;
+                let (section, key) = level_key(&args)?;
+                let i = args["index"].as_u64().ok_or("missing index")? as usize;
+                let mut m = lib.metadata(id);
+                let list = crate::content::list_mut(&mut m, section, key.as_deref());
+                if i >= list.len() {
+                    return Err("That content isn't there any more.".into());
+                }
+                let gone = list.remove(i);
+                meta::prune(&mut m);
+                lib.save_metadata(id, &m).map_err(e2s)?;
+                if let Some(f) = gone["file"].as_str() {
+                    crate::content::set_aside(&lib, id, f).map_err(e2s)?;
+                }
+                self.invalidate();
+                j(gone)
+            }
             // { data, name }: what a 3D file holds: objects and colours (0.4.19, naming a 3MF download)
             "mesh_info" => {
                 let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;
@@ -958,7 +1040,9 @@ impl App {
                 let list: Vec<Value> = t
                     .docs
                     .iter()
-                    .map(|d| json!({ "id": d["id"], "title": d["title"], "kind": d["kind"], "src": d["src"], "bytes": d["bytes"], "relative": d["relative"].as_bool().unwrap_or(d["kind"] == "html") }))
+                    .map(|d| if d["attachment"] == true { d.clone() } else {
+                        json!({ "id": d["id"], "title": d["title"], "kind": d["kind"], "src": d["src"], "bytes": d["bytes"], "relative": d["relative"].as_bool().unwrap_or(d["kind"] == "html") })
+                    })
                     .collect();
                 j(json!({ "docs": list, "folder": t.folder_rel, "path": t.src_root.display().to_string(), "github": t.github.as_ref().map(|g| &g.1) }))
             }
@@ -1003,7 +1087,7 @@ impl App {
                         j(json!({ "kind": "text", "text": read_text(&p)? }))
                     }
                     "pdf" => {
-                        let p = src.ok_or_else(|| format!("document {id} has no file"))?;
+                        let p = stored.or(src).ok_or_else(|| format!("document {id} has no file"))?;
                         std::fs::read(&p).map(Reply::Bytes).map_err(|e| format!("{}: {e}", p.display()))
                     }
                     k => Err(format!("unknown kind of document: {k}")),
@@ -1686,6 +1770,8 @@ impl App {
                 crate::docs::github_bases(&format!("{}/{}", o["owner"].as_str()?, o["repo"].as_str()?), &version, o["subdir"].as_str().unwrap_or(""))
             })
             .flatten();
+        // content you added (milestone 6), each saying which level it's for
+        docs.extend(crate::content::docs(&lib, id, &self.paths.library_url));
         let writable = lib.writable().is_ok();
         Ok(DocTarget {
             docs,

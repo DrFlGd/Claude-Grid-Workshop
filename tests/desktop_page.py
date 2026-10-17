@@ -34,11 +34,13 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import time
 import urllib.request
 import zipfile
+import zlib
 
 import model_files
 from pathlib import Path
@@ -1073,6 +1075,75 @@ async def main():
             check("a text setting the code compares with words is a drop-down; cleared in Edit form it's typed in; defaults that fail show a preset that works",
                   reading.get("choices") == ["round", "square", "hex"] and reading.get("label") == "INPUT"
                   and reading.get("typed") == {"ui": {"style": {"options": []}}} and reading.get("preset") == ["preset:0", "10"], reading)
+            # (0.4.25, milestone 6) a project's picture is one of its own files or one you add; content you add to a
+            # model (a file copied into the library, or a link) is shown beside its documents, and Remove sets it aside
+            m6 = {}
+            try:
+                def tiny_png(rgb):
+                    raw = b"".join(b"\0" + bytes(rgb) * 4 for _ in range(4))
+                    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+                    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 4, 4, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+                pc = outside / "Pictures and content"
+                (pc / "pics").mkdir(parents=True, exist_ok=True)
+                (pc / "Box.scad").write_text("w = 20; // [10:50]\ncube(w);\n")
+                (pc / "pics" / "front.png").write_bytes(tiny_png((200, 40, 40)))
+                (outside / "my photo.png").write_bytes(tiny_png((40, 120, 200)))
+                (outside / "Guide.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+                await pg.goto(B + "#/")
+                await pg.click("#add-project")
+                await pg.click("[data-add-tab=folder]")
+                urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(pc)}).encode(), method="POST"))
+                await pg.click("#add-pick")
+                await pg.wait_for_function("(p) => document.querySelector('#add-path')?.textContent === p", arg=str(pc))
+                await pg.click("#add-go")
+                await pg.wait_for_function("() => location.hash.includes('/source/')", timeout=180000)
+                sid = (await pg.evaluate("location.hash")).split("/source/")[1]
+                meta_of = lambda: json.loads((library / f"sources/{sid}/metadata.json").read_text())
+                await pg.click("#source-more summary")
+                await pg.click("[data-act=picture]")
+                await pg.wait_for_selector('[data-pic="file:pics/front.png"]')
+                m6["tiles"] = await pg.eval_on_selector_all(".pic-tile", "ts => ts.map((t) => t.dataset.pic)")
+                await pg.click('[data-pic="file:pics/front.png"]')
+                await pg.wait_for_function("() => !document.querySelector('.picture-dialog')")
+                m6["file"] = meta_of()["project"].get("icon")
+                await pg.click("#source-more summary")
+                await pg.click("[data-act=picture]")
+                await pg.wait_for_selector("#pic-add")
+                urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(outside / "my photo.png")}).encode(), method="POST"))
+                await pg.click("#pic-add")
+                await pg.wait_for_function("() => !document.querySelector('.picture-dialog')")
+                m6["added"] = [meta_of()["project"].get("icon"), (library / f"sources/{sid}/pictures/my photo.png").is_file()]
+                await pg.goto(B + f"#/m/{sid}/box")
+                await pg.wait_for_selector("#model-more summary")
+                await pg.click("#model-more summary")
+                await pg.click("#model-content")
+                urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(outside / "Guide.pdf")}).encode(), method="POST"))
+                await pg.click("#content-pick")
+                await pg.wait_for_function("() => /Guide\\.pdf$/.test(document.querySelector('#content-path')?.textContent || '')")
+                await pg.click("#content-add")
+                await pg.wait_for_function("() => !document.querySelector('.content-dialog')")
+                await pg.click("#model-more summary")
+                await pg.click("#model-content")
+                await pg.fill("#content-url", "https://example.com/build-video")
+                await pg.fill("#content-name", "Build video")
+                await pg.click("#content-add")
+                await pg.wait_for_function("() => !document.querySelector('.content-dialog')")
+                m6["listed"] = [{k: a.get(k) for k in ("name", "file", "url")} for a in meta_of()["items"]["box"]["attachments"]]
+                await pg.get_by_role("button", name="Guide", exact=True).click()
+                await pg.wait_for_selector("#attachment-remove")
+                await pg.click("#attachment-remove")
+                for _ in range(40):
+                    if len(meta_of()["items"]["box"].get("attachments", [])) == 1:
+                        break
+                    await asyncio.sleep(0.25)
+                m6["left"] = [a.get("name") for a in meta_of()["items"]["box"].get("attachments", [])]
+                m6["set_aside"] = [f.name.endswith(f"-{sid}-Guide.pdf") for f in (library / "backups" / "removed").glob("*")]
+            except Exception as e:
+                print("pictures and content:", e)
+            check("a project's picture is one of its files or one you add; a file or a link added to a model is listed and shown beside its documents; Remove sets the file aside",
+                  "file:pics/front.png" in m6.get("tiles", []) and m6.get("file") == "file:pics/front.png" and m6.get("added") == ["picture:my photo.png", True]
+                  and m6.get("listed") == [{"name": "Guide", "file": "Guide.pdf", "url": None}, {"name": "Build video", "file": None, "url": "https://example.com/build-video"}]
+                  and m6.get("left") == ["Build video"] and True in m6.get("set_aside", []), m6)
             await pg.goto(B + "#/settings")
             await pg.wait_for_selector("#ls-appearance")
             toc = await pg.eval_on_selector_all("#about-body .ls-toc a", "els => els.map((e) => e.textContent)")

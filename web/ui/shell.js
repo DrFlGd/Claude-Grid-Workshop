@@ -16,6 +16,7 @@ import { PinDialog, FormEditor } from "./forms.js";
 import { SideView } from "./sideview.js";
 import { DropDialog, DropHint, onDropped } from "./drop.js";
 import { CollectDialog, refreshCollections } from "./collections.js";
+import { PictureDialog, ContentDialog } from "./content.js";
 
 /** Modal dialogs (desktop): adding a project, editing details, flagging as broken, saving as a part, merge differences, pinning, the form editor. */
 function Dialogs() {
@@ -36,7 +37,8 @@ function Dialogs() {
   const body = d.type === "drop" ? html`<${DropDialog} spec=${d} key=${JSON.stringify(d.info)} />` : d.type === "add-project" ? html`<${AddProject} />` : d.type === "edit" ? html`<${MetaEditor} spec=${d} key=${JSON.stringify(d)} />`
     : d.type === "flag" ? html`<${FlagDialog} spec=${d} />` : d.type === "save-part" ? html`<${SavePartDialog} spec=${d} />` : d.type === "merge" ? html`<${MergeConflicts} result=${d.result} />`
     : d.type === "pin" ? html`<${PinDialog} spec=${d} key=${d.key} />` : d.type === "form" ? html`<${FormEditor} spec=${d} key=${d.key} />`
-    : d.type === "collect" ? html`<${CollectDialog} spec=${d} />` : null;
+    : d.type === "collect" ? html`<${CollectDialog} spec=${d} />` : d.type === "picture" ? html`<${PictureDialog} spec=${d} />`
+    : d.type === "content" ? html`<${ContentDialog} spec=${d} />` : null;
   return html`<div class="dialog-backdrop">${body}</div>`;
 }
 

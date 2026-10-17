@@ -55,7 +55,7 @@ const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g
 function fieldsFor(level) {
   const shared = ["summary", "category", "tags", "license", "authors", "origin"];
   if (level === "item") return ["name", ...shared, "notes"];
-  if (level === "project") return ["name", ...shared, "icon"];
+  if (level === "project") return ["name", ...shared]; // (its picture: Choose picture…, milestone 6)
   if (level === "library") return ["license", "authors"];
   return shared; // folder, bulk
 }
@@ -229,7 +229,6 @@ export function MetaEditor({ spec }) {
     }
   };
 
-  const projectItems = level === "project" ? ctx.index.items.filter((i) => i.projectId === source && i.thumb) : [];
   const input = (f) => {
     const set = (v) => setVals({ ...vals, [f]: v });
     const placeholder = level === "bulk" ? "leave as is" : reset.has(f) ? "the value from the level above" : "";
@@ -243,9 +242,6 @@ export function MetaEditor({ spec }) {
       return html`<${CategoryPicker} id="meta-category" value=${pick} emptyLabel=${level === "bulk" ? "Leave as is" : level === "library" ? null : "Not set here"}
         onChange=${(v) => set(typeof v === "object" ? v.create : v ? choices().find((c) => c.id === v)?.label || v : "")} />`;
     }
-    if (f === "icon") return html`<select id="meta-icon" value=${vals.icon || ""} onChange=${(e) => set(e.target.value)}>
-      <option value="">Thumbnails of its items</option>
-      ${projectItems.map((i) => html`<option value=${`item:${i.sourceId}/${i.kind === "part" ? `part-${i.key.split("/")[1]}` : i.key.split("/")[1]}`}>${i.name}</option>`)}</select>`;
     return html`<${GrowText} ...${common} />`;
   };
   /** Where the value in the field comes from, with Reset for a value set at this level. */

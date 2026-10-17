@@ -3,7 +3,7 @@
 //! needs no second code path), plus the projects themselves and what needs attention.
 
 use crate::components::{self, ComponentLibrary};
-use crate::library::Library;
+use crate::library::{self, Library};
 use crate::meta::{self, Layers};
 use crate::project::{self, category_label};
 use serde_json::{json, Map, Value};
@@ -131,6 +131,26 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         };
         let derived = if src["kind"] == "pinned" { Some(pinned_derived(lib, &id, &out.models)) } else { lib.derived(&id, &version) };
         let dir = lib.version_dir(&src, &version).ok();
+        // where its files are, as a library path: the stored copy, or your own project's folder (local/ or linked)
+        let files_rel = match src["kind"].as_str() {
+            Some("local" | "linked") => lib.version_dir(&src, &version).ok().and_then(|d| crate::api::folder_rel(lib, &id, &src, &d)),
+            _ => None,
+        }
+        .unwrap_or_else(|| format!("sources/{id}/files/{version}"));
+        // a chosen picture (milestone 6): a thumbnail, a picture in its files (None when this version
+        // hasn't got it: the render is shown), or one you added
+        let pic = |icon: &str| -> Option<String> {
+            if let Some(p) = icon.strip_prefix("file:") {
+                let rel = library::rel_inside(p).ok()?;
+                return dir.as_ref().is_some_and(|d| d.join(&rel).is_file()).then(|| file_url(&format!("{files_rel}/{}", p.trim_start_matches('/'))));
+            }
+            if let Some(n) = icon.strip_prefix("picture:") {
+                library::rel_inside(n).ok()?;
+                let there = lib.source_dir(&id).is_ok_and(|d| d.join("pictures").join(n).is_file());
+                return there.then(|| file_url(&format!("sources/{id}/pictures/{n}")));
+            }
+            Some(icon_url(icon, &id, &file_url))
+        };
         let mut entry = json!({
             "id": id, "kind": src["kind"], "role": src["role"], "origin": src["origin"],
             "version": version, "version_date": src["version_date"], "added": src["added"],
@@ -200,7 +220,7 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
         if pvals.get("hidden").and_then(Value::as_bool) == Some(true) {
             entry["hidden"] = json!(true);
         }
-        let project_thumb = edits["project"]["icon"].as_str().map(|i| icon_url(i, &id, &file_url));
+        let project_thumb = edits["project"]["icon"].as_str().and_then(&pic);
         entry["name"] = pname.clone();
         entry["meta"] = Value::Object(pvals.clone());
         entry["from"] = Value::Object(pfrom.clone());
@@ -275,8 +295,8 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             if has_thumb(&format!("{mid}.webp")) {
                 detail["thumb"] = json!(file_url(&format!("sources/{id}/thumbs/{mid}.webp")));
             }
-            if let Some(icon) = vals.get("icon").and_then(Value::as_str) {
-                detail["thumb"] = json!(icon_url(icon, &id, &file_url));
+            if let Some(icon) = vals.get("icon").and_then(Value::as_str).and_then(&pic) {
+                detail["thumb"] = json!(icon);
             }
             // defaults outside their limits (D-3), shown on the model's page too (Review 3, UI-26)
             let limits: Vec<Value> = problems.iter().filter(|p| p["kind"] == "limits" && p["model"] == key.as_str()).flat_map(|p| p["settings"].as_array().cloned().unwrap_or_default()).collect();
@@ -367,12 +387,6 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
                 None => examples_todo.push(json!({ "key": key, "source": id, "model": mid })),
             }
         }
-        // where its files are, as a library path: the stored copy, or your own project's folder (local/ or linked)
-        let files_rel = match src["kind"].as_str() {
-            Some("local" | "linked") => lib.version_dir(&src, &version).ok().and_then(|d| crate::api::folder_rel(lib, &id, &src, &d)),
-            _ => None,
-        }
-        .unwrap_or_else(|| format!("sources/{id}/files/{version}"));
         if !parts.is_empty() {
             let mut items = vec![];
             let mut part_cats: Vec<String> = vec![];
@@ -447,8 +461,8 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
                 if has_thumb(&format!("part-{pid}.webp")) {
                     it["thumb"] = json!(file_url(&format!("sources/{id}/thumbs/part-{pid}.webp")));
                 }
-                if let Some(icon) = vals.get("icon").and_then(Value::as_str) {
-                    it["thumb"] = json!(icon_url(icon, &id, &file_url));
+                if let Some(icon) = vals.get("icon").and_then(Value::as_str).and_then(&pic) {
+                    it["thumb"] = json!(icon);
                 }
                 if let Some(c) = it["category"].as_str() {
                     if !part_cats.contains(&c.to_string()) {
@@ -902,7 +916,7 @@ fn icon_url(icon: &str, source: &str, file_url: &dyn Fn(&str) -> String) -> Stri
     file_url(icon.trim_start_matches('/'))
 }
 
-fn urlencode(s: &str) -> String {
+pub fn urlencode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {

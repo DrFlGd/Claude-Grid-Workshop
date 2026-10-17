@@ -1250,3 +1250,12 @@ Items 1 and 2 of the owner's requests of 2026-10-12; item 9 (several libraries) 
 **Format.** New keys in `metadata.json` (`attachments`, new `icon` forms) and two new folders: library format stays 2, since an older app keeps keys it doesn't know (rule 4) and ignores folders it doesn't know. `docs/LIBRARY_FORMAT.md` lists them; Check library lists an attachment or picture whose file is missing.
 
 **Tests.** Choosing a project's picture and an added picture changes the card's picture and survives reading the project again; adding a PDF and a link to a model lists them in the side viewer, opens the PDF, and Remove moves the file to `backups/removed/`.
+
+### 0.4.25 notes
+
+Built as designed above, with these details:
+
+- `desktop/core/src/content.rs` holds it: the pictures a project can show (`pictures_list`), copying a file in under a name of its own ("Guide 2.pdf" beside "Guide.pdf"), what kind of document an attachment is, and setting a removed one's file aside in `backups/removed/<date>-<project>-<name>`. Commands: `pictures_list`, `picture_add`, `attachment_add`, `attachment_remove`.
+- Choose picture… replaces Edit details' Icon list. A `file:` picture or `picture:` one whose file is gone shows the render again, and Check library lists it. Names in `icon` and `attachments` are read only inside their folder.
+- Content you add is a document in the side viewer like the project's own; a model's shows only on that model's page, a part's on that part's, a project's everywhere in it. Its name is the file's without the extension unless you give one. Remove asks first, as the app's other deletions do.
+- A part's page gets a ⋯ menu (Choose picture…, Add content…, Show in folder) beside its buttons.

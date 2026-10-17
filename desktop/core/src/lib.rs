@@ -17,6 +17,7 @@ pub mod api;
 pub mod backup;
 pub mod catalog;
 pub mod check;
+pub mod content;
 pub mod components;
 pub mod config;
 pub mod docs;

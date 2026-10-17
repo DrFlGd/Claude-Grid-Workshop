@@ -122,8 +122,11 @@
       <div class="actionbar">
         <div id="part-status" class="part-status"></div>
         <div id="part-downloads" class="downloads"></div>
-        <button type="button" id="part-collect" class="ghost" hidden title="Add this part to one of your collections">Add to collection…</button>
-        <button type="button" id="part-reveal" class="ghost" hidden title="Show the part's file in its folder">Show in folder</button>
+        <div class="part-row"><button type="button" id="part-collect" class="ghost" hidden title="Add this part to one of your collections">Add to collection…</button>
+        <details class="menu" id="part-more" hidden><summary class="ghost" aria-label="More" title="More">⋯</summary><div class="menu-panel">
+          <button type="button" id="part-reveal" title="Show the part's file in its folder">Show in folder</button>
+          <button type="button" id="part-picture" title="Show another picture for it: one from its project, or your own">Choose picture…</button>
+          <button type="button" id="part-content" title="Add a file or a link to it: a build video, an assembly guide, photos">Add content…</button></div></details></div>
       </div>
     </aside>
   </main>

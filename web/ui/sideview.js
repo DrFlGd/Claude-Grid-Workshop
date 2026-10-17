@@ -449,7 +449,7 @@ function DocView({ refObj, doc, info, onOpenCode }) {
 
 export function SideView() {
   const s = useStore(ui, (st) => ({ ready: st.ready, view: st.view, activeTab: st.activeTab, selection: st.selection, scope: st.scope,
-    side: st.side || {}, sideFile: st.sideFile, v: st.catalogVersion, partRef: st.partRef }));
+    side: st.side || {}, sideFile: st.sideFile, v: st.catalogVersion, partRef: st.partRef, partItem: st.partItem }));
   const target = useTarget(s);
   const [detail, setDetail] = useState(null);
   const [ref, setRef] = useState(null);
@@ -482,7 +482,10 @@ export function SideView() {
   }, [refKey(ref), s.v]);
   // a project file asked for (a README link, the Files tab) shows while its project is on screen
   const extra = s.sideFile && (!s.sideFile.ref || refKey(s.sideFile.ref) === refKey(ref)) ? s.sideFile : null;
-  const docs = info?.docs || [];
+  // content you added (milestone 6): the project's, and the open model's or part's own
+  const here = new Set(["project", modelKey && !modelKey.startsWith("@") ? `item:${modelKey.slice(modelKey.indexOf("/") + 1)}` : null,
+    s.view === "library" && s.partItem ? `part:${s.partItem}` : null]);
+  const docs = (info?.docs || []).filter((d) => !d.for || here.has(d.for));
   const tabs = [...(modelKey || extra ? [{ id: "code", title: "Code", kind: "code" }] : []), ...docs];
   // the open panel lies over the right of the 3D view; the size bar and the colours move clear of it
   const over = target && tabs.length && s.side.open ? Math.max(MIN_W, s.side.width || 560) : 0;
@@ -509,7 +512,7 @@ export function SideView() {
   // a model's page has its Code and README buttons in its header: the tabs along the edge show only
   // while the panel is open, to switch between them (one Code button, 0.4.23)
   const strip = open || !target.open;
-  const tabIcon = (t) => (t.kind === "code" ? Icon.code(14) : t.kind === "pdf" ? Icon.file(14) : Icon.book(14));
+  const tabIcon = (t) => (t.kind === "code" ? Icon.code(14) : t.kind === "pdf" || t.attachment ? Icon.file(14) : Icon.book(14));
   return html`<aside class=${`sideview${open ? " open" : ""}${strip ? "" : " bare"}`} style=${`--side-w:${width}px`} aria-label="Code and documents"
     onKeyDown=${(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); close(); } }}>
     ${strip ? html`<div class="side-tabs" role="tablist" aria-orientation="vertical" aria-label="Show">
@@ -528,11 +531,37 @@ export function SideView() {
       <div class="side-body">
         ${current.kind === "code" ? (extra || detail ? html`<${CodeView} detail=${extra ? null : detail} extra=${extra} key=${extra ? extra.rel : detail?.key}
               editable=${!!(target.open && !extra && detail && detail.kind !== "component" && !detail.pinned_from)} />` : html`<p class="side-empty">Loading…</p>`)
+          : current.attachment ? html`<${AttachmentView} refObj=${ref} doc=${current} info=${info} key=${`${refKey(ref)}/${current.id}`} />`
           : html`<${DocView} refObj=${ref} doc=${current} info=${info} key=${`${refKey(ref)}/${current.id}`}
               onOpenCode=${(f) => openSide("code", { sideFile: { ...f, ref } })} />`}
       </div>
     </section>` : null}
   </aside>`;
+}
+
+/** Content you added (milestone 6): a picture or video shown here, a link or another file opened outside,
+ * a PDF or text as a document; each with Remove. */
+function AttachmentView({ refObj, doc, info }) {
+  const ro = !!ctx.catalog?.library?.read_only;
+  const remove = async () => {
+    if (!confirm(`Remove ${doc.title}? ${doc.url ? "" : "Its file goes to the library's backups/removed folder."}`)) return;
+    try {
+      await ctx.platform.api("attachment_remove", { source: refObj.source, level: doc.level, target: doc.target, index: doc.index });
+      await ctx.reloadCatalog();
+      ctx.toast(`Removed ${doc.title}.`);
+    } catch (e) { ctx.toast(`Couldn't remove it: ${e?.message || e}`); }
+  };
+  const open = () => (doc.url ? ctx.platform.openUrl(doc.url) : ctx.platform.library.openPath(doc.path));
+  const tools = html`<div class="side-tools attachment-tools">
+    <span class="muted">${doc.url ? doc.url : `Added ${String(doc.added || "").slice(0, 10)}`}</span>
+    ${doc.missing ? null : html`<button type="button" class="ghost small" id="attachment-open" onClick=${open}>${doc.url ? "Open in the browser" : "Open in its app"}</button>`}
+    ${ro ? null : html`<button type="button" class="ghost small danger-text" id="attachment-remove" onClick=${remove}>Remove</button>`}</div>`;
+  if (doc.missing) return html`<div>${tools}<p class="side-empty">Its file isn't in the library any more.</p></div>`;
+  const body = doc.kind === "image" ? html`<div class="attachment-media"><img src=${doc.href} alt=${doc.title} /></div>`
+    : doc.kind === "video" ? html`<div class="attachment-media"><video src=${doc.href} controls preload="metadata"></video></div>`
+    : doc.kind === "pdf" || doc.kind === "text" ? html`<${DocView} refObj=${refObj} doc=${doc} info=${info} onOpenCode=${() => {}} />`
+    : html`<p class="side-empty">${doc.url ? "A link: it opens in your browser." : "This kind of file opens in its own app."}</p>`;
+  return html`<div class="attachment-view">${tools}${body}</div>`;
 }
 
 /** "Code" and "README" (a project's documents) buttons, for the inspector and the project page. */
@@ -545,7 +574,7 @@ export function SideButtons({ modelKey, refObj, small = true }) {
       const it = modelKey ? ctx.index.get(`${modelKey.startsWith("@") ? "comp" : "gen"}:${modelKey}`) : null;
       const r = refObj || refForItem(it) || (modelKey ? await projectRefFor((await ctx.loadModel(modelKey)).detail) : null);
       const i = await listDocs(r);
-      if (live) setDocs(i.docs || []);
+      if (live) setDocs((i.docs || []).filter((d) => !d.for || d.for === "project"));
     })().catch(() => {});
     return () => { live = false; };
   }, [modelKey, refKey(refObj)]);
@@ -571,8 +600,15 @@ export function sideModelButtons(box, detail) {
   box.prepend(mk("code", "Code", ICON_CODE, "code"));
   projectRefFor(detail).then(listDocs).then((i) => {
     if (!box.isConnected) return;
-    const first = (i.docs || [])[0];
-    if (first) box.querySelector("[data-side-open=code]")?.after(mk(first.id, first.kind === "html" ? "README" : first.title, ICON_DOC, first.id));
+    const first = (i.docs || []).filter((d) => !d.for || d.for === "project")[0];
+    // and content you added to this model (milestone 6): the edge tabs only show while the panel is open
+    const own = (i.docs || []).filter((d) => d.for === `item:${detail.id}`);
+    let at = box.querySelector("[data-side-open=code]");
+    for (const d of [first, ...own].filter(Boolean)) {
+      const b = mk(d.id, d === first && d.kind === "html" ? "README" : d.title, ICON_DOC, d.id);
+      at?.after(b);
+      at = b;
+    }
     box.hidden = false;
   }, () => {});
   box.hidden = false;

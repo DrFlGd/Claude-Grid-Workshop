@@ -27,6 +27,7 @@ A SCAD Workshop library is one folder of plain files: the projects you added, yo
 | `thumbs/components/<library>/<copy>/<module>.webp` | components' thumbnails | rebuildable |
 | `trash/<date>-<id>/` | a deleted project (`source/`, `local/` when it was your own, `trash.json`), until the trash is emptied | keep |
 | `backups/*.zip` | JSON files as they were before an upgrade, Merge or Repair changed them | yours to delete |
+| `backups/removed/` | files of content you removed (`<date>-<project>-<name>`), set aside rather than deleted (0.4.25) | yours to delete |
 | `sources/.adding-<n>/`, `files/.<version>.tmp-<n>` | an add or download in progress (left only if the app stopped part way; Check library removes them) | temporary |
 
 Not in the library: the render cache, code-edit blobs, preferences, printer profiles and the list of recent libraries live with the app on each computer.
@@ -37,6 +38,8 @@ Not in the library: the render cache, code-edit blobs, preferences, printer prof
 | --- | --- | --- |
 | `source.json` | where it came from, its versions and which is in use | keep |
 | `metadata.json` | your edits (removed when empty) | keep |
+| `pictures/` | pictures you added for the project or its items (0.4.25) | keep |
+| `attachments/` | files you added to the project, a model or a part: guides, videos, photos (0.4.25) | keep |
 | `files/<version>/` | the files, exactly as they came; several versions until **Remove versions not in use** | keep |
 | `derived/<version>.json` | what reading the files found (models, settings, parts, documents, problems); its own `format`, 5 | rebuildable |
 | `workshop.json` | what the app read the project as (a report; a project's **own** `workshop.json`, at the top of its files, is what decides) | rebuildable |
@@ -53,7 +56,7 @@ Your own projects (`kind: "local"`) are read from `local/<name>/` and have no `f
 
 ### `metadata.json` (format 1)
 
-`project` (the project's own fields), `folders` (by path), `items` (models, by id), `parts` (by id): each a set of fields (`name`, `category`, `summary`, `tags`, `license`, `authors`, `form`, `hidden`, `notes` (the author's, as About this model), `my_notes` (your own, 0.4.23), `fields`…); `merged.keep` (projects merged into it); `apart` (groups of files kept as separate parts); `examples` (`folder`, `as`). Your values here win over what was detected.
+`project` (the project's own fields), `folders` (by path), `items` (models, by id), `parts` (by id): each a set of fields (`name`, `category`, `summary`, `tags`, `license`, `authors`, `form`, `hidden`, `notes` (the author's, as About this model), `my_notes` (your own, 0.4.23), `icon` (a picture you chose: `item:<project>/<item>`, `file:<path>` in the project's files, or `picture:<name>` in `pictures/`; 0.4.25), `attachments` (content you added, 0.4.25: a list of `{ name, file | url, added }`, `file` being a name in `attachments/`), `fields`…); `merged.keep` (projects merged into it); `apart` (groups of files kept as separate parts); `examples` (`folder`, `as`). Your values here win over what was detected.
 
 ## Recipes: saved settings and made parts (format 1)
 
@@ -102,7 +105,7 @@ Collections and favourites refer to items by id, not by copying them:
 Library settings › Check library (and `workshop-cli library-call --library <dir> --app-site <dir> library_check`, or `library_repair`) reads the whole folder against this page.
 
 - **Can be repaired** (Repair does it): a JSON file not yet in this version's format; an unfinished copy left by an add or a download; derived data, documents and generated copies of a version whose files are gone; a missing README or top folder.
-- **To look at** (listed only): a file that isn't valid JSON; a file made by a newer version; a folder in `sources/` without `source.json`; the version in use with its files missing; a version's files the project doesn't list; a linked project whose folder is gone; saved settings for a model that isn't in the library; a made part's recipe without its part; a collection entry or favourite that refers to nothing.
+- **To look at** (listed only): a file that isn't valid JSON; a file made by a newer version; a folder in `sources/` without `source.json`; the version in use with its files missing; a version's files the project doesn't list; a linked project whose folder is gone; saved settings for a model that isn't in the library; a made part's recipe without its part; a collection entry or favourite that refers to nothing; content you added whose file is gone from `attachments/`, and a chosen `picture:` that's gone from `pictures/`.
 
 Repair never changes anything under `files/<version>/` or anything you made, and backs up the JSON files it changes.
 

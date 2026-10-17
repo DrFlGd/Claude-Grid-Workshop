@@ -301,15 +301,20 @@ function renderModelExtra(detail) {
     own.append(btn("edit-form", "Edit form…", "Rename settings, add help, choices and conditions, hide settings (saved with this item in the library)", () =>
       ui.set({ dialog: { type: "form", key: detail.key } }), ro));
   }
-  // Show in folder: the model's .scad file where it is on disk (0.4.23)
+  // your notes, a picture of its own and content you add (0.4.23, milestone 6)
   if (it && it.sourceId && detail.kind !== "component" && !detail.pinned_from) {
+    const level = { source: it.sourceId, level: "item", target: detail.id, name: detail.name };
     own.append(btn("model-notes-open", "Your notes", "Write your own notes on this model (kept in the library)", () => {
       const box = $("#model-own-notes");
       box.hidden = false;
       box.open = true;
       $("#model-own-notes-text").focus();
-    }));
+    }), btn("model-picture", "Choose picture…", "Show another picture for it: one from its project, or your own", () =>
+      ui.set({ dialog: { type: "picture", ...level, current: detail.meta?.icon || null } }), ro),
+    btn("model-content", "Add content…", "Add a file or a link to it: a build video, an assembly guide, photos", () =>
+      ui.set({ dialog: { type: "content", ...level } }), ro));
   }
+  // Show in folder: the model's .scad file where it is on disk (0.4.23)
   if (detail.source_id && detail.entry) {
     own.append(btn("model-reveal", "Show in folder", "Show the model's .scad file in its folder", () => revealFile({ source: detail.source_id, rel: detail.entry })));
   }
@@ -1899,9 +1904,17 @@ async function showPart(lib, item) {
           } catch (e) { toast(String(e.message || e)); }
         } })));
   }
-  const reveal = $("#part-reveal");
-  reveal.hidden = platform.kind !== "desktop" || !item.files.length;
-  reveal.onclick = () => revealFile({ source: lib.source_id || lib.id, rel: item.files[0].path, examples: !!item.example });
+  // ⋯: Show in folder, Choose picture…, Add content… (0.4.23, milestone 6)
+  const more = $("#part-more"), partSource = lib.source_id || lib.id, ro = !!state.catalog.library?.read_only;
+  more.hidden = platform.kind !== "desktop";
+  more.open = false;
+  $("#part-reveal").hidden = !item.files.length;
+  $("#part-reveal").onclick = () => { more.open = false; revealFile({ source: partSource, rel: item.files[0].path, examples: !!item.example }); };
+  const level = { source: partSource, level: "part", target: item.id, name: item.name };
+  ui.set({ partItem: item.id }); // (the side viewer shows its own content too)
+  $("#part-picture").disabled = $("#part-content").disabled = ro;
+  $("#part-picture").onclick = () => { more.open = false; ui.set({ dialog: { type: "picture", ...level, current: item.meta?.icon || null } }); };
+  $("#part-content").onclick = () => { more.open = false; ui.set({ dialog: { type: "content", ...level } }); };
   state.partEntry = { ref: `part:${lib.id}/${item.id}`, name: item.name };
   const dl = $("#part-downloads");
   const formats = item.files.map((f) => f.format);

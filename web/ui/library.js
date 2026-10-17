@@ -355,6 +355,10 @@ export function SourcePanel({ id }) {
           ${src.kind === "github" ? reread : null}
           <button type="button" disabled=${ro} onClick=${() => hideProject(id, !src.hidden)} data-act="hide-project"
             title=${src.hidden ? "List it again" : "Keep it and everything in it out of browsing and search"}>${src.hidden ? "Unhide" : "Hide"}</button>
+          <button type="button" disabled=${ro} data-act="picture" onClick=${() => ui.set({ dialog: { type: "picture", source: id, level: "project", name: src.name, current: src.meta?.icon || null } })}
+            title="Show another picture for the project: one of its own, an item's, or your own">Choose picture…</button>
+          <button type="button" disabled=${ro} data-act="content" onClick=${() => ui.set({ dialog: { type: "content", source: id, level: "project", name: src.name } })}
+            title="Add a file or a link to the project: a build video, an assembly guide, photos">Add content…</button>
           <button type="button" data-act="reveal" title="Open the project's files in the system's file manager" onClick=${() => api("source_get", { id }).then((i) => i.folder && ctx.platform.library.openPath(i.folder))}>Show in folder</button>
           ${src.kind === "local" || src.kind === "linked" ? html`<button type="button" disabled=${ro} data-act="save-project-file"
             title="Write this project's description (its models, names and forms, with your edits) into its folder as workshop.json, so it goes with the files"
