@@ -94,6 +94,7 @@ The future features of 2026-10-16 (owner); details in the plan's "0.4.23 notes".
 - **Add a project:** the File tab takes one .scad file as a project of its own; the Suggested row is gone.
 - Several libraries open at once moves to the backlog (owner, 2026-10-17).
 - CI: a 2D model, notes, Show in folder and the header-only Code button are checked; the Add a project check fills in a GitHub link itself now there are no suggestions.
+- CI fix found by the first run: the notes check read the project's `metadata.json` while the model's "Notes saved." toast was still showing; it waits for the file itself.
 
 ## 0.4.22 — 2026-10-16 · The library format
 

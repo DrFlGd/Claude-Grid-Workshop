@@ -1015,8 +1015,12 @@ async def main():
                 await pg.click("[data-source-tab=notes]")
                 await pg.fill("#project-notes-text", "Fits the shed door")
                 await pg.click("[data-source-tab=items]")
-                await pg.wait_for_function("() => /notes saved/i.test(document.querySelector('#toast')?.textContent || '')", timeout=10000)
-                flat["meta"] = json.loads((library / f"sources/{sid}/metadata.json").read_text())
+                # the model's "Notes saved." toast may still be showing, so wait for the file itself
+                for _ in range(40):
+                    flat["meta"] = json.loads((library / f"sources/{sid}/metadata.json").read_text())
+                    if flat["meta"].get("project", {}).get("my_notes"):
+                        break
+                    await asyncio.sleep(0.25)
                 await pg.fill("#global-search", "birch")
                 await pg.wait_for_function("()=>/ms$/.test(document.querySelector('.browse-count')?.textContent || '')")
                 flat["found"] = await pg.eval_on_selector_all(".results [data-item]", "els=>els.map(e=>e.dataset.item)")
