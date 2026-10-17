@@ -32,7 +32,7 @@ pub struct RenderRequest {
     #[serde(default)]
     pub call: Option<crate::components::Call>,
     /// "3mf": OpenSCAD's own 3MF, each top-level object apart (lazy union) and `color()` kept as
-    /// materials (0.4.19); otherwise binary STL.
+    /// materials (0.4.19); "svg" or "dxf": a 2D model's drawing (0.4.23); otherwise binary STL.
     #[serde(default)]
     pub format: Option<String>,
 }
@@ -40,6 +40,24 @@ pub struct RenderRequest {
 impl RenderRequest {
     pub fn three_mf(&self) -> bool {
         self.format.as_deref() == Some("3mf")
+    }
+
+    /// The file type this render makes: "stl", "3mf", "svg" or "dxf".
+    pub fn ext(&self) -> &str {
+        match self.format.as_deref() {
+            Some(f @ ("3mf" | "svg" | "dxf")) => f,
+            _ => "stl",
+        }
+    }
+
+    /// A drawing (a 2D model's SVG or DXF), not a solid.
+    pub fn flat(&self) -> bool {
+        matches!(self.ext(), "svg" | "dxf")
+    }
+
+    /// The same render as an SVG drawing: what a model that turns out to be 2D shows.
+    fn as_svg(&self) -> Self {
+        Self { format: Some("svg".into()), ..self.clone() }
     }
 }
 
@@ -52,7 +70,10 @@ pub enum RenderEvent {
 
 #[derive(Debug)]
 pub struct RenderOutput {
+    /// The file: STL, or what [`RenderRequest::ext`] says (`format`).
     pub stl: Vec<u8>,
+    /// Its type: "stl", "3mf", "svg" or "dxf" (a 2D model asked for as STL comes back as "svg").
+    pub format: String,
     /// Total time for this render (preparing files + OpenSCAD), not counting queueing.
     pub ms: u64,
     /// Part of `ms` spent laying out the model's files (only on a model's first render).
@@ -288,8 +309,8 @@ impl Renderer {
         let defines = defines.join("\n");
         let call = req.call.as_ref().map(|c| serde_json::to_vec(c).unwrap_or_default()).unwrap_or_default();
         let key = sha_hex(&[self.engine.version.as_bytes(), req.entry.as_bytes(), &files, &values, defines.as_bytes(), &call]);
-        // (a 3MF is cached beside the STL of the same render, by its own key)
-        if req.three_mf() { format!("{key}-3mf") } else { key }
+        // (a 3MF or a drawing is cached beside the STL of the same render, by its own key)
+        if req.ext() == "stl" { key } else { format!("{key}-{}", req.ext()) }
     }
 
     /// Ask a running or queued job to stop. Returns false if it isn't known (already finished).
@@ -306,7 +327,7 @@ impl Renderer {
     /// Look up a finished render without starting one.
     pub fn cached(&self, req: &RenderRequest) -> Option<RenderOutput> {
         let key = self.cache_key(req);
-        let stl_path = self.cache_dir.join("renders").join(format!("{key}.{}", if req.three_mf() { "3mf" } else { "stl" }));
+        let stl_path = self.cache_dir.join("renders").join(format!("{key}.{}", req.ext()));
         let stl = std::fs::read(&stl_path).ok()?;
         if let Ok(f) = std::fs::File::options().append(true).open(&stl_path) {
             let _ = f.set_modified(SystemTime::now()); // keep recently used results when pruning
@@ -314,15 +335,17 @@ impl Renderer {
         let meta: Option<CacheMeta> = std::fs::read(self.cache_dir.join("renders").join(format!("{key}.json")))
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok());
-        Some(RenderOutput { stl, ms: meta.map(|m| m.ms).unwrap_or(0), prepare_ms: 0, cached: true, logs: vec![] })
+        Some(RenderOutput { stl, format: req.ext().into(), ms: meta.map(|m| m.ms).unwrap_or(0), prepare_ms: 0, cached: true, logs: vec![] })
     }
 
     pub async fn render<F>(&self, job: &str, req: &RenderRequest, on_event: F) -> Result<RenderOutput, RenderFailure>
     where
         F: Fn(RenderEvent) + Send + Sync,
     {
+        // a model that turned out to be 2D (below) is found as its drawing next time
+        let may_be_flat = req.call.is_none() && !req.flat();
         if self.use_cache {
-            if let Some(hit) = self.cached(req) {
+            if let Some(hit) = self.cached(req).or_else(|| may_be_flat.then(|| self.cached(&req.as_svg())).flatten()) {
                 return Ok(hit);
             }
         }
@@ -347,6 +370,14 @@ impl Renderer {
                 let mut again = req.clone();
                 again.call = Some(c);
                 result = self.render_uncached(job, &again, &on_event, &cancel).await;
+            }
+        }
+        // a model that makes a 2D shape (for a laser cutter, a plotter, a sign): its drawing, as SVG (0.4.23)
+        if let Err(e) = &result {
+            let said = |t: &str| e.logs.iter().any(|l| l.contains(t)) || e.message.contains(t);
+            if may_be_flat && !e.cancelled && (said("not a 3D object") || said("is a 2D object")) {
+                on_event(RenderEvent::Log { line: "This model makes a 2D shape: drawing it as SVG.".into() });
+                result = self.render_uncached(job, &req.as_svg(), &on_event, &cancel).await;
             }
         }
         self.jobs.lock().unwrap().remove(job);
@@ -388,7 +419,7 @@ impl Renderer {
         let _cleanup = RemoveOnDrop(job_dir.clone());
         std::fs::create_dir_all(&job_dir).map_err(|e| RenderFailure::failed(format!("Couldn't create a job folder: {e}"), vec![]))?;
         let params = job_dir.join("params.json");
-        let out = job_dir.join(if req.three_mf() { "out.3mf" } else { "out.stl" });
+        let out = job_dir.join(format!("out.{}", req.ext()));
         let mut cmd = self.engine.command();
         if let Some(call) = &req.call {
             // a component: this render's own file (includes the library, calls the module)
@@ -407,11 +438,12 @@ impl Renderer {
             }
             cmd.args(["-P", "site"]).arg("-p").arg(&params);
         }
-        if req.three_mf() {
-            cmd.args(["--enable=lazy-union", "--export-format=3mf"]);
-        } else {
-            cmd.arg("--export-format=binstl");
-        }
+        match req.ext() {
+            "3mf" => cmd.args(["--enable=lazy-union", "--export-format=3mf"]),
+            "svg" => cmd.arg("--export-format=svg"),
+            "dxf" => cmd.arg("--export-format=dxf"),
+            _ => cmd.arg("--export-format=binstl"),
+        };
         cmd.arg("--backend=Manifold")
             .arg("-o")
             .arg(&out)
@@ -479,9 +511,11 @@ impl Renderer {
         let ms = started.elapsed().as_millis() as u64;
         let first_error = logs.iter().find(|l| l.starts_with("ERROR:")).cloned();
         let stl = std::fs::read(&out).unwrap_or_default();
-        if !status.success() || first_error.is_some() || stl.len() <= 84 {
+        // (an STL's header alone is 84 bytes; a drawing has no header to speak of)
+        let empty = if req.flat() { stl.is_empty() } else { stl.len() <= 84 };
+        if !status.success() || first_error.is_some() || empty {
             let msg = first_error.unwrap_or_else(|| match status.code() {
-                Some(0) | None if stl.len() <= 84 => "OpenSCAD produced no geometry. These settings may not be valid for this model.".into(),
+                Some(0) | None if empty => "OpenSCAD produced no geometry. These settings may not be valid for this model.".into(),
                 Some(c) => format!("OpenSCAD stopped with code {c}."),
                 None => "OpenSCAD stopped unexpectedly.".into(),
             });
@@ -489,19 +523,19 @@ impl Renderer {
         }
 
         if !self.use_cache {
-            return Ok(RenderOutput { stl, ms, prepare_ms, cached: false, logs });
+            return Ok(RenderOutput { stl, format: req.ext().into(), ms, prepare_ms, cached: false, logs });
         }
         let key = self.cache_key(req);
         let renders = self.cache_dir.join("renders");
         let tmp = renders.join(format!("{key}.tmp-{safe_job}"));
-        if std::fs::write(&tmp, &stl).is_ok() && std::fs::rename(&tmp, renders.join(format!("{key}.{}", if req.three_mf() { "3mf" } else { "stl" }))).is_ok() {
+        if std::fs::write(&tmp, &stl).is_ok() && std::fs::rename(&tmp, renders.join(format!("{key}.{}", req.ext()))).is_ok() {
             let meta = CacheMeta { ms, engine: self.engine.version.clone(), model: req.model.clone() };
             let _ = std::fs::write(renders.join(format!("{key}.json")), serde_json::to_vec(&meta).unwrap_or_default());
             let _ = self.prune();
         } else {
             let _ = std::fs::remove_file(&tmp);
         }
-        Ok(RenderOutput { stl, ms, prepare_ms, cached: false, logs })
+        Ok(RenderOutput { stl, format: req.ext().into(), ms, prepare_ms, cached: false, logs })
     }
 
     /// Total size of cached renders in bytes.
@@ -516,7 +550,7 @@ impl Renderer {
         let dir = self.cache_dir.join("renders");
         let mut items: Vec<(SystemTime, u64, PathBuf)> = std::fs::read_dir(&dir)?
             .flatten()
-            .filter(|e| e.path().extension().is_some_and(|x| x == "stl" || x == "3mf"))
+            .filter(|e| e.path().extension().is_some_and(|x| x == "stl" || x == "3mf" || x == "svg" || x == "dxf"))
             .filter_map(|e| {
                 let m = e.metadata().ok()?;
                 Some((m.modified().ok()?, m.len(), e.path()))

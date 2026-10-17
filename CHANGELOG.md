@@ -83,6 +83,18 @@ The development sandbox has a network allowlist and is reset between sessions (t
 
 ## Unreleased
 
+The future features of 2026-10-16 (owner); details in the plan's "0.4.23 notes".
+
+- **Show in folder** for a model (its .scad file), a part (its file) and a project (its folder), so the original files are quick to find.
+- **2D models:** a model that makes a flat shape is shown as a drawing and downloads as SVG or DXF; its thumbnail is the drawing and Check defaults counts it as rendering. Save as part is off for drawings for now.
+- **Your notes** on a model (⋯ › Your notes) and a project (a Notes tab): free text kept in the project's `metadata.json` (`my_notes`), found by search.
+- **One Code button:** a model's page has Code and README in its header; the right-edge tabs appear only while the panel is open.
+- **Batch generate** replaces Make several.
+- **Edit form** fields are filled in with what was read from the file and stay editable; only what you change is saved, and Put back restores it.
+- **Add a project:** the File tab takes one .scad file as a project of its own; the Suggested row is gone.
+- Several libraries open at once moves to the backlog (owner, 2026-10-17).
+- CI: a 2D model, notes, Show in folder and the header-only Code button are checked; the Add a project check fills in a GitHub link itself now there are no suggestions.
+
 ## 0.4.22 — 2026-10-16 · The library format
 
 The library format (owner, 2026-10-16), before milestone 6; 95 of 95 checks.

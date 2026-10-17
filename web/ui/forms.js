@@ -90,17 +90,33 @@ export function PinDialog({ spec }) {
 // ---------------------------------------------------------------- form editor
 const PROFILE = [["", "None"], ["bed", "Print bed size"], ["bed.x", "Bed width (X)"], ["bed.y", "Bed depth (Y)"], ["nozzle", "Nozzle diameter"]];
 
-/** A setting's form edits as editable text: { label, description, axes, min, max, step, choices, when, profile, group, default, show }. */
+const choicesText = (opts) => (opts ? opts.map((o) => (typeof o === "object" ? `${JSON.stringify(o.value)} = ${o.label ?? ""}` : JSON.stringify(o))).join("\n") : "");
+
+/** A setting as the project's file has it, as editable text: what each field of the form editor starts
+ * from (2026-10-16: the values are in the fields, not greyed hints that go when you type). */
+function readRow(p) {
+  return {
+    show: true, label: p.label && p.label !== p.name ? p.label : humanize(p.name), description: p.description ?? "",
+    axes: Array.isArray(p.default) ? (p.axes || ["X", "Y", "Z"]).join(", ") : "", min: p.min ?? "", max: p.max ?? "", step: p.step ?? "",
+    choices: choicesText(p.options), when: p.show_if ?? "", profile: "", group: p.group ?? "",
+    default: p.default === undefined ? "" : JSON.stringify(p.default),
+  };
+}
+
+/** A setting's form, as editable text: { label, description, axes, min, max, step, choices, when, profile, group, default, show },
+ * each field what the form sets or else what the file has. */
 function rowFor(p, form) {
   const u = form.ui?.[p.name] || {};
-  const opts = u.options || null;
+  const base = readRow(p);
+  const has = (k) => u[k] !== undefined;
   return {
     show: !(form.hidden || []).includes(p.name),
-    label: u.label ?? "", description: u.description ?? "",
-    axes: (u.axes || []).join(", "), min: u.min ?? "", max: u.max ?? "", step: u.step ?? "",
-    choices: opts ? opts.map((o) => (typeof o === "object" ? `${JSON.stringify(o.value)} = ${o.label ?? ""}` : JSON.stringify(o))).join("\n") : "",
-    when: u["display-condition"]?.js ?? "", profile: u.profile ?? "", group: u.group ?? "",
-    default: form.defaults && p.name in form.defaults ? JSON.stringify(form.defaults[p.name]) : "",
+    label: has("label") ? u.label : base.label, description: has("description") ? u.description : base.description,
+    axes: has("axes") ? u.axes.join(", ") : base.axes,
+    min: has("min") ? u.min : base.min, max: has("max") ? u.max : base.max, step: has("step") ? u.step : base.step,
+    choices: has("options") ? choicesText(u.options) : base.choices,
+    when: u["display-condition"]?.js ?? base.when, profile: u.profile ?? "", group: has("group") ? u.group : base.group,
+    default: form.defaults && p.name in form.defaults ? JSON.stringify(form.defaults[p.name]) : base.default,
   };
 }
 
@@ -114,22 +130,25 @@ function formFrom(params, rows, presets) {
     const r = rows[p.name];
     if (!r) continue;
     if (!r.show) hidden.push(p.name);
+    // only what differs from the file is kept, so a later version's own labels and ranges still come through
+    const base = readRow(p);
+    const differs = (k) => String(r[k]).trim() !== String(base[k]).trim();
     const u = {};
-    if (r.label.trim()) u.label = r.label.trim();
-    if (r.description.trim()) u.description = r.description.trim();
-    if (r.axes.trim()) u.axes = r.axes.split(",").map((s) => s.trim()).filter(Boolean);
-    for (const k of ["min", "max", "step"]) { const v = num(String(r[k]).trim()); if (v !== undefined && !Number.isNaN(v)) u[k] = v; }
-    if (r.choices.trim()) {
+    if (differs("label")) u.label = r.label.trim();
+    if (differs("description")) u.description = r.description.trim();
+    if (differs("axes") && r.axes.trim()) u.axes = r.axes.split(",").map((s) => s.trim()).filter(Boolean);
+    for (const k of ["min", "max", "step"]) { const v = num(String(r[k]).trim()); if (differs(k) && v !== undefined && !Number.isNaN(v)) u[k] = v; }
+    if (differs("choices") && r.choices.trim()) {
       u.options = r.choices.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
         const m = l.match(/^(.*?)\s=\s(.*)$/);
         return m ? { value: parseValue(m[1].trim()), label: m[2].trim() || m[1].trim() } : { value: parseValue(l), label: l.replace(/^"|"$/g, "") };
       });
     }
-    if (r.when.trim()) u["display-condition"] = { js: r.when.trim() };
+    if (differs("when") && r.when.trim()) u["display-condition"] = { js: r.when.trim() };
     if (r.profile) u.profile = r.profile;
-    if (r.group.trim()) u.group = r.group.trim();
+    if (differs("group") && r.group.trim()) u.group = r.group.trim();
     if (Object.keys(u).length) ui_[p.name] = u;
-    if (r.default.trim()) defaults[p.name] = parseValue(r.default.trim());
+    if (differs("default") && r.default.trim()) defaults[p.name] = parseValue(r.default.trim());
   }
   const form = {};
   if (Object.keys(ui_).length) form.ui = ui_;
@@ -188,26 +207,28 @@ export function FormEditor({ spec }) {
       ${params.map((p) => {
         const r = rows[p.name];
         const isOpen = open === p.name;
-        const changed = !same(rowFor(p, {}), { ...r });
+        const changed = !same(readRow(p), { ...r });
         return html`<div class=${`fe-row${isOpen ? " open" : ""}${r.show ? "" : " fe-hidden"}`} key=${p.name} data-fe=${p.name}>
           <div class="fe-head">
             <label class="check" title="Show this setting"><input type="checkbox" checked=${r.show} onChange=${(e) => set(p.name, "show", e.target.checked)} data-form=${`${p.name}.show`} /></label>
             <button type="button" class="fe-name" onClick=${() => setOpen(isOpen ? null : p.name)} aria-expanded=${isOpen ? "true" : "false"}>
-              <b>${r.label || (p.label && p.label !== p.name ? p.label : humanize(p.name))}</b> <code>${p.name}</code> <span class="muted">${p.group}</span>${changed ? html` <span class="badge-mini">edited</span>` : null}</button>
+              <b>${r.label || humanize(p.name)}</b> <code>${p.name}</code> <span class="muted">${r.group}</span>${changed ? html` <span class="badge-mini">edited</span>` : null}</button>
+            ${changed ? html`<button type="button" class="link-btn small" data-fe-reset=${p.name} title="Put back what the model's file has"
+              onClick=${() => setState({ ...state, rows: { ...rows, [p.name]: readRow(p) } })}>Put back</button>` : null}
           </div>
           ${isOpen ? html`<div class="fe-body">
-            <label><span>Label</span>${input(p.name, "label", { placeholder: p.label || p.name })}</label>
-            <label><span>Help</span>${input(p.name, "description", { placeholder: p.description || "" })}</label>
-            <label><span>Section</span>${input(p.name, "group", { placeholder: p.group })}</label>
-            <label><span>Default</span>${input(p.name, "default", { placeholder: JSON.stringify(p.default) })}</label>
+            <label><span>Label</span>${input(p.name, "label")}</label>
+            <label><span>Help</span>${input(p.name, "description")}</label>
+            <label><span>Section</span>${input(p.name, "group")}</label>
+            <label><span>Default</span>${input(p.name, "default")}</label>
             ${p.type === "number" || p.widget === "slider" || Array.isArray(p.default) ? html`<div class="fe-three">
-              <label><span>Min</span>${input(p.name, "min", { placeholder: p.min ?? "" })}</label>
-              <label><span>Max</span>${input(p.name, "max", { placeholder: p.max ?? "" })}</label>
-              <label><span>Step</span>${input(p.name, "step", { placeholder: p.step ?? "" })}</label></div>` : null}
-            ${Array.isArray(p.default) ? html`<label><span>Box names</span>${input(p.name, "axes", { placeholder: (p.axes || ["X", "Y", "Z"]).join(", ") })}</label>` : null}
-            <label><span>Choices</span><textarea rows="3" value=${r.choices} onInput=${(e) => set(p.name, "choices", e.target.value)} data-form=${`${p.name}.choices`}
-              placeholder=${p.options ? p.options.map((o) => `${JSON.stringify(o.value)} = ${o.label}`).join("\n") : "one per line: value = label"}></textarea></label>
-            <label><span>Show when</span>${input(p.name, "when", { placeholder: p.show_if || "e.g. style == \"round\"", class: "expr" })}</label>
+              <label><span>Min</span>${input(p.name, "min")}</label>
+              <label><span>Max</span>${input(p.name, "max")}</label>
+              <label><span>Step</span>${input(p.name, "step")}</label></div>` : null}
+            ${Array.isArray(p.default) ? html`<label><span>Box names</span>${input(p.name, "axes")}</label>` : null}
+            <label><span>Choices <small class="muted">one per line: value = label</small></span><textarea rows="3" value=${r.choices}
+              onInput=${(e) => set(p.name, "choices", e.target.value)} data-form=${`${p.name}.choices`}></textarea></label>
+            <label><span>Show when <small class="muted">such as style == "round"</small></span>${input(p.name, "when", { class: "expr" })}</label>
             <label><span>Printer profile</span><select value=${r.profile} onChange=${(e) => set(p.name, "profile", e.target.value)} data-form=${`${p.name}.profile`}>
               ${PROFILE.map(([v, l]) => html`<option value=${v} selected=${v === r.profile}>${l}</option>`)}</select></label>
           </div>` : null}

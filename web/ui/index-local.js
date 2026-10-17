@@ -70,6 +70,8 @@ export class LocalIndex {
     const label = (id) => categoryLabel(catalog, id);
     const srcName = Object.fromEntries((catalog.sources || []).map((s) => [s.id, s.name]));
     const names = (list) => (list || []).map((a) => a.name || a);
+    // your notes on a model and on its project (0.4.23) are searched with its summary
+    const srcNotes = Object.fromEntries((catalog.sources || []).map((s) => [s.id, s.meta?.my_notes || ""]));
     this.items = [];
     // projectId/project: where the item is listed (the user can move it to another project);
     // sourceId: the project its files and credits come from (where edits are stored)
@@ -85,6 +87,7 @@ export class LocalIndex {
         updated: m.updated || null, updatedFrom: m.updated_from || null,
         folder: m.folder || "", fields: m.fields || {}, hidden: m.hidden || null, broken: m.broken || null,
         check: m.check || null, filesId: m.files_id || null,
+        notes: `${m.my_notes || ""} ${srcNotes[m.source_id] || ""}`.trim(),
       });
     }
     // components: library modules; their "project" is the library, their category a topic group
@@ -123,7 +126,7 @@ export class LocalIndex {
     // search fields per item, weighted: name 6, project/tags 3, category 2, summary/authors 1, settings 1
     this.fields = this.items.map((i) => [
       [words(`${i.name} ${(i.module || "").replace(/_/g, " ")}`), 6], [words(i.project), 3], [words(i.tags.join(" ")), 3],
-      [words(`${i.categoryLabel} ${i.subcategory || ""}`), 2], [words(`${i.summary} ${i.authors.join(" ")}`), 1],
+      [words(`${i.categoryLabel} ${i.subcategory || ""}`), 2], [words(`${i.summary} ${i.authors.join(" ")} ${i.notes || ""}`), 1],
       [words(`${i.terms} ${Object.values(i.fields).join(" ")}`), 1],
     ]);
     /** Names of the open metadata fields any item has ("material", ...), for filters and columns. */

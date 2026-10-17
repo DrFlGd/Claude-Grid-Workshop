@@ -926,6 +926,22 @@ impl App {
                     "folder_rel": lib.version_dir(&src, src["version"].as_str().unwrap_or("")).ok().and_then(|p| folder_rel(&lib, id, &src, &p)),
                 }))
             }
+            // { source, rel?, examples? }: where a project's file is on disk, for Show in folder (0.4.23); the
+            // project's folder when the file isn't there
+            "reveal_path" => {
+                let id = arg(&args, "source").map_err(e2s)?;
+                let lib = self.library()?;
+                let src = lib.source(id).map_err(e2s)?;
+                let c = self.catalog()?;
+                let root = match c.derived.get(id) {
+                    // a part made from a folder of examples
+                    _ if args["examples"] == true => lib.source_dir(id).map_err(e2s)?.join("examples"),
+                    Some((_, dir)) => dir.clone(),
+                    None => lib.version_dir(&src, src["version"].as_str().unwrap_or("")).map_err(e2s)?,
+                };
+                let file = args["rel"].as_str().filter(|r| !r.is_empty()).and_then(|r| library::rel_inside(r).ok()).map(|r| root.join(r));
+                j(json!(file.filter(|f| f.exists()).unwrap_or(root).display().to_string()))
+            }
             // { data, name }: what a 3D file holds: objects and colours (0.4.19, naming a 3MF download)
             "mesh_info" => {
                 let data = decode_data_url(arg(&args, "data").map_err(e2s)?).map_err(e2s)?;

@@ -300,6 +300,10 @@ pub fn build(lib: &Library, engine: &str, common_files: &Value, url: &str, libs:
             if let Some(a) = vals.get("authors") {
                 summary.insert("authors".into(), a.clone());
             }
+            // your notes on it are searched too (0.4.23)
+            if let Some(n) = vals.get("my_notes") {
+                summary.insert("my_notes".into(), n.clone());
+            }
             flags(&mut summary, &vals, &from, &id, &mut attention, json!({ "model": key }));
             for p in detail["parameters"].as_array().into_iter().flatten() {
                 if let Some(profile) = p["profile"].as_str() {

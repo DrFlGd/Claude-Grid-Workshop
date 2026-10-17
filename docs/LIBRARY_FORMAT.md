@@ -53,7 +53,7 @@ Your own projects (`kind: "local"`) are read from `local/<name>/` and have no `f
 
 ### `metadata.json` (format 1)
 
-`project` (the project's own fields), `folders` (by path), `items` (models, by id), `parts` (by id): each a set of fields (`name`, `category`, `summary`, `tags`, `license`, `authors`, `form`, `hidden`, `fields`…); `merged.keep` (projects merged into it); `apart` (groups of files kept as separate parts); `examples` (`folder`, `as`). Your values here win over what was detected.
+`project` (the project's own fields), `folders` (by path), `items` (models, by id), `parts` (by id): each a set of fields (`name`, `category`, `summary`, `tags`, `license`, `authors`, `form`, `hidden`, `notes` (the author's, as About this model), `my_notes` (your own, 0.4.23), `fields`…); `merged.keep` (projects merged into it); `apart` (groups of files kept as separate parts); `examples` (`folder`, `as`). Your values here win over what was detected.
 
 ## Recipes: saved settings and made parts (format 1)
 

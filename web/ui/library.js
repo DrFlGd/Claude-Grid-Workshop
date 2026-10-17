@@ -91,14 +91,13 @@ export function AddProject() {
   const ref = tab === "github" ? (url.match(/github\.com\/[^/]+\/[^/]+\/(?:(?:tree|blob|commit)|releases\/tag)\/([^/?#]+)/) || [])[1] : null;
   const versionLike = !!ref && /^v?\d+(\.\d+)+/i.test(ref);
   const [followPick, setFollow] = useState(null);
-  const [picked, setPicked] = useState(null);
   const follow = followPick || (versionLike || /\/releases\/tag\//.test(url) ? "releases" : "branch");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const close = () => ui.set({ dialog: null });
   const pick = async () => {
     const lib = ctx.platform.library;
-    const p = tab === "zip" ? await lib.pickFile("Choose a ZIP file", ["zip"]) : await lib.pickFolder("Choose a project folder");
+    const p = tab === "zip" ? await lib.pickFile("Choose a ZIP file or a .scad file", ["zip", "scad"]) : await lib.pickFolder("Choose a project folder");
     if (p) setPath(p);
   };
   const submit = async (e) => {
@@ -106,7 +105,11 @@ export function AddProject() {
     setError("");
     // the field itself, not state: a link pasted and submitted at once may not have re-rendered yet
     const url = e.currentTarget.querySelector("#add-url")?.value ?? "";
-    const args = tab === "github" ? { kind: "github", url, ...(ref ? { follow } : {}) } : tab === "zip" ? { kind: "zip", path } : { kind: "folder", path, link };
+    // one .scad file is a project of its own, copied in as dropped files are (2026-10-16)
+    const scad = tab === "zip" && /\.scad$/i.test(path);
+    const args = tab === "github" ? { kind: "github", url, ...(ref ? { follow } : {}) }
+      : scad ? { kind: "files", paths: [path], name: path.split(/[\\/]/).pop().replace(/\.scad$/i, "") }
+      : tab === "zip" ? { kind: "zip", path } : { kind: "folder", path, link };
     if (asLibrary) args.role = "library";
     if (tab === "github" ? !url.trim() : !path) { setError(tab === "github" ? "Paste a GitHub link first." : "Choose a file or folder first."); return; }
     setBusy(true);
@@ -115,25 +118,20 @@ export function AddProject() {
     await addProject(args, label);
     setBusy(false);
   };
-  const suggested = tab === "github" ? (ctx.catalog?.suggested || []).filter((p) => !p.added) : [];
   const tabBtn = (id, label) => html`<button type="button" role="tab" aria-selected=${tab === id ? "true" : "false"} class=${`seg-btn${tab === id ? " on" : ""}`}
     onClick=${() => { setTab(id); setPath(""); setError(""); }} data-add-tab=${id}>${label}</button>`;
   return html`<form class="dialog add-project" onSubmit=${submit} aria-label="Add a project">
     <div class="dialog-head"><h2>Add a project</h2><button type="button" class="ghost" aria-label="Close" onClick=${close}>${Icon.close(16)}</button></div>
-    <div class="seg tabs-seg" role="tablist">${tabBtn("github", "GitHub link")}${tabBtn("zip", "ZIP file")}${tabBtn("folder", "Folder")}</div>
+    <div class="seg tabs-seg" role="tablist">${tabBtn("github", "GitHub link")}${tabBtn("zip", "File")}${tabBtn("folder", "Folder")}</div>
     ${tab === "github" ? html`<label class="field-block"><span>Repository link</span>
         <input type="url" id="add-url" value=${url} onInput=${(e) => setUrl(e.target.value)} placeholder="https://github.com/owner/repository" autofocus />
         <small class="muted">A branch, tag, release or commit (/tree/…, /releases/tag/…, /commit/…) and a subfolder work too. The app downloads that version as plain files (no git needed) and checks for updates later.</small></label>
-      ${suggested.length ? html`<div class="field-block add-suggested" id="add-suggested"><span>Suggested</span>
-        <div class="chips">${suggested.map((p) => html`<button type="button" class="chip" title=${`${p.summary} ${suggestionFacts(p)}`} data-suggested=${p.name}
-          onClick=${() => { setUrl(p.url); setFollow(null); setPicked(p); }}>${p.name}</button>`)}</div>
-        ${picked && url === picked.url ? html`<small class="muted" id="add-suggested-facts">${picked.summary} ${suggestionFacts(picked)}</small>` : null}</div>` : null}
       ${ref ? html`<fieldset class="field-block add-follow" id="add-follow"><legend>Updates</legend>
         <label class="check"><input type="radio" name="follow" value="releases" checked=${follow === "releases"} onChange=${() => setFollow("releases")} />
           Newer releases: stay on ${ref.length > 20 ? "this version" : ref} until a newer release comes out</label>
         <label class="check"><input type="radio" name="follow" value="branch" checked=${follow === "branch"} onChange=${() => setFollow("branch")} />
           Every change to the project, as its branch moves on</label></fieldset>` : null}`
-      : html`<div class="field-block"><span>${tab === "zip" ? "ZIP file" : "Folder"}</span>
+      : html`<div class="field-block"><span>${tab === "zip" ? "A ZIP file, or one .scad file" : "Folder"}</span>
         <div class="pick-row"><code class="pick-path" id="add-path" title=${path || null}>${path || "Nothing chosen"}</code><button type="button" class="ghost" onClick=${pick} id="add-pick">Choose…</button></div>
         ${tab === "folder" ? html`<label class="check"><input type="checkbox" checked=${link} onChange=${(e) => setLink(e.target.checked)} id="add-link" />
           Link instead of copying (for a project you're still editing; it won't move with the library)</label>` : null}</div>`}
@@ -323,7 +321,7 @@ export function SourcePanel({ id }) {
   const origin = src.origin || {};
   const url = origin.url || src.meta?.origin;
   const problems = src.problems || [];
-  const tabs = [["items", "Items"], ["about", "About"], ["files", "Files"], ...(made ? [] : [["versions", "Versions"]])];
+  const tabs = [["items", "Items"], ["about", "About"], ["notes", "Notes"], ["files", "Files"], ...(made ? [] : [["versions", "Versions"]])];
   // one main action beside the project's name (Check for updates, or Read again); the rest under ⋯ (Review 1, UI-3)
   const reread = html`<button type="button" class=${src.kind === "github" ? "" : "ghost"} disabled=${!!busy || ro} data-act="reread" onClick=${() => act("read", async () => {
     await runJob(api("source_read", { id }), `Reading ${src.name}`);
@@ -357,7 +355,7 @@ export function SourcePanel({ id }) {
           ${src.kind === "github" ? reread : null}
           <button type="button" disabled=${ro} onClick=${() => hideProject(id, !src.hidden)} data-act="hide-project"
             title=${src.hidden ? "List it again" : "Keep it and everything in it out of browsing and search"}>${src.hidden ? "Unhide" : "Hide"}</button>
-          <button type="button" onClick=${() => api("source_get", { id }).then((i) => i.folder && ctx.platform.library.openPath(i.folder))}>Open its folder</button>
+          <button type="button" data-act="reveal" title="Open the project's files in the system's file manager" onClick=${() => api("source_get", { id }).then((i) => i.folder && ctx.platform.library.openPath(i.folder))}>Show in folder</button>
           ${src.kind === "local" || src.kind === "linked" ? html`<button type="button" disabled=${ro} data-act="save-project-file"
             title="Write this project's description (its models, names and forms, with your edits) into its folder as workshop.json, so it goes with the files"
             onClick=${() => act("save-file", async () => {
@@ -395,6 +393,7 @@ export function SourcePanel({ id }) {
       <p class="muted">The project's README and other documents open beside the page (the tabs on the right).</p>
       <div class="button-row source-docs"><${SideButtons} refObj=${{ source: id }} small=${false} /></div>
       ${info?.license_text ? html`<details><summary>License text</summary><pre class="license-text">${info.license_text}</pre></details>` : null}</div>` : null}
+    ${tab === "notes" ? html`<${ProjectNotes} src=${src} ro=${ro} />` : null}
     ${tab === "files" ? html`<div class="file-list">${!info ? html`<p class="muted">Loading…</p>` : html`
       <p class="muted">${plural(info.files.length, "file")}${info.files.length >= 2000 ? " (first 2000)" : ""} in <code>${info.folder}</code>. OpenSCAD files open in the Code tab on the right.</p>
       <ul>${info.files.map(([p, n]) => html`<li>${/\.scad$/i.test(p) && info.folder_rel != null
@@ -410,6 +409,26 @@ export function SourcePanel({ id }) {
         setTab("versions"); await ctx.reloadCatalog();
       })}>Remove versions not in use</button>` : null}`}</div>` : null}
   </section>`;
+}
+
+/** Your own notes on a project (0.4.23): free text in its metadata.json (my_notes), saved when you click away. */
+function ProjectNotes({ src, ro }) {
+  const saved = src.meta?.my_notes || "";
+  const [text, setText] = useState(saved);
+  useEffect(() => setText(saved), [src.id, saved]);
+  const save = async () => {
+    if (text === saved) return;
+    try {
+      await api("meta_set", { source: src.id, level: "project", patch: { my_notes: text.trim() ? text : null } });
+      await ctx.reloadCatalog();
+      ctx.toast(text.trim() ? "Notes saved." : "Notes removed.");
+    } catch (e) { ctx.toast(String(e.message || e)); }
+  };
+  return html`<div class="own-notes" id="project-notes">
+    <p class="muted">Your notes on this project: what you printed, settings that worked, what to change next time. They're kept with the project in the library, and search finds its models by them. Saved when you click away.</p>
+    <textarea id="project-notes-text" rows="12" aria-label="Your notes" value=${text} disabled=${ro}
+      onInput=${(e) => setText(e.target.value)} onBlur=${save}></textarea>
+  </div>`;
 }
 
 /** What a model site's page said (a Printables download's PDF, 0.4.16): who made it, when, and its description. */
@@ -469,6 +488,22 @@ async function drawThumb(url) {
   v.resize();
   v.renderer.render(v.scene, v.camera);
   return v.renderer.domElement.toDataURL("image/webp", 0.86);
+}
+
+/** A 2D model's drawing (an SVG) on white, fitted into a thumbnail's 480×360, as WebP (0.4.23). */
+async function drawingThumb(url) {
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  const c = document.createElement("canvas");
+  c.width = 480; c.height = 360;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff";
+  g.fillRect(0, 0, c.width, c.height);
+  const k = Math.min((c.width - 40) / (img.naturalWidth || 1), (c.height - 40) / (img.naturalHeight || 1));
+  const w = img.naturalWidth * k, h = img.naturalHeight * k;
+  g.drawImage(img, (c.width - w) / 2, (c.height - h) / 2, w, h);
+  return c.toDataURL("image/webp", 0.86);
 }
 
 /** A picture (PNG) fitted into a thumbnail's 480×360, as WebP. */
@@ -554,13 +589,15 @@ export async function makeThumbnails({ components = false, source = null, unchec
       done.update(`${checking ? "Checking defaults" : "Making thumbnails"} · ${n + 1} of ${todo.length}`);
       if (!ctx.index.get(it.id)) continue; // deleted meanwhile
       try {
-        let blob;
+        let blob, flat = false;
         if (it.kind === "generator") {
           const { detail, values } = await ctx.loadModel(it.key);
           const t0 = performance.now();
           const check = (ok, message) => api("defaults_put", { source: it.sourceId, model: it.key.split("/")[1], ok, message, seconds: (performance.now() - t0) / 1000 }).catch(() => {});
           try {
-            blob = (await ctx.engine.render(detail, values, () => {}).promise).blob;
+            const r = await ctx.engine.render(detail, values, () => {}).promise;
+            blob = r.blob;
+            flat = r.format === "svg"; // a 2D model: its drawing (0.4.23)
           } catch (e) {
             failed++;
             await check(false, renderMessage(e));
@@ -584,7 +621,7 @@ export async function makeThumbnails({ components = false, source = null, unchec
         }
         const url = URL.createObjectURL(blob);
         let data;
-        try { data = await drawThumb(url); } finally { URL.revokeObjectURL(url); }
+        try { data = flat ? await drawingThumb(url) : await drawThumb(url); } finally { URL.revokeObjectURL(url); }
         const name = it.kind === "generator" ? it.key.split("/")[1] : `part-${it.key.split("/")[1]}`;
         await api("thumb_put", { source: it.sourceId || it.projectId, name, data });
         made++;
@@ -613,7 +650,9 @@ async function makeExampleParts() {
       done.update(`Making parts from examples · ${n + 1} of ${todo.length}`);
       try {
         const { detail, values } = await ctx.loadModel(ex.key);
-        const blob = (await ctx.engine.render(detail, values, () => {}).promise).blob;
+        const r = await ctx.engine.render(detail, values, () => {}).promise;
+        if (r.format === "svg") throw new Error("a 2D example: not a part");
+        const blob = r.blob;
         const data = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(r.error); r.readAsDataURL(blob); });
         await api("example_put", { source: ex.source, model: ex.model, data });
         made++;

@@ -75,6 +75,11 @@ function showView(name) {
   if (name === "library" && stage.parentElement.id !== "view-library") $("#view-library").append(stage);
   if ((name === "model" || name === "library") && !state.viewer) {
     state.viewer = new Viewer($("#viewer"), { coverFrom: ".side-panel" });
+    // a solid shown, or nothing: a 2D model's drawing goes (0.4.23)
+    for (const m of ["clear", "load"]) {
+      const f = state.viewer[m].bind(state.viewer);
+      state.viewer[m] = (...a) => { showDrawing(null); return f(...a); };
+    }
     window.addEventListener("gw-side-over", () => requestAnimationFrame(() => state.viewer.resize()));
     state.viewer.setColor(savedColor);
     state.viewer.setTheme(isDark());
@@ -232,6 +237,7 @@ function renderModelHeader(detail) {
   if (detail.pinned_from) credit.push(["Pinned from ", link(`#/m/${detail.pinned_from}`, "its component", false)]);
   $("#model-credit").replaceChildren(...credit.flatMap((part, i) => [i ? " · " : "", ...part]).filter((x) => x !== ""));
   renderModelExtra(detail);
+  renderOwnNotes(detail);
   // author notes fold away; their conditional warnings stay visible above the form
   const notesNodes = detail.description_html ? safeHTML(detail.description_html) : [];
   const holder = document.createElement("div");
@@ -295,6 +301,18 @@ function renderModelExtra(detail) {
     own.append(btn("edit-form", "Edit form…", "Rename settings, add help, choices and conditions, hide settings (saved with this item in the library)", () =>
       ui.set({ dialog: { type: "form", key: detail.key } }), ro));
   }
+  // Show in folder: the model's .scad file where it is on disk (0.4.23)
+  if (it && it.sourceId && detail.kind !== "component" && !detail.pinned_from) {
+    own.append(btn("model-notes-open", "Your notes", "Write your own notes on this model (kept in the library)", () => {
+      const box = $("#model-own-notes");
+      box.hidden = false;
+      box.open = true;
+      $("#model-own-notes-text").focus();
+    }));
+  }
+  if (detail.source_id && detail.entry) {
+    own.append(btn("model-reveal", "Show in folder", "Show the model's .scad file in its folder", () => revealFile({ source: detail.source_id, rel: detail.entry })));
+  }
   if (detail.kind === "component") {
     own.append(btn("copy-code", "Copy code", "Copy the OpenSCAD code for these settings (includes the library, calls the module)", copyComponentCode),
       btn("pin-component", "Pin as a model…", "Keep this component under Parametric Models, with these settings as its defaults", () =>
@@ -302,6 +320,31 @@ function renderModelExtra(detail) {
   }
   if (own.childNodes.length) own.append(el("hr"));
 }
+// your own notes on a model (0.4.23): in its metadata (my_notes), saved when the box loses focus; shown open
+// when there are some, else from ⋯ › Your notes
+function renderOwnNotes(detail) {
+  const box = $("#model-own-notes"), text = $("#model-own-notes-text");
+  const it = state.index?.get(`gen:${detail.key}`);
+  const can = platform.kind === "desktop" && !!it?.sourceId && detail.kind !== "component" && !detail.pinned_from;
+  const saved = detail.meta?.my_notes || "";
+  if (box.dataset.key !== detail.key) {
+    box.dataset.key = detail.key;
+    box.open = !!saved;
+  }
+  box.hidden = !can || (!saved && !box.open);
+  if (document.activeElement !== text) text.value = saved;
+  text.disabled = !!state.catalog?.library?.read_only;
+  text.onchange = async () => {
+    const v = text.value;
+    try {
+      await platform.api("meta_set", { source: it.sourceId, level: "item", target: detail.id, patch: { my_notes: v.trim() ? v : null } });
+      await reloadCatalog();
+      toast(v.trim() ? "Notes saved." : "Notes removed.");
+    } catch (e) { toast(String(e.message || e)); }
+  };
+}
+$("#model-own-notes").addEventListener("toggle", (e) => { if (!e.target.open && !$("#model-own-notes-text").value.trim()) e.target.hidden = true; });
+
 // ⋯ closes once something in it is chosen; About this model opens the author's notes above the form
 $("#model-more").addEventListener("click", (e) => { if (e.target.closest(".menu-panel button")) $("#model-more").open = false; });
 $("#model-about").addEventListener("click", () => {
@@ -311,6 +354,11 @@ $("#model-about").addEventListener("click", () => {
   notes.scrollIntoView({ block: "nearest" });
 });
 $("#model-notes").addEventListener("toggle", (e) => { if (!e.target.open) e.target.hidden = true; });
+
+// a project's file (or the project's folder when the file isn't there) in the system's file manager
+function revealFile(args) {
+  platform.api("reveal_path", args).then((p) => platform.reveal(p)).catch((e) => toast(String(e.message || e)));
+}
 
 async function copyComponentCode() {
   try {
@@ -1020,7 +1068,10 @@ async function applyDownloadFormat() {
   const a = $("#download"), sel = $("#download-format");
   const desktop = platform.kind === "desktop";
   sel.hidden = !desktop;
-  const fmt = desktop && state.model ? pickFormat(state.model.key, ["stl", "3mf"]) : "stl";
+  // a 2D model downloads its drawing as SVG or DXF (0.4.23)
+  const formats = isFlat() ? ["svg", "dxf"] : ["stl", "3mf"];
+  if ([...sel.options].map((o) => o.value).join() !== formats.join()) sel.replaceChildren(...formats.map((f) => el("option", { value: f, text: FORMAT_LABEL[f] })));
+  const fmt = desktop && state.model ? pickFormat(state.model.key, formats) : formats[0];
   sel.value = fmt;
   state.downloadFormat = fmt;
   const job = ++formatJob;
@@ -1028,8 +1079,21 @@ async function applyDownloadFormat() {
   let blob = last?.blob || null, name = last?.name || "model.stl";
   // OpenSCAD's own 3MF, made at the same settings: each object apart and its colours kept (0.4.19). Made
   // for a 3MF download, and after the preview of a model that calls color(), to show its colours (UI-39)
-  const wantOwn = !!blob && (fmt === "3mf" || (state.usesColour && state.usesColour === state.model?.key));
+  const wantOwn = !!blob && !isFlat() && (fmt === "3mf" || (state.usesColour && state.usesColour === state.model?.key));
   let own = null, info = null;
+  if (blob && fmt === "dxf") {
+    // the same drawing as DXF, made by OpenSCAD at the same settings
+    try {
+      a.classList.add("is-disabled");
+      a.textContent = "Making the DXF…";
+      const m = state.model;
+      blob = (await state.engine.render({ ...forRender(m), format: "dxf", browser: false }, renderValues(m, state.lastResultValues)).promise).blob;
+    } catch (e) {
+      toast(`Couldn't make the DXF: ${e?.message || e}`);
+      blob = null;
+    }
+  }
+  name = name.replace(/\.(stl|svg)$/i, `.${isFlat() ? fmt : "stl"}`);
   if (blob && fmt === "3mf") {
     try {
       // (the WebAssembly engine, or the code edited since: the app writes one from the render)
@@ -1202,6 +1266,7 @@ async function writePart(opts) {
   const m = state.model;
   let blob = state.lastResult?.blob;
   if (!m || !blob) return;
+  if (isFlat()) { setStatus("error", "A 2D model's drawing can't be kept in the Parts Library yet: download it as SVG or DXF."); return; }
   try {
     setStatus("busy", "Saving the part…");
     // in the format chosen beside Download, or the one it was made in (Make again); a 3MF from OpenSCAD
@@ -1342,15 +1407,25 @@ function cancelJob() {
 async function showResult(result, values, restoring = false, ek = state.renderedEdits || "") {
   document.body.dataset.engine = result.engine || ""; // which engine made it (desktop on Windows races two)
   try {
-    const url = URL.createObjectURL(result.blob);
     state.viewColoured = false; // (the render itself: a 3MF's colours are shown again once it's made)
     fileColoursAvailable(false);
-    const dims = await state.viewer.load(url);
-    URL.revokeObjectURL(url);
+    let dims;
+    if (result.format === "svg") {
+      state.viewer.clear();
+      dims = await showDrawing(result.blob);
+    } else {
+      const url = URL.createObjectURL(result.blob);
+      dims = await state.viewer.load(url);
+      URL.revokeObjectURL(url);
+    }
     state.rendered = JSON.stringify(values);
     state.renderedEdits = ek; // the code edits it was made with
     state.lastResult = result;
     state.lastResultValues = values;
+    // (a 2D model's drawing isn't a part: no file in the Parts Library takes it yet)
+    $("#save-part").disabled = isFlat();
+    $("#save-part").title = isFlat() ? "A 2D drawing can't be kept in the Parts Library yet: download it as SVG or DXF"
+      : "Keep what you made in the Parts Library, with how it was made";
     showDims(dims, result.blob.size);
     setDownload(result.blob, friendlyName(state.model, values));
     if (!restoring) {
@@ -1369,6 +1444,29 @@ async function showResult(result, values, restoring = false, ek = state.rendered
   }
 }
 
+/** A 2D model's drawing (0.4.23): its SVG in place of the 3D view, or none. Resolves to its size in mm. */
+async function showDrawing(blob) {
+  const img = $("#stage-drawing");
+  if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+  delete img.dataset.url;
+  img.hidden = !blob;
+  $(".stage").classList.toggle("flat", !!blob);
+  if (!blob) { img.removeAttribute("src"); return null; }
+  img.dataset.url = URL.createObjectURL(blob);
+  img.src = img.dataset.url;
+  // its size from the outlines' points (OpenSCAD's own width and height are rounded out to whole mm)
+  const svg = new DOMParser().parseFromString(await blob.text(), "image/svg+xml");
+  const xs = [], ys = [];
+  for (const p of svg.querySelectorAll("path")) {
+    for (const [, x, y] of (p.getAttribute("d") || "").matchAll(/(-?[\d.]+(?:e-?\d+)?)[ ,](-?[\d.]+(?:e-?\d+)?)/gi)) { xs.push(+x); ys.push(+y); }
+  }
+  const span = (v) => (v.length ? Math.max(...v) - Math.min(...v) : 0);
+  return { flat: true, x: span(xs), y: span(ys) };
+}
+
+/** The open model's last render is a drawing (a 2D model). */
+const isFlat = () => state.lastResult?.format === "svg";
+
 function showOverlay(text) {
   $("#stage-overlay").hidden = !text;
   if (text) $("#overlay-text").textContent = text;
@@ -1376,6 +1474,12 @@ function showOverlay(text) {
 
 function showDims(d, size) {
   const box = $("#dims");
+  if (d.flat) {
+    box.replaceChildren(el("span", { class: "mm", text: `${fmt(d.x)} × ${fmt(d.y)} mm` }),
+      el("span", { class: "meta", text: `2D drawing${size ? `, ${bytes(size)}` : ""}` }));
+    box.hidden = false;
+    return;
+  }
   const grid = state.viewerOwner === "model" && GRID_CATEGORIES.has(state.model?.category);
   const units = (v) => fmt(Math.round(v / 42 * 2) / 2);
   const gridText = `About ${units(d.x)} × ${units(d.y)} grid units` + (d.z >= 7 ? `, ${fmt(d.z / 7)} height units` : "");
@@ -1396,7 +1500,7 @@ $("#cancel").addEventListener("click", () => { cancelJob(); setStatus("stale", "
 
 // ---------------------------------------------------------------- batch
 const BATCH_MAX = 200;
-// what to make: combinations of settings (rows), or saved settings (Make several, milestone 4)
+// what to make: combinations of settings (rows), or saved settings (Batch generate, milestone 4)
 const batch = { rows: [], running: null, mode: "vary", picked: new Set() };
 const batchable = () => state.model.parameters.filter((p) => !p.hidden && !Array.isArray(p.default) &&
   ["number", "string", "boolean"].includes(p.type));
@@ -1437,7 +1541,7 @@ function batchCombos() {
 }
 
 /**
- * What Make several makes: { values, file, part } for each, with the whole form's values, a file
+ * What Batch generate makes: { values, file, part } for each, with the whole form's values, a file
  * name for the ZIP, and a name for the Parts Library ("Basic Bin 2×1": the model, its sizes, and
  * whatever else varies).
  */
@@ -1459,7 +1563,7 @@ function batchItems() {
   });
 }
 
-/** A saved setting with code edits: Make several uses the form's code, so it isn't offered. */
+/** A saved setting with code edits: Batch generate uses the form's code, so it isn't offered. */
 const hasCode = (r) => !!r.edits && Object.keys(r.edits).length > 0;
 
 function renderBatchSaved() {
@@ -1549,7 +1653,7 @@ $("#batch-open").addEventListener("click", () => {
   // saved settings as another way to choose (when there are any); the Parts Library as another way out (the app)
   $("#batch-mode").hidden = !saved.list.length;
   if (!saved.list.length) batch.mode = "vary";
-  $("#batch-keep").hidden = platform.kind !== "desktop" || !!state.catalog.library?.read_only;
+  $("#batch-keep").hidden = platform.kind !== "desktop" || !!state.catalog.library?.read_only || isFlat();
   renderBatchRows();
   renderBatchSaved();
   setBatchMode(batch.mode);
@@ -1569,7 +1673,7 @@ $("#batch").addEventListener("cancel", () => { if (batch.running) { batch.runnin
 $("#batch-run").addEventListener("click", () => runBatch(false));
 $("#batch-keep").addEventListener("click", () => runBatch(true));
 
-/** Make every part Make several lists, then download them as one ZIP or (keep) save each to the Parts Library. */
+/** Make every part Batch generate lists, then download them as one ZIP or (keep) save each to the Parts Library. */
 async function runBatch(keep) {
   const model = state.model;
   const combos = batchItems();
@@ -1588,8 +1692,11 @@ async function runBatch(keep) {
   const width = Math.max(1, Math.min(state.engine.concurrency || 1, combos.length));
   const results = new Array(combos.length);
   // 3MF chosen beside Download: each made as OpenSCAD's own 3MF, colours and objects kept (F-28)
-  const as3mf = partsAs3mf();
-  const ext = as3mf ? "3mf" : "stl";
+  // a 2D model: its drawings, in the format chosen beside Download (0.4.23)
+  const flat = isFlat() ? state.downloadFormat : null;
+  if (flat && keep) { text.textContent = "A 2D model's drawings can't be kept in the Parts Library yet: download them as a ZIP."; batch.running = null; return; }
+  const as3mf = !flat && partsAs3mf();
+  const ext = flat || (as3mf ? "3mf" : "stl");
   let next = 0, done = 0;
   const progress = () => {
     bar.style.width = `${(done / combos.length) * 100}%`;
@@ -1601,7 +1708,7 @@ async function runBatch(keep) {
       if (run.cancelled) throw Object.assign(new Error("Batch cancelled."), { cancelled: true });
       const i = next++;
       const { values } = combos[i];
-      const job = state.engine.render(as3mf ? { ...forRender(model), format: "3mf", browser: false } : forRender(model), renderValues(model, values));
+      const job = state.engine.render(as3mf || flat ? { ...forRender(model), format: ext, browser: false } : forRender(model), renderValues(model, values));
       run.jobs.add(job);
       try { results[i] = { values, result: await job.promise }; } finally { run.jobs.delete(job); }
       done++;
@@ -1609,7 +1716,7 @@ async function runBatch(keep) {
     }
   };
   // the preview shows the last one: made as an STL too when the parts are 3MFs
-  const previewOf = async (r) => as3mf ? { values: r.values, result: await state.engine.render(forRender(model), renderValues(model, r.values)).promise } : r;
+  const previewOf = async (r) => as3mf || flat === "dxf" ? { values: r.values, result: await state.engine.render(forRender(model), renderValues(model, r.values)).promise } : r;
   try {
     progress();
     await Promise.all(Array.from({ length: width }, worker));
@@ -1763,6 +1870,9 @@ async function showPart(lib, item) {
           } catch (e) { toast(String(e.message || e)); }
         } })));
   }
+  const reveal = $("#part-reveal");
+  reveal.hidden = platform.kind !== "desktop" || !item.files.length;
+  reveal.onclick = () => revealFile({ source: lib.source_id || lib.id, rel: item.files[0].path, examples: !!item.example });
   state.partEntry = { ref: `part:${lib.id}/${item.id}`, name: item.name };
   const dl = $("#part-downloads");
   const formats = item.files.map((f) => f.format);

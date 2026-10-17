@@ -64,4 +64,4 @@ export function compileCondition(expr, names) {
 
 export const STATUS_TEXT = { ok: "OK to share", review: "Check license", blocked: "License unclear" };
 export const spdx = (l) => (!l?.spdx || l.spdx === "NOASSERTION" ? "Not stated" : l.spdx);
-export const FORMAT_LABEL = { "3mf": "3MF", stl: "STL", step: "STEP", shapr: "Shapr3D", pdf: "PDF", obj: "OBJ" };
+export const FORMAT_LABEL = { "3mf": "3MF", stl: "STL", step: "STEP", shapr: "Shapr3D", pdf: "PDF", obj: "OBJ", svg: "SVG", dxf: "DXF" };

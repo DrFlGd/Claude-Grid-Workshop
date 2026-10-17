@@ -19,8 +19,9 @@ pub const INHERITED: [&str; 7] = ["summary", "category", "tags", "license", "aut
 /// doesn't work), "deleted" (left out of the library, also after updates) and
 /// "project" (listed under another project; credits stay with its own).
 /// "form" (an item's form changes, shaped like a family manifest's `ui`, `hidden`,
-/// `defaults`, `fixed` and `presets`; replaced as a whole).
-pub const OWN: [&str; 7] = ["name", "notes", "icon", "broken", "deleted", "project", "form"];
+/// `defaults`, `fixed` and `presets`; replaced as a whole). "my_notes": your own notes on a
+/// project or model (0.4.23; "notes" is the author's, shown as About this model).
+pub const OWN: [&str; 8] = ["name", "notes", "icon", "broken", "deleted", "project", "form", "my_notes"];
 
 /// Every editable field (plus open "fields": { key: value }).
 pub fn is_field(k: &str) -> bool {

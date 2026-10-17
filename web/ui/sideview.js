@@ -506,15 +506,18 @@ export function SideView() {
     window.addEventListener("pointerup", up);
   };
   const title = detail ? detail.name : current.title;
+  // a model's page has its Code and README buttons in its header: the tabs along the edge show only
+  // while the panel is open, to switch between them (one Code button, 0.4.23)
+  const strip = open || !target.open;
   const tabIcon = (t) => (t.kind === "code" ? Icon.code(14) : t.kind === "pdf" ? Icon.file(14) : Icon.book(14));
-  return html`<aside class=${`sideview${open ? " open" : ""}`} style=${`--side-w:${width}px`} aria-label="Code and documents"
+  return html`<aside class=${`sideview${open ? " open" : ""}${strip ? "" : " bare"}`} style=${`--side-w:${width}px`} aria-label="Code and documents"
     onKeyDown=${(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); close(); } }}>
-    <div class="side-tabs" role="tablist" aria-orientation="vertical" aria-label="Show">
+    ${strip ? html`<div class="side-tabs" role="tablist" aria-orientation="vertical" aria-label="Show">
       ${tabs.map((t) => html`<button type="button" role="tab" class=${`side-tab${open && t.id === current.id ? " on" : ""}`} key=${t.id}
         aria-selected=${open && t.id === current.id ? "true" : "false"} data-side-tab=${t.id} data-kind=${t.kind}
         title=${open && t.id === current.id ? "Fold away" : `Show ${t.kind === "code" ? "the OpenSCAD code" : t.title}`} onClick=${() => toggle(t.id)}>
         ${tabIcon(t)}<span>${t.title}</span></button>`)}
-    </div>
+    </div>` : null}
     ${open ? html`<section class="side-panel" role="tabpanel" aria-label=${current.title} data-side-panel=${current.id}>
       <div class="side-resize" role="separator" aria-orientation="vertical" aria-label="Resize" title="Drag to resize" onPointerDown=${startResize}></div>
       <header class="side-head">

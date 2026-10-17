@@ -323,6 +323,9 @@ body.show-help .field .help { display: block; }
 .log { position: absolute; left: 16px; bottom: 16px; z-index: 2; max-width: min(640px, calc(100% - 200px)); background: var(--hud); border: 1px solid var(--steel-2); border-radius: var(--radius-m); }
 .log summary { cursor: pointer; padding: 8px 12px; font-size: 13px; font-weight: 600; }
 .log pre { margin: 0; padding: 0 12px 12px; max-height: 40vh; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+/* a 2D model's drawing in place of the 3D view (0.4.23) */
+.stage-drawing { position: absolute; top: 64px; left: 24px; z-index: 1; width: calc(100% - 48px - var(--side-over, 0px)); height: calc(100% - 128px); object-fit: contain; background: #fff; border: 1px solid var(--steel-2); border-radius: var(--radius-s); padding: 16px; box-sizing: border-box; }
+.stage.flat .hud-tools, .stage.flat .hud-filament, .stage.flat #file-colours-hud { display: none; }
 .stage-empty { position: absolute; inset: 0; z-index: 1; margin: 0; display: grid; place-content: center; padding: 40px; text-align: center; color: var(--graphite); font-size: 15px; pointer-events: none; }
 
 .noscript { padding: 40px; }
@@ -349,6 +352,10 @@ body.show-help .field .help { display: block; }
 .model-alerts .alert-warning { color: var(--warn-ink); background: var(--warn-bg); border-color: var(--warn-border); }
 .model-alerts .alert-danger { color: var(--danger); background: transparent; border-color: var(--danger); }
 .model-notes > br:first-child { display: none; }
+/* your own notes (0.4.23) */
+.own-notes textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 13.5px; line-height: 1.45; resize: vertical; padding: 8px 10px; border: 1px solid var(--steel); border-radius: var(--radius-s); background: var(--white); color: var(--ink); }
+#project-notes { display: grid; gap: 8px; max-width: 70ch; padding-top: 8px; }
+#model-own-notes .help { margin: 4px 0 0; }
 .about { max-width: 720px; display: grid; gap: 14px; }
 .about h1 { font-size: 34px; font-stretch: var(--head-stretch); font-weight: 800; }
 .about h2 { font-size: 18px; margin-top: 10px; }
@@ -972,6 +979,7 @@ textarea.grow { resize: none; overflow: hidden; line-height: 1.4; min-height: 0;
 :root[data-theme="night"] { --code-c: #7d7466; --code-s: #a8b878; --code-n: #d9a05b; --code-k: #d0a46c; --code-b: #b9a37a; --code-v: #9fb7a0; }
 .sideview-root { flex: none; position: relative; width: 34px; z-index: 40; }
 .sideview-root:empty { display: none; }
+.sideview-root:has(> .sideview.bare) { width: 0; }
 .sideview { position: absolute; top: 0; bottom: 0; right: 0; display: flex; }
 .sideview.open { box-shadow: -14px 0 32px rgba(10, 14, 18, .22); }
 .side-tabs { width: 34px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 0; background: var(--panel); border-left: 1px solid var(--steel-2); overflow-x: hidden; overflow-y: auto; }

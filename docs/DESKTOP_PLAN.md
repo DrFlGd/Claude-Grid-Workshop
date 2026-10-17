@@ -10,7 +10,7 @@ Status (2026-10-05):
 - **Phase 2 done:** the portable library, adding projects, update checks, metadata editing; see "Phase 2 notes" at the end.
 - **0.2.x (Phase 2 follow-ups):** numbered releases, the left menu by category (Parametric Models and Parts Library), Library settings, hide / delete / flag as broken, the trash; see "0.2 notes" at the end.
 - **Phase 3 done (0.3):** bundled libraries and their modules as **Components**, pinning, the form editor; see "Components" in section 2 and "0.3 notes" at the end.
-- **Next (owner, 2026-10-14):** five milestones and a review after each; see "Owner direction of 2026-10-14". Milestones 1 to 5 are done (0.4.4 to 0.4.19, Review 6's items in 0.4.20, the logo in 0.4.21, the library format in 0.4.22); next is reading settings reliably (owner, 2026-10-16), then milestone 6; future features of 2026-10-16 are listed under the library format.
+- **Next (owner, 2026-10-14):** five milestones and a review after each; see "Owner direction of 2026-10-14". Milestones 1 to 5 are done (0.4.4 to 0.4.19, Review 6's items in 0.4.20, the logo in 0.4.21, the library format in 0.4.22, the future features of 2026-10-16 in 0.4.23); next is reading settings reliably (owner, 2026-10-16), then milestone 6 without several libraries (backlog, owner 2026-10-17), then a UI review for overengineering.
 - **Phase 4 (0.4) started:** the side viewer (a model's code, a project's reference documents) in 0.4.0; see "Reference documents and the side viewer" in section 5. Next: importing ready-made models and Printables ZIPs, one item per file name, 3MF export, collections.
 
 ## Goal
@@ -625,6 +625,8 @@ Items 1, 2 and 9 of the requests of 2026-10-12 (pictures, your own content, seve
 - **One Code button:** on a model's page the Code button sits in the header beside README; the tab strip along the right edge of the 3D view doesn't repeat it. The code panel still opens on the right when asked for.
 - **Edit form shows the real values:** each field (Label, Help, Section, Default, Min, Max, Step, Choices, Show when) is filled in with what was read from the file, editable as text, rather than a greyed hint that vanishes when you start typing. Only a field you change is saved as an override; Reset puts back what was read.
 
+**Owner, 2026-10-17:** "go ahead with all of this and then do a UI review to make sure we haven't overengineered the UI … It's worth having a fallback if this new type of parsing yields errors." The order: the future features above (0.4.23), reading settings reliably (with today's reader kept as the fallback whenever the new reading errors), milestone 6, then a UI review looking for what's overengineered. The same day: "multiple libraries can be put in the back log for now", so milestone 6 is pictures and your own content; several libraries (section 9) waits in the backlog.
+
 ### Decisions later the same evening
 
 - **No starter projects in the build.** "We can stop including SCAD generators and models with the build, those were included as initial tests. The component libraries should still be included and I am open to other foundational generators or components you find to be relevant." The installer stops shipping the starter library; a new library has Components only. The website-era projects stay in the repository as test projects (CI builds a starter library for the tests) until smaller test projects replace them. Suggesting foundational projects to add (a list on Home, added from GitHub so they get update checks) belongs with milestone 3, once a project's models are checked at their defaults when it's added.
@@ -1186,3 +1188,15 @@ Built as planned, except:
 - A project not read yet (your own projects are read just after the library opens) has its items left out of "refers to nothing", so Check library run at once doesn't list them.
 - A made part's recipe from before 0.4.20 had no file type: the upgrade takes it from the part beside it.
 - Saved settings now record what made parts' recipes do (the model's name, its project, the files' fingerprint).
+
+### 0.4.23 notes (the future features of 2026-10-16)
+
+Built as listed under "Added 2026-10-16 (owner), future features", with these choices:
+
+- **Show in folder** is in a model's ⋯ menu (its .scad file), beside a part's Download (its file) and in a project's ⋯ menu (the project's folder; this replaces "Open its folder"). The core's `reveal_path` ({ source, rel, examples }) gives the file's place on disk, or the project's folder when the file isn't there.
+- **2D models:** a model whose render fails with OpenSCAD's "not a 3D object" is made again as SVG (`render.rs`: the request's `format` takes "svg" and "dxf", cached by its own key, and a 2D model's drawing is found in the cache next time). The page shows the drawing on a white sheet in place of the 3D view, with its size read from the outlines; the picker beside Download offers SVG and DXF (DXF made by OpenSCAD at the same settings); Batch generate downloads drawings in the chosen format. Thumbnails are the drawing; Check defaults counts a drawing as a pass. Not yet: keeping a drawing in the Parts Library (Save as part is off for drawings), since the Parts Library doesn't read SVG or DXF files as parts (every SVG in a project would become one).
+- **Notes:** "Your notes" on a model's page (from its ⋯ menu, shown open once there are some) and a Notes tab on a project's page, saved when you click away, kept in `metadata.json` as `my_notes` (the item's or the project's; "notes" was already the author's notes, shown as About this model, and is labelled so in Edit details now). Search finds a model by its notes and its project's.
+- **One Code button:** on a model's page the edge tabs show only while the side panel is open (to switch between Code and README); folded, the header's buttons are the way in. Other pages keep the edge tabs.
+- **Edit form:** each field is filled with what was read (the label falls back to the setting's name made readable), and Put back restores a field you changed.
+- **A single .scad file** chosen under Add a project › File becomes a project of its own, named after the file. The Suggested row is gone.
+- The library's README says Batch generate and lists `my_notes`.

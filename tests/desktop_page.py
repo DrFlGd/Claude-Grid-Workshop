@@ -345,6 +345,8 @@ async def main():
             await pg.click("#edit-form")
             await pg.wait_for_selector(".form-editor")
             await pg.click("[data-fe=teeth] .fe-name")
+            # (0.4.23) each field starts with what the file has, as text you can change
+            prefilled = await pg.evaluate("() => ['label', 'default', 'group'].map((k) => document.querySelector(`[data-form='teeth.${k}']`)?.value || '')")
             await pg.fill("[data-form='teeth.label']", "Tooth count")
             await pg.fill("[data-form='teeth.min']", "8")
             await pg.click("[data-fe=mate_teeth] .fe-name")
@@ -358,6 +360,8 @@ async def main():
             want = {"ui": {"teeth": {"label": "Tooth count", "min": 8}, "mate_teeth": {"display-condition": {"js": "teeth > 10"}}}, "hidden": ["spiral"]}
             spiral_gone = await pg.evaluate("() => !document.querySelector('[data-name=spiral]')")
             check("form edit stored as a manifest ui block, and applied", stored == want and spiral_gone, stored)
+            check("the form editor's fields start with the values read from the file, and only changed ones are kept",
+                  all(prefilled) and prefilled[1] != "" and stored == want, prefilled)
             # your BOSL2 or the app's: switch, projects that include it are read again, and back
             await pg.goto(B + "#/library-settings")
             await pg.click('#ls-libraries [data-library="BOSL2"][data-provider="bundled"] [data-act=prefer]')
@@ -955,6 +959,78 @@ async def main():
             check("a ZIP project and a project linked to a folder are kept like the others: where it came from, its version's files, workshop.json, checks and thumbnails",
                   shapes == {"zip": ["zip", True, True, True, 2], "linked": ["linked", True, True, True, 1]}
                   and "2 models" in added["zip"][1] and "1 model" in added["folder"][1], (shapes, added))
+            # (0.4.23) one .scad file, from Add a project › File, is a project of its own
+            one_scad = {}
+            try:
+                (outside / "Single Knob.scad").write_text("// Knob size\nsize = 18; // [10:1:40]\ncylinder(d=size, h=8, $fn=32);\n")
+                await pg.goto(B + "#/")
+                await pg.click("#add-project")
+                await pg.click("[data-add-tab=zip]")
+                urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(outside / "Single Knob.scad")}).encode(), method="POST"))
+                await pg.click("#add-pick")
+                await pg.wait_for_function("(p) => document.querySelector('#add-path')?.textContent === p", arg=str(outside / "Single Knob.scad"))
+                await pg.click("#add-go")
+                await pg.wait_for_function("() => location.hash.includes('/source/')", timeout=180000)
+                sid = (await pg.evaluate("location.hash")).split("/source/")[1]
+                sj = json.loads((library / f"sources/{sid}/source.json").read_text())
+                one_scad = {"kind": sj.get("kind"), "files": sorted(p.name for p in (library / f"sources/{sid}/files/{sj['version']}").iterdir()),
+                            "name": await pg.evaluate("(i) => window.__workshop.catalog.sources.find((s) => s.id === i)?.name", sid)}
+            except Exception as e:
+                print("one .scad:", e)
+            check("one .scad file added from Add a project is a project of its own", one_scad.get("kind") == "folder" and one_scad.get("files") == ["Single Knob.scad"]
+                  and one_scad.get("name") == "Single Knob", one_scad)
+            # (0.4.23) a model that makes a 2D shape shows its drawing and downloads it as SVG or DXF; your notes on a
+            # model and a project are kept in its metadata.json and found by search; Show in folder; one Code button
+            flat = {}
+            try:
+                (outside / "Sign Plate.scad").write_text("width = 80; // [20:200]\nheight = 30; // [10:100]\n"
+                    "difference() { square([width, height]); for (x = [6, width - 6]) translate([x, height / 2]) circle(d = 4, $fn = 32); }\n")
+                await pg.goto(B + "#/")
+                await pg.click("#add-project")
+                await pg.click("[data-add-tab=zip]")
+                urllib.request.urlopen(urllib.request.Request(B + "test/pick", data=json.dumps({"path": str(outside / "Sign Plate.scad")}).encode(), method="POST"))
+                await pg.click("#add-pick")
+                await pg.wait_for_function("(p) => document.querySelector('#add-path')?.textContent === p", arg=str(outside / "Sign Plate.scad"))
+                await pg.click("#add-go")
+                await pg.wait_for_function("() => location.hash.includes('/source/')", timeout=180000)
+                sid = (await pg.evaluate("location.hash")).split("/source/")[1]
+                await pg.goto(B + f"#/m/{sid}/sign-plate")
+                await pg.wait_for_function("() => /Preview matches/.test(document.querySelector('#status').textContent)", timeout=120000)
+                flat["drawing"] = await pg.is_visible("#stage-drawing")
+                flat["dims"] = await pg.inner_text("#dims .mm")
+                flat["formats"] = await pg.eval_on_selector_all("#download-format option", "o => o.map((x) => x.value)")
+                flat["edge_tabs"] = await pg.locator(".side-tab").count()
+                await pg.select_option("#download-format", "dxf")
+                await pg.wait_for_function("() => /\\.dxf$/.test(document.querySelector('#download').download) && !document.querySelector('#download').classList.contains('is-disabled')", timeout=60000)
+                flat["dxf"] = "SECTION" in await pg.evaluate("() => fetch(document.querySelector('#download').href).then((r) => r.text())")
+                await pg.select_option("#download-format", "svg")
+                await pg.click("#model-more summary")
+                flat["menu"] = await pg.eval_on_selector_all("#model-more-own button", "b => b.map((x) => x.id)")
+                await pg.click("#model-notes-open")
+                await pg.fill("#model-own-notes-text", "Cut from 3 mm birch ply")
+                await pg.click("#params")
+                await pg.wait_for_function("() => /notes saved/i.test(document.querySelector('#toast')?.textContent || '')", timeout=10000)
+                await pg.goto(B + f"#/browse/source/{sid}")
+                await pg.wait_for_selector(".source-panel")
+                await pg.click("[data-source-tab=notes]")
+                await pg.fill("#project-notes-text", "Fits the shed door")
+                await pg.click("[data-source-tab=items]")
+                await pg.wait_for_function("() => /notes saved/i.test(document.querySelector('#toast')?.textContent || '')", timeout=10000)
+                flat["meta"] = json.loads((library / f"sources/{sid}/metadata.json").read_text())
+                await pg.fill("#global-search", "birch")
+                await pg.wait_for_function("()=>/ms$/.test(document.querySelector('.browse-count')?.textContent || '')")
+                flat["found"] = await pg.eval_on_selector_all(".results [data-item]", "els=>els.map(e=>e.dataset.item)")
+                await pg.fill("#global-search", "")
+                flat["reveal"] = await pg.evaluate("(s) => window.__TAURI__.core.invoke('api', { cmd: 'reveal_path', args: { source: s, rel: 'Sign Plate.scad' } })", sid)
+            except Exception as e:
+                print("2D model:", e)
+            meta = flat.get("meta", {})
+            check("a 2D model shows its drawing and downloads SVG or DXF; your notes on a model and its project are kept and searched; Show in folder; Code only in the header",
+                  flat.get("drawing") and flat.get("dims") == "80 × 30 mm" and flat.get("formats") == ["svg", "dxf"] and flat.get("dxf")
+                  and flat.get("edge_tabs") == 0 and {"model-notes-open", "model-reveal"} <= set(flat.get("menu", []))
+                  and meta.get("items", {}).get("sign-plate", {}).get("my_notes") == "Cut from 3 mm birch ply"
+                  and meta.get("project", {}).get("my_notes") == "Fits the shed door"
+                  and any("sign-plate" in i for i in flat.get("found", [])) and str(flat.get("reveal", "")).endswith("Sign Plate.scad"), flat)
             await pg.goto(B + "#/settings")
             await pg.wait_for_selector("#ls-appearance")
             toc = await pg.eval_on_selector_all("#about-body .ls-toc a", "els => els.map((e) => e.textContent)")
@@ -1022,14 +1098,13 @@ async def main():
                   and all(v == ["github", "branch:", "description.json", True, True] for v in conv.values())
                   and edit_keys == ["/gridfinityBasket.scad"] and others == {"bundled"} and "mm" in dims, (conv, old_copy, edit_keys, others, dims, toast, unchecked[:120]))
 
-            # 13f. (0.4.9) suggested projects (catalog/suggested.json) under Add project, less the ones already
-            # in the library; adding one is the ordinary Add from GitHub, and its models are checked at their defaults
+            # 13f. (0.4.9) adding a project from GitHub reads it and checks its models at their defaults.
+            # (0.4.23) Add a project has no Suggested row (the owner's choice); Home keeps its list for an empty library
             await pg.goto(B + "#/")
             await pg.click("#add-project")
-            await pg.wait_for_selector("#add-suggested")
-            chips = await pg.eval_on_selector_all("#add-suggested [data-suggested]", "els => els.map((e) => e.dataset.suggested)")
-            await pg.click('#add-suggested [data-suggested="LEGO.scad"]')
-            facts = await pg.text_content("#add-suggested-facts")   # (0.4.10, UI-23) what adding it brings
+            await pg.wait_for_selector("#add-url")
+            chips = await pg.evaluate("() => document.querySelectorAll('#add-suggested, .add-project [data-suggested]').length")
+            await pg.fill("#add-url", "https://github.com/cfinke/LEGO.scad")
             await pg.click("#add-go")
             await pg.wait_for_function("() => location.hash.includes('/source/')", timeout=180000)
             lego = (await pg.evaluate("location.hash")).split("/source/")[1]
@@ -1045,9 +1120,8 @@ async def main():
                 await pg.wait_for_timeout(500)
             failing = {m: v.get("message", "")[:120] for m, v in lego_checks.items() if not v.get("ok")}
             print("LEGO.scad at its defaults:", len(lego_models), "models,", len(failing), "failing", failing)
-            check("suggested projects under Add project leave out the ones already added; adding one reads it and checks every model at its defaults",
-                  chips == ["LEGO.scad"] and "182 models" in facts and "License MIT" in facts
-                  and "lego" in lego_models and lego_checks.get("lego", {}).get("ok"), (chips, facts, len(lego_models), failing))
+            check("Add a project has no suggestions; adding from GitHub reads the project and checks every model at its defaults",
+                  chips == 0 and "lego" in lego_models and lego_checks.get("lego", {}).get("ok"), (chips, len(lego_models), failing))
 
             # 13g. (0.4.11, milestone 4) Save as part keeps what's made in the Parts Library (local/Made parts/<model>/)
             # with a recipe; its page opens the model with those settings or makes it again, and says when
@@ -1114,7 +1188,7 @@ async def main():
             await pg.wait_for_function("()=>document.body.dataset.model==='local-bevel/bevel-gear' && location.hash==='#/m/local-bevel/bevel-gear'")
             await pg.wait_for_function(DONE, timeout=300000)
             check("Open with these settings opens the model and makes it", "matches" in await pg.inner_text("#status"))
-            # (0.4.11) Make several… saves each part to the Parts Library, named from the setting that varies
+            # (0.4.11) Batch generate… saves each part to the Parts Library, named from the setting that varies
             await pg.click("#model-more summary")
             await pg.click("#batch-open")
             await pg.wait_for_selector("#batch[open] .batch-range input")
@@ -1127,7 +1201,7 @@ async def main():
             several = sorted(f.name for f in made[0].parent.glob("*.stl"))
             several_recipes = [json.loads(f.read_text()).get("model") for f in made[0].parent.glob("*.recipe.json")]
             await pg.click("#batch-close")
-            check("Make several saves each part to the Parts Library with its recipe, named from what varies",
+            check("Batch generate saves each part to the Parts Library with its recipe, named from what varies",
                   len(several) == 4 and several_recipes.count("local-bevel/bevel-gear") == 4, several)
             # (0.4.13, UI-28) the Made parts shelf: no source line, Read again or Versions; cards say what each was made from
             await pg.goto(B + "#/browse/source/local-made-parts")

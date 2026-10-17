@@ -60,7 +60,7 @@ function fieldsFor(level) {
   return shared; // folder, bulk
 }
 
-const LABEL = { name: "Name", summary: "Description", category: "Category", tags: "Tags", license: "License", authors: "Authors", origin: "Origin (link)", notes: "Notes", icon: "Icon" };
+const LABEL = { name: "Name", summary: "Description", category: "Category", tags: "Tags", license: "License", authors: "Authors", origin: "Origin (link)", notes: "About this model", icon: "Icon" };
 
 /** Where an edit goes for one catalog item: { source, level, target } (its own project, even when listed under another). */
 export function itemTarget(item) {
